@@ -1,0 +1,314 @@
+@import 'tailwindcss';
+
+:root {
+  --card-radius: 1rem;
+  --max-article-width: 72ch;
+}
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Noto Serif SC', 'SimSun', '宋体', serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: #1f2937;
+  background-color: #f3f4f6;
+}
+
+/* ===== 背景（原项目：Bing 背景图 + 白色模糊遮罩） ===== */
+.bg-fixed-cover {
+  position: fixed;
+  inset: 0;
+  z-index: -20;
+  background-size: cover;
+  background-position: center;
+  /* 图片加载失败时回退到中性底色 */
+  background-color: #f3f4f6;
+  background-image: url('https://api.1314.cool/bingimg');
+}
+
+.bg-blur-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  background: rgba(255, 255, 255, 0.66);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* ===== 卡片（原项目：bg-white/80 backdrop-blur rounded-3xl shadow-sm） ===== */
+.card {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(243, 244, 246, 1);
+  border-radius: var(--card-radius);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 4px 16px -8px rgba(16, 24, 40, 0.06);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px rgba(16, 24, 40, 0.05), 0 16px 32px -12px rgba(16, 24, 40, 0.12);
+  border-color: #e5e7eb;
+}
+
+/* ===== 分类 / 标签 徽标（原项目：text-primary bg-primary/10 rounded-full） ===== */
+.pill-primary {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #6d28d9;
+  background: rgba(109, 40, 217, 0.1);
+  border: 1px solid rgba(109, 40, 217, 0.2);
+  border-radius: 9999px;
+}
+
+/* ===== Markdown 正文（原项目：article-body 18px / 行高 1.9） ===== */
+.markdown-body {
+  font-size: 18px;
+  line-height: 1.9;
+  color: #1f2937;
+  word-wrap: break-word;
+}
+.markdown-body > *:first-child {
+  margin-top: 0;
+}
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 1.6em 0 0.8em;
+  color: #111827;
+  scroll-margin-top: 5rem;
+}
+.markdown-body h1 {
+  font-size: 1.7em;
+  padding-bottom: 0.4em;
+  border-bottom: 1px solid #e5e7eb;
+}
+.markdown-body h2 {
+  font-size: 1.4em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid #eef0f2;
+}
+.markdown-body h3 {
+  font-size: 1.2em;
+}
+.markdown-body h4 {
+  font-size: 1.05em;
+}
+.markdown-body p {
+  margin: 1em 0;
+}
+.markdown-body a {
+  color: #2563eb;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(37, 99, 235, 0.25);
+  transition: border-color 0.15s ease;
+}
+.markdown-body a:hover {
+  border-bottom-color: #2563eb;
+}
+.markdown-body strong {
+  font-weight: 700;
+  color: #111827;
+}
+.markdown-body blockquote {
+  margin: 1.2em 0;
+  padding: 0.5em 1.2em;
+  border-left: 4px solid #d1d5db;
+  background: rgba(243, 244, 246, 0.6);
+  border-radius: 0 0.75rem 0.75rem 0;
+  color: #4b5563;
+}
+.markdown-body ul,
+.markdown-body ol {
+  margin: 1em 0;
+  padding-left: 1.6em;
+}
+.markdown-body ul {
+  list-style: disc;
+}
+.markdown-body ol {
+  list-style: decimal;
+}
+.markdown-body li {
+  margin: 0.35em 0;
+}
+.markdown-body li > ul,
+.markdown-body li > ol {
+  margin: 0.3em 0;
+}
+.markdown-body code {
+  background: #f3f4f6;
+  color: #be185d;
+  padding: 0.15em 0.4em;
+  border-radius: 0.35rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88em;
+}
+.markdown-body pre {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 1.1em 1.3em;
+  border-radius: 1rem;
+  overflow-x: auto;
+  margin: 1.3em 0;
+  line-height: 1.7;
+  font-size: 0.9em;
+}
+.markdown-body pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.3em 0;
+  font-size: 0.95em;
+}
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid #e5e7eb;
+  padding: 0.55em 0.9em;
+  text-align: left;
+}
+.markdown-body th {
+  background: #f9fafb;
+  font-weight: 600;
+}
+.markdown-body tr:nth-child(2n) td {
+  background: #fcfcfd;
+}
+.markdown-body img {
+  max-width: 100%;
+  border-radius: 1rem;
+  margin: 1.2em auto;
+  box-shadow: 0 4px 16px rgba(16, 24, 40, 0.08);
+  cursor: zoom-in;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+.markdown-body img:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 24px rgba(16, 24, 40, 0.1);
+}
+.markdown-body hr {
+  border: 0;
+  border-top: 1px solid #e5e7eb;
+  margin: 2em 0;
+}
+.markdown-body input[type='checkbox'] {
+  margin-right: 0.5em;
+}
+
+/* ===== 代码高亮 ===== */
+.hljs {
+  background: transparent;
+  color: #e2e8f0;
+}
+
+/* ===== 动画 ===== */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-up {
+  animation: fadeUp 0.35s ease both;
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.toast-in {
+  animation: toastIn 0.25s ease both;
+}
+
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.modal-in {
+  animation: modalIn 0.2s ease both;
+}
+
+/* ===== 滚动条 ===== */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+/* ===== Markdown 编辑器微调 ===== */
+.w-md-editor-toolbar {
+  border-radius: 0.9rem 0.9rem 0 0 !important;
+  border-color: #e5e7eb !important;
+}
+.w-md-editor {
+  border-radius: 0.9rem !important;
+  box-shadow: none !important;
+  border: 1px solid #e5e7eb !important;
+  font-family: 'Noto Serif SC', serif !important;
+}
+.w-md-editor-text-pre,
+.w-md-editor-text-input {
+  font-family: 'Noto Serif SC', serif !important;
+  font-size: 16px !important;
+  line-height: 1.9 !important;
+}
+.w-md-editor-text-pre .token,
+.w-md-editor-text-input {
+  color: #374151 !important;
+}
+
