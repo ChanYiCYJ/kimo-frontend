@@ -144,7 +144,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
 
   const exportChat = () => {
     const text = messages.map(m => `**${m.role === 'user' ? '👤 用户' : '🤖 ' + (config.botName || 'AI')}**\n${m.content}\n`).join('\n---\n\n')
-    const blob = new Blob([text], { type: 'text/markdown' })
+    const blob = new Blob(['\uFEFF' + text], { type: 'text/markdown;charset=utf-8' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
     a.download = `chat-${config.botName || 'ai'}-${new Date().toISOString().slice(0,10)}.md`
@@ -262,6 +262,11 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
           </div>
         ))}
         <div ref={bottomRef} />
+        {messages.length > 0 && (
+          <p className="text-center text-[11px] text-gray-300 dark:text-gray-600 pt-1">
+            AI 生成内容仅供参考 · 联系：jasonchan0654@gmail.com
+          </p>
+        )}
       </div>
 
       {/* 输入框 */}
