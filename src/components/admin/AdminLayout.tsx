@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../../lib/auth'
 import { useSite } from '../../lib/site'
 import { PageSpinner } from '../Spinner'
@@ -80,6 +80,41 @@ export function AdminLayout() {
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
+  // 菜单排序（localStorage 持久化）
+  const [navOrder, setNavOrder] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('kimo_admin_nav_order')
+      if (saved) return JSON.parse(saved) as string[]
+    } catch {}
+    return NAV.map(n => n.to)
+  })
+
+  const sortedNav = useMemo(() => {
+    const map = new Map(NAV.map(n => [n.to, n]))
+    return navOrder.map(to => map.get(to)).filter(Boolean) as NavItem[]
+  }, [navOrder])
+
+  const onDragStart = useCallback((e: React.DragEvent, idx: number) => {
+    e.dataTransfer.setData('text/plain', String(idx))
+    e.dataTransfer.effectAllowed = 'move'
+  }, [])
+
+  const onDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }, [])
+
+  const onDrop = useCallback((e: React.DragEvent, toIdx: number) => {
+    e.preventDefault()
+    const fromIdx = Number(e.dataTransfer.getData('text/plain'))
+    if (fromIdx === toIdx) return
+    const next = [...navOrder]
+    const [moved] = next.splice(fromIdx, 1)
+    next.splice(toIdx, 0, moved)
+    setNavOrder(next)
+    try { localStorage.setItem('kimo_admin_nav_order', JSON.stringify(next)) } catch {}
+  }, [navOrder])
+
   useEffect(() => {
     if (!loading && !isAdmin) {
       navigate('/login', { replace: true, state: { from: location.pathname } })
@@ -158,10 +193,17 @@ export function AdminLayout() {
           </button>
         </div>
 
-        {/* 导航项 */}
+        {/* 导航项 — 支持拖拽排序 */}
         <nav className="flex-1 overflow-y-auto border-t border-gray-100 px-3 py-4 lg:border-t-0 lg:px-2 lg:pt-4">
-          {NAV.map((item) => (
-            <div key={item.to} className="relative group">
+          {sortedNav.map((item, i) => (
+            <div
+              key={item.to}
+              draggable
+              onDragStart={(e) => onDragStart(e, i)}
+              onDragOver={onDragOver}
+              onDrop={(e) => onDrop(e, i)}
+              className="relative group cursor-grab active:cursor-grabbing"
+            >
               <NavLink
                 to={item.to}
                 end={item.end}
@@ -176,7 +218,6 @@ export function AdminLayout() {
                 <span className="flex h-5 w-5 items-center justify-center lg:h-6 lg:w-6">{item.icon}</span>
                 <span className="lg:hidden">{item.label}</span>
               </NavLink>
-              {/* 桌面端 tooltip */}
               <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 hidden -translate-y-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-lg transition group-hover:opacity-100 lg:block">
                 {item.label}
               </span>
