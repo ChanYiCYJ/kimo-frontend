@@ -344,7 +344,7 @@ export function Settings() {
           <button
             onClick={() => {
               saveAIConfig(ai)
-              success('AI 润色配置已保存')
+              success('AI 改写配置已保存')
             }}
             className="rounded-xl bg-gray-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 active:scale-[0.98]"
           >
@@ -364,7 +364,7 @@ export function Settings() {
           <label className="flex cursor-pointer items-center">
             <input
               type="checkbox"
-              checked={settings.enable_ai_articles === '1'}
+              checked={form.enable_ai_articles === '1'}
               onChange={(e) => setForm((f) => ({ ...f, enable_ai_articles: e.target.checked ? '1' : '0' }))}
               className="h-4 w-4 accent-gray-900"
             />
@@ -378,7 +378,7 @@ export function Settings() {
           <label className="flex cursor-pointer items-center">
             <input
               type="checkbox"
-              checked={settings.show_ai !== '0'}
+              checked={form.show_ai !== '0'}
               onChange={(e) => setForm((f) => ({ ...f, show_ai: e.target.checked ? '1' : '0' }))}
               className="h-4 w-4 accent-gray-900"
             />
@@ -392,7 +392,7 @@ export function Settings() {
           <label className="flex cursor-pointer items-center">
             <input
               type="checkbox"
-              checked={settings.enable_custom_api !== '0'}
+              checked={form.enable_custom_api !== '0'}
               onChange={(e) => setForm((f) => ({ ...f, enable_custom_api: e.target.checked ? '1' : '0' }))}
               className="h-4 w-4 accent-gray-900"
             />
@@ -405,7 +405,7 @@ export function Settings() {
             <div>
               <label className="mb-1 block text-xs text-gray-500">国内主站</label>
               <input
-                value={settings.default_route || ''}
+                value={form.default_route || ''}
                 onChange={(e) => setForm((f) => ({ ...f, default_route: e.target.value }))}
                 placeholder="/ai"
                 className={inputCls}
@@ -414,7 +414,7 @@ export function Settings() {
             <div>
               <label className="mb-1 block text-xs text-gray-500">Vercel 海外站点</label>
               <input
-                value={settings.default_route_vercel || ''}
+                value={form.default_route_vercel || ''}
                 onChange={(e) => setForm((f) => ({ ...f, default_route_vercel: e.target.value }))}
                 placeholder="/"
                 className={inputCls}
@@ -423,13 +423,13 @@ export function Settings() {
           </div>
           <label className="mb-1 mt-2 block text-xs text-gray-500">域名 → 落地页映射（JSON，优先于上面两个默认值）</label>
           <textarea
-            value={settings.route_map || ''}
+            value={form.route_map || ''}
             onChange={(e) => setForm((f) => ({ ...f, route_map: e.target.value }))}
             rows={3}
-            placeholder={'{\n  "yogofor.top": "/",\n  "v2.yogofor.top": "/ai"\n}'}
+            placeholder={'{\n  "localhost": "/ai",\n  "yogofor.top": "/"\n}'}
             className={`${inputCls} resize-none font-mono text-xs`}
           />
-          <p className="text-xs text-gray-400">键为域名（支持子域名后缀匹配），值为落地路径。例如国内主站 yogofor.top 落首页，海外站 v2.yogofor.top 落 /ai。</p>
+          <p className="text-xs text-gray-400">键为域名（支持子域名后缀匹配），值为落地路径。本地测试可用 {"{\"localhost\": \"/ai\"}"}，例如国内主站 yogofor.top 落首页、海外站 v2.yogofor.top 落 /ai。</p>
         </div>
       </section>
 

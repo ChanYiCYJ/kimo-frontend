@@ -29,7 +29,8 @@ const DEFAULTS: AIConfig = { endpoint: '', apiKey: '', model: '', enabled: false
 export function getAIConfig(): AIConfig {
   // 优先：管理员在「AI 改写」中选择的 AI 助手（来自 AI 管理注册表）
   try {
-    const bots = JSON.parse(localStorage.getItem(BOTS_KEY) || '[]') as BotRef[]
+    const parsed = JSON.parse(localStorage.getItem(BOTS_KEY) || '[]') as unknown
+    const bots = Array.isArray(parsed) ? (parsed as BotRef[]) : []
     if (bots.length) {
       const selected = localStorage.getItem(POLISH_BOT_KEY)
       const pick = bots.find((b) => String(b.id) === selected) || bots[0]

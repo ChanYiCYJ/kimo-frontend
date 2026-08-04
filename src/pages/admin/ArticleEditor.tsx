@@ -108,7 +108,7 @@ export function ArticleEditor() {
     try {
       const result = await polishMarkdown(content)
       setContent(result)
-      success('AI 润色完成')
+      success('AI 改写完成')
     } catch (e) {
       error(e instanceof Error ? e.message : 'AI 请求失败')
     } finally { setAiLoading(false) }
@@ -182,7 +182,7 @@ export function ArticleEditor() {
                 disabled={aiLoading || !content.trim()}
                 className="flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-gray-700 disabled:opacity-50 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
               >
-                {aiLoading ? '处理中...' : '✨ AI 润色'}
+                {aiLoading ? '处理中...' : '✨ AI 改写'}
               </button>
               <span className="text-xs text-gray-400">或输入指令：</span>
               <input
