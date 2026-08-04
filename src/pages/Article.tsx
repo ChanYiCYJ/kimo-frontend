@@ -232,7 +232,7 @@ export function Article() {
           {/* 正文 */}
           <div className="mt-6 flex justify-center">
             <div className="w-full max-w-3xl">
-              <Markdown content={article.content.replace(/^#\s+.+?\n/, '')} />
+              <Markdown content={article.content.replace(/^#\s+.+?(?:\r?\n|$)/m, '')} />
             </div>
           </div>
 
