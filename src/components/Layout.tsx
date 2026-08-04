@@ -1,17 +1,31 @@
 import { Outlet, useLocation } from 'react-router-dom'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Header } from './Header'
 import { Sidebar } from './Sidebar'
 import { useSite } from '../lib/site'
-import { resolveAsset } from '../lib/api'
+import { pageApi, resolveAsset } from '../lib/api'
+import { AI_CHAT_MARKER } from '../lib/types'
 
 export function Layout() {
   const { settings } = useSite()
   const location = useLocation()
+  const [isAIChat, setIsAIChat] = useState(false)
 
   // 路由切换时回到顶部
   useEffect(() => {
     window.scrollTo(0, 0)
+  }, [location.pathname])
+
+  // 检测当前 /page/:name 是否为 AI 对话页（ChatGPT 风格全宽布局）
+  useEffect(() => {
+    let active = true
+    const m = location.pathname.match(/^\/page\/(.+)$/)
+    if (!m) { setIsAIChat(false); return }
+    pageApi.getByName(m[1]).then((p) => {
+      if (!active) return
+      setIsAIChat(p.type === 'html' && (p.content || '').startsWith(AI_CHAT_MARKER))
+    }).catch(() => { if (active) setIsAIChat(false) })
+    return () => { active = false }
   }, [location.pathname])
 
   // 动态设置网站图标和标题
@@ -24,6 +38,20 @@ export function Layout() {
       if (link) link.href = resolveAsset(settings.avatar)
     }
   }, [settings.title, settings.avatar])
+
+  // AI 对话页：沉浸式全宽，无侧边栏
+  if (isAIChat) {
+    return (
+      <div className="flex min-h-screen flex-col">
+        <div className="bg-fixed-cover" style={settings.background ? { backgroundImage: `url(${resolveAsset(settings.background)})` } : undefined} />
+        <div className="bg-blur-overlay" />
+        <Header />
+        <main className="mx-auto w-full max-w-4xl flex-1 px-0">
+          <Outlet />
+        </main>
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-screen flex-col">

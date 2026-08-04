@@ -264,7 +264,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
   }
 
   const card = (
-    <div ref={containerRef} className={`flex flex-col bg-white dark:bg-gray-900 ${fullscreen ? 'fixed inset-0 z-50 rounded-none border-0' : 'sm:rounded-2xl sm:border sm:border-gray-200 sm:dark:border-gray-700 max-sm:-mx-4 max-sm:-mt-10'}`} style={{ height: '100dvh', maxHeight: fullscreen ? '100dvh' : 'min(68dvh, 560px)' }}>
+    <div ref={containerRef} className={`flex flex-col bg-white dark:bg-gray-900 ${fullscreen ? 'fixed inset-0 z-50 rounded-none border-0' : 'sm:rounded-2xl sm:border sm:border-gray-200 sm:dark:border-gray-700'}`} style={{ height: '100dvh', maxHeight: fullscreen ? '100dvh' : 'calc(100dvh - 5rem)' }}>
       {/* 顶栏 */}
       <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-3 py-2.5 dark:border-gray-700 sm:px-4 sm:py-3 sm:rounded-t-2xl">
         <div className="flex items-center gap-2 sm:gap-3">
