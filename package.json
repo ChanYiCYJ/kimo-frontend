@@ -1,10 +1,12 @@
 {
-  "name": "vite-test",
+  "name": "kimo-frontend",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:api": "cd ../kimo-fastapi && uvicorn app.main:app --reload --port 8000",
+    "dev:all": "concurrently -k -n API,WEB -c blue,green \"npm:dev:api\" \"npm:dev\"",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview"
@@ -26,6 +28,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
+    "concurrently": "^10.0.4",
     "oxlint": "^1.69.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",

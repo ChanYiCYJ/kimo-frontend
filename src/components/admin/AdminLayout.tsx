@@ -39,6 +39,12 @@ const ICON = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
     </svg>
   ),
+  tag: (
+    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 6h.008v.008H6V6z" />
+    </svg>
+  ),
 }
 
 const NAV: NavItem[] = [
@@ -46,6 +52,7 @@ const NAV: NavItem[] = [
   { to: '/dashboard/articles/new', label: '新建文章', icon: ICON.article },
   { to: '/dashboard/articles', label: '文章管理', icon: ICON.manage },
   { to: '/dashboard/pages', label: '页面管理', icon: ICON.pages },
+  { to: '/dashboard/categories', label: '分类标签', icon: ICON.tag },
   { to: '/dashboard/settings', label: '站点设置', icon: ICON.settings },
 ]
 
@@ -54,6 +61,7 @@ const TITLES: Array<[string, string]> = [
   ['/dashboard/articles/', '文章管理'],
   ['/dashboard/pages/new', '新建页面'],
   ['/dashboard/pages', '页面管理'],
+  ['/dashboard/categories', '分类 / 标签'],
   ['/dashboard/settings', '站点设置'],
   ['/dashboard', '控制台'],
 ]
@@ -154,7 +162,7 @@ export function AdminLayout() {
               <p className="font-medium text-gray-700">{user?.user_name || user?.email}</p>
               <p className="text-gray-400">{user?.role === 0 ? '管理员' : '用户'}</p>
             </div>
-            <span className="grid h-9 w-9 place-content-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">
+            <span className="grid h-9 w-9 place-content-center rounded-full bg-gray-100 text-sm font-bold text-gray-700">
               {(user?.user_name || user?.email || 'U').slice(0, 1).toUpperCase()}
             </span>
           </div>

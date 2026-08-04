@@ -194,7 +194,7 @@ export function ArticleEditor() {
           />
           <div
             className={`flex h-[calc(100%-1.75rem)] min-h-24 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed transition ${
-              coverImage ? 'border-blue-200 bg-blue-50/40' : 'border-gray-200 bg-white hover:border-gray-300'
+              coverImage ? 'border-gray-300 bg-gray-100/50' : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
             onClick={() => coverInputRef.current?.click()}
           >

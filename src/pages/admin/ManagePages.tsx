@@ -6,11 +6,11 @@ import { Badge, EmptyState, Skeleton } from '../../components/ui'
 import { ConfirmDialog } from '../../components/Modal'
 import { useToast } from '../../lib/toast'
 
-const TYPE_TONE: Record<string, 'violet' | 'blue' | 'green' | 'amber'> = {
-  markdown: 'violet',
-  html: 'blue',
-  list: 'green',
-  link: 'amber',
+const TYPE_TONE: Record<string, 'violet' | 'blue' | 'green' | 'amber' | 'gray'> = {
+  markdown: 'gray',
+  html: 'gray',
+  list: 'gray',
+  link: 'gray',
 }
 
 export function ManagePages() {
@@ -85,7 +85,7 @@ export function ManagePages() {
           {pages.map((p) => (
             <div key={p.id} className="card card-hover flex items-center justify-between gap-3 p-4">
               <div className="flex min-w-0 items-center gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-sm font-semibold text-blue-600">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gray-100 text-sm font-semibold text-gray-600">
                   #
                 </span>
                 <div className="min-w-0">

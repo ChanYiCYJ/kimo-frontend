@@ -77,7 +77,7 @@ function daysAgo(n: number): string {
   return d.toISOString()
 }
 
-export const mockTags: Tag[] = [
+export let mockTags: Tag[] = [
   { id: 1, tag_name: 'React' },
   { id: 2, tag_name: 'TypeScript' },
   { id: 3, tag_name: 'Vite' },
@@ -86,7 +86,7 @@ export const mockTags: Tag[] = [
   { id: 6, tag_name: '教程' },
 ]
 
-export const mockCategories: Category[] = [
+export let mockCategories: Category[] = [
   { id: 1, name: '技术', slug: 'tech', description: '技术相关文章', created_at: daysAgo(90) },
   { id: 2, name: '随笔', slug: 'notes', description: '日常随笔', created_at: daysAgo(80) },
   { id: 3, name: '生活', slug: 'life', description: '生活记录', created_at: daysAgo(70) },
@@ -165,7 +165,7 @@ export const mockPages: Page[] = [
   { id: 3, name: 'GitHub', type: 'link', status: 0, content: 'https://github.com' },
 ]
 
-export const mockSettings: SiteSettings = {
+export let mockSettings: SiteSettings = {
   title: 'Kimo',
   ltitle: '记录技术、生活与思考',
   avatar: '/favicon.svg',
@@ -215,9 +215,27 @@ export const mockApi = {
     await wait(200)
     return mockCategories
   },
+  async createCategory(payload: { name: string; description?: string | null; slug?: string | null }): Promise<Category> {
+    await wait(200)
+    const c: Category = {
+      id: mockCategories.length + 1,
+      name: payload.name,
+      slug: payload.slug ?? payload.name,
+      description: payload.description ?? null,
+      created_at: new Date().toISOString(),
+    }
+    mockCategories = [...mockCategories, c]
+    return c
+  },
   async getTags(): Promise<Tag[]> {
     await wait(200)
     return mockTags
+  },
+  async createTag(tagName: string): Promise<Tag> {
+    await wait(200)
+    const t: Tag = { id: mockTags.length + 1, tag_name: tagName }
+    mockTags = [...mockTags, t]
+    return t
   },
   async getPages(): Promise<Page[]> {
     await wait(200)
@@ -232,6 +250,17 @@ export const mockApi = {
   async getSettings(): Promise<SiteSettings> {
     await wait(200)
     return { ...mockSettings }
+  },
+  async setSetting(key: string, value: string): Promise<{ key: string; value: string }> {
+    await wait(150)
+    mockSettings = { ...mockSettings, [key]: value }
+    return { key, value }
+  },
+  async removeSetting(key: string): Promise<void> {
+    await wait(150)
+    const next = { ...mockSettings }
+    delete next[key]
+    mockSettings = next
   },
   async login(_userInfo: string, _password: string): Promise<{ access_token: string; token_type: string; user: User }> {
     await wait(500)

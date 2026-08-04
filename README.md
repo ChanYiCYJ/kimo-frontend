@@ -58,7 +58,56 @@ server: {
 
 > 💡 后端未启动时，前端会自动回退到**演示数据**（`src/lib/mock.ts`），便于本地预览 UI。
 
-## 📁 目录结构
+## � 前后端同步热更新
+
+前后端是两个独立进程，各自拥有热重载能力：
+
+| 端 | 命令 | 热更新机制 |
+| --- | --- | --- |
+| 前端（Vite） | `npm run dev` | **HMR**：保存 `.tsx/.css` 立即局部刷新，不清空状态 |
+| 后端（FastAPI） | `uvicorn app.main:app --reload` | **--reload**：保存 `.py` 自动重启服务（秒级） |
+
+两者通过 Vite 代理串联：前端请求 `/api/*` 转发到 `:8000`，因此后端代码一改、刷新即可看到新接口，无需处理跨域。
+
+### 一条命令同时启动（推荐）
+
+前提：把后端克隆为前端项目的**同级目录**：
+
+```bash
+# 目录结构
+~/kimo-fastapi     # 后端
+~/vite-test        # 前端（本项目）
+```
+
+然后在前端目录执行：
+
+```bash
+npm run dev:all
+```
+
+它会用 `concurrently` 同时启动：
+- `API`（蓝色）：`cd ../kimo-fastapi && uvicorn app.main:app --reload --port 8000`
+- `WEB`（绿色）：`vite`（HMR）
+
+任意一端退出（如 Ctrl+C）会连带结束另一端（`-k` 参数）。
+
+### 单独启动（排查问题用）
+
+```bash
+# 终端 1 - 后端
+cd ../kimo-fastapi && uvicorn app.main:app --reload
+
+# 终端 2 - 前端
+npm run dev
+```
+
+### ⚠️ 注意事项
+
+- 后端需要 `.env`（数据库连接等），首次启动按 `kimo-fastapi/.env.example` 配置好 MySQL
+- 仅改业务代码（路由/service/CRUD）时 `--reload` 足够；**改 Tortoise 模型**后需执行 `aerich migrate && aerich upgrade` 才会生效（热重载不会自动建表）
+- 若前后端不在同一机器/域名（不使用 Vite 代理），则需在后端开启 CORS 并设置 `VITE_API_BASE` 为完整地址
+
+## �📁 目录结构
 
 ```
 src/

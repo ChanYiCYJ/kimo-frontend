@@ -168,11 +168,11 @@ export function PageEditor() {
               onClick={() => setType(opt.value)}
               className={`rounded-2xl border p-3.5 text-left transition ${
                 type === opt.value
-                  ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-100'
+                  ? 'border-gray-400 bg-gray-100 ring-2 ring-gray-100'
                   : 'border-gray-200 bg-white hover:border-gray-300'
               }`}
             >
-              <p className={`text-sm font-semibold ${type === opt.value ? 'text-blue-700' : 'text-gray-700'}`}>
+              <p className={`text-sm font-semibold ${type === opt.value ? 'text-gray-900' : 'text-gray-700'}`}>
                 {opt.label}
               </p>
               <p className="mt-1 text-xs leading-relaxed text-gray-400">{opt.desc}</p>

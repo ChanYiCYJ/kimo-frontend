@@ -107,11 +107,35 @@ async function call<T>(fn: () => Promise<T>, fb: () => Promise<T>): Promise<T> {
   }
 }
 
-/** 把后端相对路径（/static/...）转成可访问 URL */
+/** 后端源：当 VITE_API_BASE 为绝对地址时解析出 origin，用于拼接 /static 图片 */
+function apiOrigin(): string {
+  if (/^https?:\/\//.test(API_BASE)) {
+    try {
+      return new URL(API_BASE).origin
+    } catch {
+      return ''
+    }
+  }
+  return ''
+}
+
+/** 把后端相对路径（/static/...）转成可访问 URL（跨源部署时自动拼上后端源） */
 export function resolveAsset(url: string | null | undefined): string {
   if (!url) return ''
-  if (/^https?:\/\//.test(url) || url.startsWith('data:')) return url
+  if (/^https?:\/\//.test(url) || url.startsWith('data:') || url.startsWith('blob:')) return url
+  const origin = apiOrigin()
+  if (origin && url.startsWith('/')) return `${origin}${url}`
   return url
+}
+
+/** 把 File 读成 data URL（演示模式上传用） */
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result ?? ''))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
 }
 
 // ================= 认证 =================
@@ -191,7 +215,7 @@ export const categoryApi = {
           method: 'POST',
           body: JSON.stringify(payload),
         }),
-      async () => ({ id: 99, name: payload.name, slug: payload.slug ?? payload.name, description: payload.description ?? null, created_at: new Date().toISOString() }),
+      () => mockApi.createCategory(payload),
     ),
 }
 
@@ -205,7 +229,7 @@ export const tagApi = {
           method: 'POST',
           body: JSON.stringify({ tag_name: tagName }),
         }),
-      async () => ({ id: 99, tag_name: tagName }),
+      () => mockApi.createTag(tagName),
     ),
 }
 
@@ -268,7 +292,7 @@ export const uploadApi = {
       fd.append('file', file)
       return request('/upload/image', { method: 'POST', body: fd })
     }, async () => {
-      // 演示模式：返回一个本地占位图
-      return { url: '/favicon.svg', filename: file.name }
+      // 演示模式：转成 data URL，让图片在预览中真实显示
+      return { url: await fileToDataUrl(file), filename: file.name }
     }),
 }

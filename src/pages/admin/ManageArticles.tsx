@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { articleApi, resolveAsset } from '../../lib/api'
 import type { ArticleListItem } from '../../lib/types'
@@ -9,21 +9,30 @@ import { formatDate } from '../../lib/format'
 
 export function ManageArticles() {
   const [articles, setArticles] = useState<ArticleListItem[]>([])
+  const [page, setPage] = useState(1)
+  const [totalPage, setTotalPage] = useState(1)
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState<ArticleListItem | null>(null)
   const [busy, setBusy] = useState(false)
   const { success, error } = useToast()
 
-  const load = () => {
+  const load = useCallback((p: number) => {
     setLoading(true)
     articleApi
-      .list(1)
-      .then((res) => setArticles(res.items))
+      .list(p)
+      .then((res) => {
+        setArticles(res.items)
+        setTotalPage(res.total_page)
+        setTotal(res.total)
+      })
       .catch(() => setArticles([]))
       .finally(() => setLoading(false))
-  }
+  }, [])
 
-  useEffect(load, [])
+  useEffect(() => {
+    load(page)
+  }, [load, page])
 
   const confirmDelete = async () => {
     if (!deleting) return
@@ -32,7 +41,12 @@ export function ManageArticles() {
       await articleApi.remove(deleting.id)
       success('文章已删除')
       setDeleting(null)
-      load()
+      // 若当前页已删空则回退一页
+      if (articles.length === 1 && page > 1) {
+        setPage((p) => p - 1)
+      } else {
+        load(page)
+      }
     } catch (e) {
       error(e instanceof Error ? e.message : '删除失败')
     } finally {
@@ -43,7 +57,7 @@ export function ManageArticles() {
   return (
     <div className="fade-up space-y-5">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">共 {articles.length} 篇文章（每页 5 篇）</p>
+        <p className="text-sm text-gray-500">共 {total} 篇文章（每页 5 篇，第 {page} 页）</p>
         <Link
           to="/dashboard/articles/new"
           className="flex items-center gap-1.5 rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 active:scale-[0.98]"
@@ -98,7 +112,7 @@ export function ManageArticles() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <h3 className="truncate font-medium text-gray-800">{a.title}</h3>
-                  {a.category_name && <Badge tone="violet">{a.category_name}</Badge>}
+                  {a.category_name && <Badge tone="gray">{a.category_name}</Badge>}
                 </div>
                 <p className="mt-1 flex items-center gap-3 text-xs text-gray-400">
                   <span>{formatDate(a.created)}</span>
@@ -134,6 +148,29 @@ export function ManageArticles() {
               </div>
             </article>
           ))}
+        </div>
+      )}
+
+      {/* 分页 */}
+      {!loading && totalPage > 1 && (
+        <div className="flex items-center justify-center gap-3 pt-2">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm text-gray-600 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            ← 上一页
+          </button>
+          <span className="text-sm text-gray-500">
+            {page} / {totalPage}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPage, p + 1))}
+            disabled={page >= totalPage}
+            className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm text-gray-600 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            下一页 →
+          </button>
         </div>
       )}
 
