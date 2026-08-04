@@ -58,6 +58,33 @@ server: {
 
 > 💡 后端未启动时，前端会自动回退到**演示数据**（`src/lib/mock.ts`），便于本地预览 UI。
 
+## ☁️ 部署到 Vercel
+
+项目根目录已包含 `vercel.json`，会自动：
+
+- 构建命令 `npm run build`，产物输出到 `dist/`（Vercel 自动识别 Vite）
+- 将 `/api/*` 代理到后端 `https://api.yogofor.top/api/*`
+- 将 `/static/*`（上传图片）代理到后端 `https://api.yogofor.top/static/*`
+- 其余路由回退到 `index.html`（SPA 客户端路由）
+
+无需额外环境变量（`VITE_API_BASE` 保持默认 `/api/v1`，同源代理免去 CORS）。
+
+### 方式一：GitHub 集成（推荐）
+
+1. 把代码推送到 GitHub 仓库（本项目为 `kimo-frontend`）
+2. 在 [Vercel](https://vercel.com) → **Add New → Project** → 导入该仓库
+3. Vercel 自动识别 Vite，直接 **Deploy**
+
+### 方式二：Vercel CLI
+
+```bash
+npm i -g vercel
+vercel login
+vercel --prod
+```
+
+> ⚠️ 部署时如果后端域名变更，只需修改 `vercel.json` 中的 `destination` 地址后重新部署。
+
 ## � 前后端同步热更新
 
 前后端是两个独立进程，各自拥有热重载能力：
