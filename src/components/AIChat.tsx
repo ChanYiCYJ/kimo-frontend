@@ -142,25 +142,35 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
     if (ttsOn) { setTimeout(() => speak(reply.replace(/[*_`#~>\[\]\(\)]/g, '').slice(0, 600)), 500) }
   }
 
+  const exportChat = () => {
+    const text = messages.map(m => `**${m.role === 'user' ? '👤 用户' : '🤖 ' + (config.botName || 'AI')}**\n${m.content}\n`).join('\n---\n\n')
+    const blob = new Blob([text], { type: 'text/markdown' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `chat-${config.botName || 'ai'}-${new Date().toISOString().slice(0,10)}.md`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
   if (!consented) {
     return (
       <div className="mx-auto max-w-lg rounded-2xl border border-gray-200 bg-white p-5 sm:p-6 dark:border-gray-700 dark:bg-gray-900 max-sm:mx-2">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">知情同意与使用规则</h3>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">使用须知</h3>
         <div className="mt-4 space-y-3 text-sm leading-relaxed text-gray-600 dark:text-gray-400">
-          <p>使用本 AI 对话功能即表示您已阅读并同意以下规则：</p>
+          <p>使用本 AI 对话功能前，请了解以下信息：</p>
           <div className="space-y-2">
-            <p className="font-medium text-gray-800 dark:text-gray-300">📋 使用规则</p>
+            <p className="font-medium text-gray-800 dark:text-gray-300">📋 温馨提示</p>
             <ul className="ml-4 list-disc space-y-1.5">
-              <li><strong>禁止违法违规</strong>：不得用于生成暴力、色情、诈骗、侵权、歧视、政治敏感等违法违规内容。</li>
-              <li><strong>内容责任</strong>：AI 回复由第三方 API 生成，本站不对其准确性、合法性承担责任。</li>
-              <li><strong>隐私保护</strong>：对话记录仅保存在您的浏览器本地，不会上传到服务器。</li>
-              <li><strong>资源限制</strong>：由于 Token 额度有限，可能对回复长度或频率有所限制，敬请见谅。</li>
-              <li><strong>禁止滥用</strong>：禁止批量刷屏、恶意攻击 API 接口等行为。</li>
+              <li>对话记录保存在您的浏览器本地，不会上传服务器。</li>
+              <li>AI 回复由第三方 API 生成，内容仅供参考，请自行判断准确性。</li>
+              <li>请勿生成违法违规内容，共同维护良好的网络环境。</li>
+              <li>由于 Token 额度限制，回复长度或频率可能有所限制。</li>
+              <li>请勿输入密码、身份证号等个人敏感信息。</li>
             </ul>
           </div>
           <div className="space-y-1">
-            <p className="font-medium text-gray-800 dark:text-gray-300">📧 问题反馈</p>
-            <p>如有任何问题或举报违规内容，请联系：<a href="mailto:jasonchan0654@gmail.com" className="text-blue-600 hover:underline dark:text-blue-400">jasonchan0654@gmail.com</a></p>
+            <p className="font-medium text-gray-800 dark:text-gray-300">📧 联系与反馈</p>
+            <p>如有问题或建议，欢迎联系：<a href="mailto:jasonchan0654@gmail.com" className="text-blue-600 hover:underline dark:text-blue-400">jasonchan0654@gmail.com</a></p>
           </div>
         </div>
         <button onClick={() => { setConsented(true); try { localStorage.setItem(STORAGE_PREFIX + 'consent_' + pageId, '1') } catch {} }}
@@ -210,8 +220,10 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
           )}
           <button onClick={() => { setMessages([]); try { localStorage.removeItem(STORAGE_PREFIX + 'history_' + pageId) } catch {} }}
             className="rounded-lg px-1.5 py-1 text-xs text-gray-400 transition hover:text-red-500 sm:px-2">清除</button>
-          <button onClick={() => abortRef.current?.abort()} disabled={!loading}
-            className="rounded-lg px-1.5 py-1 text-xs text-gray-400 transition hover:text-gray-600 disabled:opacity-30 sm:px-2">停止</button>
+          {messages.length > 0 && (
+            <button onClick={exportChat}
+              className="rounded-lg px-1.5 py-1 text-xs text-gray-400 transition hover:text-gray-600 sm:px-2" title="导出对话">导出</button>
+          )}
         </div>
       </div>
 
