@@ -92,22 +92,49 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
   }
 
   return (
-    <div className="flex flex-col rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900" style={{ minHeight: 480 }}>
+    <div className="flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900" style={{ minHeight: 480 }}>
+      {/* 顶栏 — 机器人信息 */}
       <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
-        <div className="flex items-center gap-2">
-          <span className="grid h-7 w-7 place-content-center rounded-full bg-gray-900 text-xs font-bold text-white dark:bg-gray-200 dark:text-gray-900">AI</span>
-          <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{config.botName || 'AI 助手'}</span>
+        <div className="flex items-center gap-3">
+          {config.avatar ? (
+            <img src={config.avatar} alt={config.botName} className="h-8 w-8 rounded-full object-cover ring-1 ring-gray-200 dark:ring-gray-700" />
+          ) : (
+            <span className="grid h-8 w-8 place-content-center rounded-full bg-gray-900 text-xs font-bold text-white dark:bg-gray-200 dark:text-gray-900">
+              {(config.botName || 'AI').slice(0, 2)}
+            </span>
+          )}
+          <div>
+            <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{config.botName || 'AI 助手'}</span>
+            <p className="text-[11px] text-gray-400">{config.model || 'AI'}</p>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => { setMessages([]); try { localStorage.removeItem(STORAGE_PREFIX + 'history_' + pageId) } catch {} }} className="rounded-lg px-2 py-1 text-xs text-gray-400 transition hover:text-red-500">清除记录</button>
-          <button onClick={() => abortRef.current?.abort()} disabled={!loading} className="rounded-lg px-2 py-1 text-xs text-gray-400 transition hover:text-gray-600 disabled:opacity-30">停止</button>
+        <div className="flex items-center gap-1">
+          <button onClick={() => { setMessages([]); try { localStorage.removeItem(STORAGE_PREFIX + 'history_' + pageId) } catch {} }}
+            className="rounded-lg px-2 py-1 text-xs text-gray-400 transition hover:text-red-500">清除</button>
+          <button onClick={() => abortRef.current?.abort()} disabled={!loading}
+            className="rounded-lg px-2 py-1 text-xs text-gray-400 transition hover:text-gray-600 disabled:opacity-30">停止</button>
         </div>
       </div>
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
-        {messages.length === 0 && <p className="py-12 text-center text-sm text-gray-400">你好，我是{config.botName || 'AI 助手'}，有什么可以帮你？</p>}
+        {messages.length === 0 && (
+          <div className="flex flex-col items-center py-12">
+            {config.avatar ? (
+              <img src={config.avatar} alt={config.botName} className="mb-3 h-16 w-16 rounded-full object-cover ring-2 ring-gray-100 dark:ring-gray-700" />
+            ) : (
+              <span className="mb-3 grid h-16 w-16 place-content-center rounded-full bg-gray-100 text-2xl font-bold text-gray-400 dark:bg-gray-800">AI</span>
+            )}
+            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{config.botName || 'AI 助手'}</p>
+            <p className="mt-1 text-xs text-gray-400">有什么可以帮你？</p>
+          </div>
+        )}
         {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${m.role === 'user' ? 'bg-gray-900 text-white dark:bg-gray-200 dark:text-gray-900' : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'}`}>{m.content}</div>
+          <div key={i} className={`flex items-end gap-2 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
+            {m.role === 'assistant' && (
+              config.avatar
+                ? <img src={config.avatar} className="h-6 w-6 shrink-0 rounded-full object-cover ring-1 ring-gray-200 dark:ring-gray-700" alt="" />
+                : <span className="grid h-6 w-6 shrink-0 place-content-center rounded-full bg-gray-100 text-[10px] font-bold text-gray-500 dark:bg-gray-800">AI</span>
+            )}
+            <div className={`max-w-[78%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${m.role === 'user' ? 'bg-gray-900 text-white dark:bg-gray-200 dark:text-gray-900' : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'}`}>{m.content}</div>
           </div>
         ))}
         <div ref={bottomRef} />

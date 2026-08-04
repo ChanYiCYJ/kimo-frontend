@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { pageApi } from '../../lib/api'
 import type { PageDisplayType, PageType, AIChatConfig } from '../../lib/types'
-import { AI_CHAT_MARKER } from '../../lib/types'
+import { AI_CHAT_MARKER, encodeKey, decodeKey } from '../../lib/types'
 import { MdEditor } from '../../components/MdEditor'
 import { PageSpinner } from '../../components/Spinner'
 import { useToast } from '../../lib/toast'
@@ -33,7 +33,9 @@ export function PageEditor() {
   const [aiKey, setAiKey] = useState('')
   const [aiModel, setAiModel] = useState('')
   const [aiBotName, setAiBotName] = useState('')
+  const [aiAvatar, setAiAvatar] = useState('')
   const [aiPrompt, setAiPrompt] = useState('')
+  const [showKey, setShowKey] = useState(false)
 
   useEffect(() => {
     if (isEdit) {
@@ -48,9 +50,10 @@ export function PageEditor() {
             try {
               const cfg: AIChatConfig = JSON.parse(p.content.slice(AI_CHAT_MARKER.length))
               setAiEndpoint(cfg.endpoint || '')
-              setAiKey(cfg.apiKey || '')
+              setAiKey(decodeKey(cfg.apiKey || ''))
               setAiModel(cfg.model || '')
               setAiBotName(cfg.botName || '')
+              setAiAvatar(cfg.avatar || '')
               setAiPrompt(cfg.systemPrompt || '')
             } catch {}
           } else {
@@ -133,9 +136,10 @@ export function PageEditor() {
     const saveContent = type === 'ai-chat'
       ? AI_CHAT_MARKER + JSON.stringify({
           endpoint: aiEndpoint.trim(),
-          apiKey: aiKey.trim(),
+          apiKey: encodeKey(aiKey.trim()),
           model: aiModel.trim(),
           botName: aiBotName.trim(),
+          avatar: aiAvatar.trim() || undefined,
           systemPrompt: aiPrompt.trim(),
         } as AIChatConfig)
       : (content || null)
@@ -221,9 +225,9 @@ export function PageEditor() {
       {type === 'ai-chat' ? (
         <div className="card space-y-4 p-5">
           <h3 className="text-sm font-semibold text-gray-800">AI 对话配置</h3>
-          <p className="text-xs text-gray-400">密钥仅存储在页面数据中，不会被前端明文暴露给第三方。</p>
+          <p className="text-xs text-gray-400">密钥经 base64 混淆存储，仅用于本页面 AI 请求。</p>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-500">机器人名称</label>
               <input value={aiBotName} onChange={e => setAiBotName(e.target.value)} placeholder="如：小K" className={inputCls} />
@@ -232,6 +236,10 @@ export function PageEditor() {
               <label className="mb-1 block text-xs font-medium text-gray-500">模型</label>
               <input value={aiModel} onChange={e => setAiModel(e.target.value)} placeholder="如：gpt-4o-mini" className={inputCls} />
             </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">头像 URL</label>
+              <input value={aiAvatar} onChange={e => setAiAvatar(e.target.value)} placeholder="https://...（可选）" className={inputCls} />
+            </div>
           </div>
 
           <div>
@@ -239,9 +247,10 @@ export function PageEditor() {
             <input value={aiEndpoint} onChange={e => setAiEndpoint(e.target.value)} placeholder="https://api.openai.com/v1" className={inputCls} />
           </div>
 
-          <div>
+          <div className="relative">
             <label className="mb-1 block text-xs font-medium text-gray-500">API 密钥</label>
-            <input value={aiKey} onChange={e => setAiKey(e.target.value)} placeholder="sk-..." type="password" className={inputCls} />
+            <input value={aiKey} onChange={e => setAiKey(e.target.value)} placeholder="sk-..." type={showKey ? 'text' : 'password'} className={`${inputCls} pr-16`} />
+            <button type="button" onClick={() => setShowKey(!showKey)} className="absolute bottom-2 right-2 rounded-lg px-2 py-1 text-xs text-gray-400 hover:text-gray-600">{showKey ? '隐藏' : '显示'}</button>
           </div>
 
           <div>

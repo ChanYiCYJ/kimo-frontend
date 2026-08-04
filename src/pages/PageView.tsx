@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import DOMPurify from 'dompurify'
 import { pageApi } from '../lib/api'
 import type { Page, AIChatConfig } from '../lib/types'
-import { AI_CHAT_MARKER } from '../lib/types'
+import { AI_CHAT_MARKER, decodeKey } from '../lib/types'
 import { PageSpinner } from '../components/Spinner'
 import { EmptyState } from '../components/ui'
 import { AIChat } from '../components/AIChat'
@@ -68,6 +68,7 @@ export function PageView() {
     if (page.type === 'html' && page.content?.startsWith(AI_CHAT_MARKER)) {
       try {
         const cfg: AIChatConfig = JSON.parse(page.content.slice(AI_CHAT_MARKER.length))
+        cfg.apiKey = decodeKey(cfg.apiKey)
         return <AIChat config={cfg} pageId={page.id} />
       } catch { /* fall through */ }
     }

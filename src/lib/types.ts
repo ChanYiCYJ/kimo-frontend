@@ -87,7 +87,16 @@ export interface AIChatConfig {
   apiKey: string
   model: string
   botName: string
+  avatar?: string
   systemPrompt: string
+}
+
+// API Key 简单混淆（base64，防明文泄露，非真正加密）
+export function encodeKey(k: string): string {
+  try { return btoa(k) } catch { return k }
+}
+export function decodeKey(k: string): string {
+  try { return atob(k) } catch { return k }
 }
 export const AI_CHAT_MARKER = '__KIMO_AI_CHAT__'
 
