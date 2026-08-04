@@ -76,7 +76,19 @@ export function Article() {
   const [error, setError] = useState('')
   const [activeId, setActiveId] = useState('')
 
-  const toc = useMemo(() => (article ? extractToc(article.content) : []), [article])
+  const toc = useMemo(() => (article ? extractToc(displayContent) : []), [article, displayContent])
+
+  // 去掉 Markdown 首行 # 标题（已通过 h1 单独渲染，避免重复）
+  const displayContent = useMemo(() => {
+    if (!article) return ''
+    const lines = article.content.split(/\r?\n/)
+    if (lines.length > 0 && /^\s*#\s/.test(lines[0])) {
+      lines.shift()
+      // 去掉标题后可能紧跟的空行
+      if (lines.length > 0 && lines[0].trim() === '') lines.shift()
+    }
+    return lines.join('\n')
+  }, [article])
 
   useEffect(() => {
     let active = true
@@ -185,54 +197,9 @@ export function Article() {
       {/* 正文 + 目录：双栏布局 */}
       <div className="mx-auto mt-8 grid w-full gap-8 xl:grid-cols-[minmax(0,1fr)_13rem]">
         <article className="mx-auto w-full max-w-3xl px-4 sm:px-0">
-          {/* 返回 */}
-          <Link
-            to="/"
-            className="mb-4 inline-flex items-center gap-1 text-sm text-gray-400 transition hover:text-gray-600"
-          >
-            <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 010 1.06L9.332 10l3.458 3.71a.75.75 0 11-1.08 1.04l-4-4.25a.75.75 0 010-1.08l4-4.25a.75.75 0 011.08 0z" clipRule="evenodd" />
-            </svg>
-            返回列表
-          </Link>
-
-          {/* 封面 */}
-          {article.cover_image && (
-            <div className="h-64 w-full overflow-hidden rounded-2xl bg-gray-100 md:h-96">
-              <img
-                src={resolveAsset(article.cover_image)}
-                alt={article.title}
-                className="h-full w-full object-cover transition-transform duration-300"
-              />
-            </div>
-          )}
-
-          {/* 大标题居中 */}
-          <h1 className="mb-4 mt-6 text-center text-3xl font-semibold leading-snug tracking-tight text-gray-900 sm:text-4xl">
-            {article.title}
-          </h1>
-
-          {/* 元信息 */}
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            {article.category_name && (
-              <span className="inline-block rounded-full border border-gray-200 px-4 py-1 text-sm text-gray-600">
-                {article.category_name}
-              </span>
-            )}
-            <span className="inline-block rounded-full border border-gray-200 px-4 py-1 text-sm text-gray-600">
-              {formatDate(article.created)}
-            </span>
-            <span className="inline-block rounded-full border border-gray-200 px-4 py-1 text-sm text-gray-600">
-              约 {readingTime(article.content)} 分钟
-            </span>
-          </div>
-
-          <div className="mt-5 border-t border-gray-200" />
-
-          {/* 正文 */}
-          <div className="mt-6 flex justify-center">
+          <div className="flex justify-center">
             <div className="w-full max-w-3xl">
-              <Markdown content={article.content.replace(/^#\s+.+?(?:\r?\n|$)/m, '')} />
+              <Markdown content={displayContent} />
             </div>
           </div>
 
