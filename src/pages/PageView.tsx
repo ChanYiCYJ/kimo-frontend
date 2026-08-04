@@ -5,6 +5,7 @@ import { pageApi } from '../lib/api'
 import type { Page } from '../lib/types'
 import { PageSpinner } from '../components/Spinner'
 import { EmptyState } from '../components/ui'
+import { AIChat } from '../components/AIChat'
 
 interface ListItem {
   title?: string
@@ -64,12 +65,14 @@ export function PageView() {
   const renderContent = () => {
     switch (page.type) {
       case 'markdown': {
-        // 后端已将 markdown 渲染为 HTML 字符串
         const html = page.content ?? ''
         return <div className="markdown-body" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }} />
       }
       case 'html': {
         return <div className="markdown-body" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(page.content ?? '') }} />
+      }
+      case 'ai-chat': {
+        return <AIChat />
       }
       case 'list': {
         let items: unknown[] = []

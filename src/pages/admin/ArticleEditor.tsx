@@ -6,6 +6,7 @@ import { MdEditor } from '../../components/MdEditor'
 import { PageSpinner } from '../../components/Spinner'
 import { useToast } from '../../lib/toast'
 import { readingTime } from '../../lib/format'
+import { aiWrite, polishMarkdown, getAIConfig } from '../../lib/ai'
 
 export function ArticleEditor() {
   const { id } = useParams<{ id: string }>()
@@ -23,6 +24,8 @@ export function ArticleEditor() {
   const [loading, setLoading] = useState(isEdit)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiPrompt, setAiPrompt] = useState('')
   const coverInputRef = useRef<HTMLInputElement>(null)
 
   // 加载分类 & 编辑时加载文章
@@ -99,6 +102,34 @@ export function ArticleEditor() {
 
   if (loading) return <PageSpinner />
 
+  const handleAiPolish = async () => {
+    if (!content.trim()) { error('请先输入文章内容'); return }
+    setAiLoading(true)
+    try {
+      const result = await polishMarkdown(content)
+      setContent(result)
+      success('AI 润色完成')
+    } catch (e) {
+      error(e instanceof Error ? e.message : 'AI 请求失败')
+    } finally { setAiLoading(false) }
+  }
+
+  const handleAiGenerate = async () => {
+    const prompt = aiPrompt.trim()
+    if (!prompt) { error('请输入 AI 指令'); return }
+    setAiLoading(true)
+    try {
+      const result = await aiWrite(prompt, content || undefined)
+      setContent((prev) => prev ? prev + '\n\n' + result : result)
+      setAiPrompt('')
+      success('AI 内容已追加')
+    } catch (e) {
+      error(e instanceof Error ? e.message : 'AI 请求失败')
+    } finally { setAiLoading(false) }
+  }
+
+  const aiEnabled = getAIConfig().enabled
+
   const inputCls =
     'w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-gray-400 focus:ring-2 focus:ring-gray-100'
 
@@ -142,6 +173,35 @@ export function ArticleEditor() {
         {/* 正文编辑器 */}
         <div>
           <MdEditor value={content} onChange={setContent} height={560} />
+
+          {/* AI 协助工具栏 */}
+          {aiEnabled && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-gray-200 bg-gray-50/50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
+              <button
+                onClick={handleAiPolish}
+                disabled={aiLoading || !content.trim()}
+                className="flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-gray-700 disabled:opacity-50 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
+              >
+                {aiLoading ? '处理中...' : '✨ AI 润色'}
+              </button>
+              <span className="text-xs text-gray-400">或输入指令：</span>
+              <input
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAiGenerate()}
+                placeholder="如：续写一段总结"
+                disabled={aiLoading}
+                className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs outline-none transition focus:border-gray-400 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+              />
+              <button
+                onClick={handleAiGenerate}
+                disabled={aiLoading || !aiPrompt.trim()}
+                className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-gray-700 disabled:opacity-50 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
+              >
+                生成
+              </button>
+            </div>
+          )}
         </div>
 
         {/* 元信息面板（右侧 sticky） */}

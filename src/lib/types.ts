@@ -78,7 +78,7 @@ export interface CategoryPayload {
 }
 
 // ---- 页面 ----
-export type PageType = 'markdown' | 'html' | 'list' | 'link'
+export type PageType = 'markdown' | 'html' | 'list' | 'link' | 'ai-chat'
 
 export interface Page {
   id: number

@@ -87,6 +87,20 @@ export async function polishMarkdown(content: string): Promise<string> {
   return chat('你是专业的博客写作助手。', POLISH_PROMPT.replace('{content}', content))
 }
 
+/** AI 写作辅助 — 根据提示生成/续写/改写 */
+export async function aiWrite(prompt: string, context?: string): Promise<string> {
+  const system = '你是专业的中文博客写作助手，输出纯 Markdown 格式，不要多余说明。'
+  const user = context
+    ? `基于以下文章内容，${prompt}：\n\n=====\n${context}\n=====`
+    : prompt
+  return chat(system, user)
+}
+
+/** AI 对话（单轮），供自定义页面调用 */
+export async function aiChat(userMessage: string, systemPrompt?: string): Promise<string> {
+  return chat(systemPrompt ?? '你是友好的AI助手。', userMessage)
+}
+
 /** 站点统计数据（由 DashboardHome 汇总后交给 AI） */
 export interface SiteStats {
   siteName: string

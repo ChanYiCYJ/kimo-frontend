@@ -8,8 +8,9 @@ import { useToast } from '../../lib/toast'
 
 const TYPE_OPTIONS: Array<{ value: PageType; label: string; desc: string }> = [
   { value: 'markdown', label: 'Markdown', desc: '富文本页面，适合「关于」「归档」' },
-  { value: 'html', label: 'HTML', desc: '自定义 HTML 内容' },
+  { value: 'html', label: 'HTML', desc: '自定义 HTML / JS 内容' },
   { value: 'list', label: 'List', desc: '链接列表，如「友链」' },
+  { value: 'ai-chat', label: 'AI 对话', desc: '内嵌 AI 聊天组件，无需内容' },
   { value: 'link', label: 'Link', desc: '跳转到外部链接' },
 ]
 
@@ -91,7 +92,7 @@ export function PageEditor() {
       error('请输入页面名称')
       return
     }
-    if (type !== 'list' && !content.trim()) {
+    if (type !== 'list' && type !== 'ai-chat' && !content.trim()) {
       error('请输入页面内容')
       return
     }
