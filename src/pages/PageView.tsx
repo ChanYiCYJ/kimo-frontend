@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import DOMPurify from 'dompurify'
 import { pageApi } from '../lib/api'
 import type { Page } from '../lib/types'
+import { AI_CHAT_MARKER } from '../lib/types'
 import { PageSpinner } from '../components/Spinner'
 import { EmptyState } from '../components/ui'
 import { AIChat } from '../components/AIChat'
@@ -63,6 +64,10 @@ export function PageView() {
   }
 
   const renderContent = () => {
+    // ai-chat 兼容解码：html 类型 + __KIMO_AI_CHAT__ 标记
+    if (page.type === 'html' && page.content === AI_CHAT_MARKER) {
+      return <AIChat />
+    }
     switch (page.type) {
       case 'markdown': {
         const html = page.content ?? ''
@@ -70,9 +75,6 @@ export function PageView() {
       }
       case 'html': {
         return <div className="markdown-body" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(page.content ?? '') }} />
-      }
-      case 'ai-chat': {
-        return <AIChat />
       }
       case 'list': {
         let items: unknown[] = []

@@ -78,7 +78,11 @@ export interface CategoryPayload {
 }
 
 // ---- 页面 ----
-export type PageType = 'markdown' | 'html' | 'list' | 'link' | 'ai-chat'
+export type PageType = 'markdown' | 'html' | 'list' | 'link'
+export type PageDisplayType = PageType | 'ai-chat'
+
+// ai-chat 兼容编码：前端用 html 类型存储，content 标记 __KIMO_AI_CHAT__
+export const AI_CHAT_MARKER = '__KIMO_AI_CHAT__'
 
 export interface Page {
   id: number

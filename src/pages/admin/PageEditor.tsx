@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { pageApi } from '../../lib/api'
-import type { PageType } from '../../lib/types'
+import type { PageDisplayType, PageType } from '../../lib/types'
+import { AI_CHAT_MARKER } from '../../lib/types'
 import { MdEditor } from '../../components/MdEditor'
 import { PageSpinner } from '../../components/Spinner'
 import { useToast } from '../../lib/toast'
 
-const TYPE_OPTIONS: Array<{ value: PageType; label: string; desc: string }> = [
+const TYPE_OPTIONS: Array<{ value: PageDisplayType; label: string; desc: string }> = [
   { value: 'markdown', label: 'Markdown', desc: '富文本页面，适合「关于」「归档」' },
   { value: 'html', label: 'HTML', desc: '自定义 HTML / JS 内容' },
   { value: 'list', label: 'List', desc: '链接列表，如「友链」' },
@@ -21,7 +22,7 @@ export function PageEditor() {
   const { success, error } = useToast()
 
   const [name, setName] = useState('')
-  const [type, setType] = useState<PageType>('markdown')
+  const [type, setType] = useState<PageDisplayType>('markdown')
   const [content, setContent] = useState('')
   const [loading, setLoading] = useState(isEdit)
   const [saving, setSaving] = useState(false)
@@ -32,8 +33,14 @@ export function PageEditor() {
         .get(Number(id))
         .then((p) => {
           setName(p.name)
-          setType(p.type)
-          setContent(p.content ?? '')
+          // ai-chat 解码
+          if (p.type === 'html' && p.content === AI_CHAT_MARKER) {
+            setType('ai-chat')
+            setContent('')
+          } else {
+            setType(p.type as PageDisplayType)
+            setContent(p.content ?? '')
+          }
         })
         .catch((e: Error) => error(e.message || '加载失败'))
         .finally(() => setLoading(false))
@@ -105,10 +112,13 @@ export function PageEditor() {
       }
     }
     setSaving(true)
+    // ai-chat 编码：用 html 类型 + 标记位存储，兼容后端 type 校验
+    const saveType: PageType = type === 'ai-chat' ? 'html' : type
+    const saveContent = type === 'ai-chat' ? AI_CHAT_MARKER : (content || null)
     const payload = {
       name: name.trim(),
-      type,
-      content: content || null,
+      type: saveType,
+      content: saveContent,
       status: 0,
     }
     try {
