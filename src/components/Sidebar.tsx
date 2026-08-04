@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { articleApi, categoryApi, pageApi, tagApi, resolveAsset } from '../lib/api'
+import { articleApi, categoryApi, pageApi, tagApi } from '../lib/api'
 import type { Category, Page, Tag } from '../lib/types'
-import { useSite } from '../lib/site'
 import { Skeleton } from './ui'
 
 export function Sidebar() {
-  const { settings } = useSite()
   const [categories, setCategories] = useState<Category[]>([])
   const [tags, setTags] = useState<Tag[]>([])
   const [pages, setPages] = useState<Page[]>([])
@@ -46,44 +44,30 @@ export function Sidebar() {
   }
 
   return (
-    <div className="space-y-4">
-      {/* 站点信息（横向紧凑布局，适配窄列） */}
-      <section className="card flex items-center gap-3 p-4">
-        <span className="grid h-14 w-14 shrink-0 place-content-center overflow-hidden rounded-full bg-gray-100 ring-1 ring-gray-200">
-          {settings.avatar ? (
-            <img src={resolveAsset(settings.avatar)} alt="Avatar" className="h-full w-full object-cover" />
-          ) : (
-            <span className="text-xl font-bold text-gray-900">K</span>
-          )}
-        </span>
-        <div className="min-w-0">
-          <h2 className="truncate text-base font-semibold text-gray-900">{settings.title || 'Kimo'}</h2>
-          {settings.ltitle && <p className="mt-0.5 truncate text-xs text-gray-500">{settings.ltitle}</p>}
-        </div>
-      </section>
-
-      {/* 站点统计（mx-space 风格） */}
-      <section className="card p-4">
-        <h3 className="mb-3 text-sm font-semibold text-gray-900">站点统计</h3>
+    <div className="space-y-3">
+      {/* 站点统计 */}
+      <section className="card p-3.5">
+        <h3 className="mb-3 border-l-2 border-gray-900 pl-2.5 text-xs font-semibold uppercase tracking-wider text-gray-500">统计</h3>
         <div className="grid grid-cols-3 gap-2 text-center">
-          <Link to="/" className="rounded-xl bg-gray-50 py-2.5 transition hover:bg-gray-100">
+          <Link to="/" className="rounded-lg bg-gray-50 py-2 transition hover:bg-gray-100">
             <p className="text-lg font-semibold text-gray-900">{articleTotal}</p>
-            <p className="text-xs text-gray-400">文章</p>
+            <p className="text-[11px] text-gray-400">文章</p>
           </Link>
-          <div className="rounded-xl bg-gray-50 py-2.5">
+          <div className="rounded-lg bg-gray-50 py-2">
             <p className="text-lg font-semibold text-gray-900">{categories.length}</p>
-            <p className="text-xs text-gray-400">分类</p>
+            <p className="text-[11px] text-gray-400">分类</p>
           </div>
-          <div className="rounded-xl bg-gray-50 py-2.5">
+          <div className="rounded-lg bg-gray-50 py-2">
             <p className="text-lg font-semibold text-gray-900">{tags.length}</p>
-            <p className="text-xs text-gray-400">标签</p>
+            <p className="text-[11px] text-gray-400">标签</p>
           </div>
         </div>
       </section>
 
       {/* 分类 */}
-      <section className="card p-4">
-        <h3 className="mb-3 text-sm font-semibold text-gray-900">分类</h3>        <div className="flex flex-wrap gap-1.5">
+      <section className="card p-3.5">
+        <h3 className="mb-3 border-l-2 border-gray-900 pl-2.5 text-xs font-semibold uppercase tracking-wider text-gray-500">分类</h3>
+        <div className="flex flex-wrap gap-1.5">
           <button
             onClick={() => navigate('/')}
             className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
@@ -112,8 +96,8 @@ export function Sidebar() {
 
       {/* 标签 */}
       {tags.length > 0 && (
-        <section className="card p-4">
-          <h3 className="mb-3 text-sm font-semibold text-gray-900">标签</h3>
+        <section className="card p-3.5">
+          <h3 className="mb-3 border-l-2 border-gray-900 pl-2.5 text-xs font-semibold uppercase tracking-wider text-gray-500">标签</h3>
           <div className="flex flex-wrap gap-1.5">
             {tags.map((t) => (
               <button
@@ -130,8 +114,8 @@ export function Sidebar() {
 
       {/* 页面 */}
       {pages.length > 0 && (
-        <section className="card p-4">
-          <h3 className="mb-2 text-sm font-semibold text-gray-900">Pages</h3>
+        <section className="card p-3.5">
+          <h3 className="mb-2.5 border-l-2 border-gray-900 pl-2.5 text-xs font-semibold uppercase tracking-wider text-gray-500">Pages</h3>
           <div className="space-y-2">
             {pages.map((p) => {
               const inner = (

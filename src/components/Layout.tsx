@@ -35,8 +35,10 @@ export function Layout() {
             <div className="col-span-1 space-y-6 md:col-span-2">
               <Outlet />
             </div>
-            <aside className="col-span-1 space-y-6">
-              <Sidebar />
+            <aside className="col-span-1">
+              <div className="sticky top-24 space-y-4">
+                <Sidebar />
+              </div>
             </aside>
           </div>
         ) : (

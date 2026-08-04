@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '../../lib/auth'
 import { useSite } from '../../lib/site'
 import { PageSpinner } from '../Spinner'
@@ -78,12 +78,18 @@ export function AdminLayout() {
   const { settings } = useSite()
   const navigate = useNavigate()
   const location = useLocation()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
     if (!loading && !isAdmin) {
       navigate('/login', { replace: true, state: { from: location.pathname } })
     }
   }, [loading, isAdmin, navigate, location.pathname])
+
+  // 路由切换时关闭侧边栏
+  useEffect(() => {
+    setSidebarOpen(false)
+  }, [location.pathname])
 
   if (loading) return <PageSpinner />
   if (!isAdmin) return null
@@ -96,87 +102,133 @@ export function AdminLayout() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
-      {/* 左侧图标导航 */}
-      <div className="flex h-screen w-20 flex-col justify-between border-r border-gray-100 bg-white">
-        <div>
-          <a href="/" className="inline-flex h-20 w-20 items-center justify-center">
-            <span className="grid h-12 w-12 place-content-center overflow-hidden rounded-xl bg-gray-100">
+    <div className="flex min-h-screen flex-col lg:flex-row bg-white">
+
+      {/* ===== 手机顶栏 ===== */}
+      <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-gray-200/70 bg-white/80 px-4 backdrop-blur lg:hidden">
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="rounded-lg p-1.5 text-gray-600 transition hover:bg-gray-100"
+          aria-label="打开菜单"
+        >
+          <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path strokeLinecap="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+          </svg>
+        </button>
+        <h1 className="text-base font-semibold text-gray-900">{title}</h1>
+        <span className="grid h-8 w-8 place-content-center rounded-full bg-gray-100 text-xs font-bold text-gray-700">
+          {(user?.user_name || user?.email || 'U').slice(0, 1).toUpperCase()}
+        </span>
+      </header>
+
+      {/* ===== 遮罩（手机侧边栏打开时） ===== */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* ===== 侧边导航 ===== */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-gray-200/70 bg-white/90 backdrop-blur transition-transform duration-300 lg:relative lg:z-0 lg:w-20 lg:translate-x-0 lg:border-r ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {/* Logo */}
+        <div className="flex h-14 items-center justify-between px-4 lg:h-20 lg:justify-center lg:px-0">
+          <a href="/" className="flex items-center gap-3 lg:justify-center">
+            <span className="grid h-9 w-9 place-content-center overflow-hidden rounded-xl bg-gray-100 lg:h-12 lg:w-12">
               {settings.avatar ? (
                 <img src={resolveAsset(settings.avatar)} alt="logo" className="h-full w-full object-cover" />
               ) : (
                 <span className="text-lg font-bold text-gray-900">K</span>
               )}
             </span>
+            <span className="text-sm font-semibold text-gray-900 lg:hidden">{settings.title || 'Kimo'}</span>
           </a>
-
-          <ul className="space-y-1 border-t border-gray-100 pt-4">
-            {NAV.map((item) => (
-              <li key={item.to} className="relative group flex justify-center">
-                <NavLink
-                  to={item.to}
-                  end={item.end}
-                  className={({ isActive }) =>
-                    `flex h-11 w-11 items-center justify-center rounded-xl transition ${
-                      isActive
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
-                    }`
-                  }
-                >
-                  {item.icon}
-                </NavLink>
-                <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-y-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-lg transition group-hover:opacity-100">
-                  {item.label}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 lg:hidden"
+            aria-label="关闭菜单"
+          >
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
 
-        {/* 底部 */}
-        <div className="border-t border-gray-100 py-3">
-          <div className="flex flex-col items-center gap-2">
+        {/* 导航项 */}
+        <nav className="flex-1 overflow-y-auto border-t border-gray-100 px-3 py-4 lg:border-t-0 lg:px-2 lg:pt-4">
+          {NAV.map((item) => (
+            <div key={item.to} className="relative group">
+              <NavLink
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition lg:flex-col lg:justify-center lg:gap-1 lg:px-2 lg:py-2.5 ${
+                    isActive
+                      ? 'bg-gray-100 text-gray-900'
+                      : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                  }`
+                }
+              >
+                <span className="flex h-5 w-5 items-center justify-center lg:h-6 lg:w-6">{item.icon}</span>
+                <span className="lg:hidden">{item.label}</span>
+              </NavLink>
+              {/* 桌面端 tooltip */}
+              <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 hidden -translate-y-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-lg transition group-hover:opacity-100 lg:block">
+                {item.label}
+              </span>
+            </div>
+          ))}
+        </nav>
+
+        {/* 底部操作 */}
+        <div className="border-t border-gray-100 px-3 py-3 lg:px-2">
+          <div className="flex gap-2 lg:flex-col lg:items-center lg:gap-2">
             <a
               href="/"
               title="返回前台"
-              className="flex h-11 w-11 items-center justify-center rounded-xl text-gray-500 transition hover:bg-gray-50 hover:text-gray-700"
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl py-2 text-sm text-gray-500 transition hover:bg-gray-50 hover:text-gray-700 lg:h-11 lg:w-11 lg:flex-none"
             >
               <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
               </svg>
+              <span className="lg:hidden">返回前台</span>
             </a>
             <button
               onClick={handleLogout}
               title="退出登录"
-              className="flex h-11 w-11 items-center justify-center rounded-xl text-gray-500 transition hover:bg-red-50 hover:text-red-600"
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl py-2 text-sm text-gray-500 transition hover:bg-red-50 hover:text-red-600 lg:h-11 lg:w-11 lg:flex-none"
             >
               <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
               </svg>
+              <span className="lg:hidden">退出登录</span>
             </button>
           </div>
         </div>
-      </div>
+      </aside>
 
-      {/* 主内容 */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {/* 顶栏 */}
-        <header className="flex h-16 items-center justify-between border-b border-gray-100 bg-white px-6">
+      {/* ===== 主内容区 ===== */}
+      <div className="flex flex-1 flex-col lg:pl-0">
+        {/* 桌面顶栏 */}
+        <header className="hidden h-14 items-center justify-between border-b border-gray-200/70 bg-white/80 px-6 backdrop-blur lg:flex">
           <h1 className="text-lg font-semibold text-gray-900">{title}</h1>
           <div className="flex items-center gap-3">
             <div className="text-right text-xs">
               <p className="font-medium text-gray-700">{user?.user_name || user?.email}</p>
               <p className="text-gray-400">{user?.role === 0 ? '管理员' : '用户'}</p>
             </div>
-            <span className="grid h-9 w-9 place-content-center rounded-full bg-gray-100 text-sm font-bold text-gray-700">
+            <span className="grid h-8 w-8 place-content-center rounded-full bg-gray-100 text-xs font-bold text-gray-700">
               {(user?.user_name || user?.email || 'U').slice(0, 1).toUpperCase()}
             </span>
           </div>
         </header>
 
         {/* 内容 */}
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 p-4 sm:p-6">
           <Outlet />
         </main>
       </div>

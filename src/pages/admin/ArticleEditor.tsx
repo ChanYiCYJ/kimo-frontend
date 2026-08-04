@@ -104,8 +104,8 @@ export function ArticleEditor() {
 
   return (
     <div className="fade-up">
-      {/* 顶栏：返回 + 标题 + 发布（写作优先），与编辑器之间留出间距 */}
-      <div className="sticky top-0 z-30 -mx-6 -mt-6 mb-8 flex items-center gap-3 border-b border-gray-200 bg-gray-50/95 px-6 py-3 backdrop-blur">
+      {/* 顶栏：返回 + 标题 + 发布 */}
+      <div className="sticky top-14 z-30 -mx-4 -mt-4 mb-6 flex items-center gap-2 border-b border-gray-200/70 bg-white/80 px-4 py-2.5 backdrop-blur sm:-mx-6 sm:-mt-6 sm:mb-8 sm:gap-3 sm:px-6 sm:py-3">
         <button
           onClick={() => navigate('/dashboard/articles')}
           title="返回"
@@ -124,7 +124,7 @@ export function ArticleEditor() {
         <button
           onClick={handleSubmit}
           disabled={saving}
-          className="flex shrink-0 items-center gap-2 rounded-xl bg-gray-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 active:scale-[0.98] disabled:opacity-60"
+          className="flex shrink-0 items-center gap-1.5 rounded-xl bg-gray-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 active:scale-[0.98] disabled:opacity-60 sm:gap-2 sm:px-5"
         >
           {saving && (
             <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
@@ -132,7 +132,8 @@ export function ArticleEditor() {
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
           )}
-          {isEdit ? '保存修改' : '发布'}
+          <span className="hidden sm:inline">{isEdit ? '保存修改' : '发布'}</span>
+          <span className="sm:hidden">{saving ? '...' : isEdit ? '保存' : '发布'}</span>
         </button>
       </div>
 

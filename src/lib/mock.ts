@@ -261,6 +261,23 @@ export const mockApi = {
     mockCategories = [...mockCategories, c]
     return c
   },
+  async updateCategory(id: number, payload: { name: string; description?: string | null; slug?: string | null }): Promise<Category> {
+    await wait(200)
+    const idx = mockCategories.findIndex((c) => c.id === id)
+    if (idx === -1) throw new Error('分类不存在')
+    const updated: Category = {
+      ...mockCategories[idx],
+      name: payload.name,
+      slug: payload.slug ?? payload.name,
+      description: payload.description ?? null,
+    }
+    mockCategories = mockCategories.map((c, i) => (i === idx ? updated : c))
+    return updated
+  },
+  async deleteCategory(id: number): Promise<void> {
+    await wait(200)
+    mockCategories = mockCategories.filter((c) => c.id !== id)
+  },
   async getTags(): Promise<Tag[]> {
     await wait(200)
     return mockTags
@@ -270,6 +287,18 @@ export const mockApi = {
     const t: Tag = { id: mockTags.length + 1, tag_name: tagName }
     mockTags = [...mockTags, t]
     return t
+  },
+  async updateTag(id: number, tagName: string): Promise<Tag> {
+    await wait(200)
+    const idx = mockTags.findIndex((t) => t.id === id)
+    if (idx === -1) throw new Error('标签不存在')
+    const updated: Tag = { id, tag_name: tagName }
+    mockTags = mockTags.map((t, i) => (i === idx ? updated : t))
+    return updated
+  },
+  async deleteTag(id: number): Promise<void> {
+    await wait(200)
+    mockTags = mockTags.filter((t) => t.id !== id)
   },
   async getPages(): Promise<Page[]> {
     await wait(200)

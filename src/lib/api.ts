@@ -109,6 +109,15 @@ async function call<T>(fn: () => Promise<T>, fb: () => Promise<T>): Promise<T> {
 
 /** 后端源：当 VITE_API_BASE 为绝对地址时解析出 origin，用于拼接 /static 图片 */
 function apiOrigin(): string {
+  // 优先使用 VITE_MEDIA_BASE（专门用于静态资源前缀）
+  const mediaBase = import.meta.env.VITE_MEDIA_BASE as string | undefined
+  if (mediaBase) {
+    try {
+      return new URL(mediaBase).origin
+    } catch {
+      return mediaBase.replace(/\/+$/, '')
+    }
+  }
   if (/^https?:\/\//.test(API_BASE)) {
     try {
       return new URL(API_BASE).origin
@@ -217,6 +226,19 @@ export const categoryApi = {
         }),
       () => mockApi.createCategory(payload),
     ),
+  update: (id: number, payload: CategoryPayload) =>
+    call<Category>(
+      () =>
+        request(`/categories/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        }),
+      () => mockApi.updateCategory(id, payload),
+    ),
+  remove: (id: number) =>
+    call<void>(() => request(`/categories/${id}`, { method: 'DELETE' }), () =>
+      mockApi.deleteCategory(id),
+    ),
 }
 
 // ================= 标签 =================
@@ -230,6 +252,19 @@ export const tagApi = {
           body: JSON.stringify({ tag_name: tagName }),
         }),
       () => mockApi.createTag(tagName),
+    ),
+  update: (id: number, tagName: string) =>
+    call<Tag>(
+      () =>
+        request(`/tags/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ tag_name: tagName }),
+        }),
+      () => mockApi.updateTag(id, tagName),
+    ),
+  remove: (id: number) =>
+    call<void>(() => request(`/tags/${id}`, { method: 'DELETE' }), () =>
+      mockApi.deleteTag(id),
     ),
 }
 

@@ -56,8 +56,8 @@ export function ManageArticles() {
 
   return (
     <div className="fade-up space-y-5">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">共 {total} 篇文章（每页 5 篇，第 {page} 页）</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-gray-500">共 {total} 篇文章</p>
         <Link
           to="/dashboard/articles/new"
           className="flex items-center gap-1.5 rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 active:scale-[0.98]"
@@ -125,23 +125,23 @@ export function ManageArticles() {
               </div>
 
               {/* 操作 */}
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 items-center gap-1 sm:gap-2">
                 <Link
                   to={`/article/${a.id}`}
                   target="_blank"
-                  className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition hover:bg-gray-100"
+                  className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 transition hover:bg-gray-100 sm:px-3"
                 >
                   查看
                 </Link>
                 <Link
                   to={`/dashboard/articles/${a.id}/edit`}
-                  className="rounded-lg px-3 py-1.5 text-xs font-medium text-blue-600 transition hover:bg-blue-50"
+                  className="rounded-lg px-2 py-1.5 text-xs font-medium text-blue-600 transition hover:bg-blue-50 sm:px-3"
                 >
                   编辑
                 </Link>
                 <button
                   onClick={() => setDeleting(a)}
-                  className="rounded-lg px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50"
+                  className="rounded-lg px-2 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50 sm:px-3"
                 >
                   删除
                 </button>

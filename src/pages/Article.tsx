@@ -146,9 +146,45 @@ export function Article() {
       <ReadingProgress />
       <BackToTop />
 
-      <div className="mx-auto grid w-full gap-8 xl:grid-cols-[minmax(0,1fr)_13rem]">
-        {/* 主内容 */}
-        <article className="card mx-auto w-full max-w-3xl p-4 sm:p-8">
+      {/* 头部：封面 + 标题 + 元信息 */}
+      <div className="mx-auto max-w-3xl px-4 sm:px-0">
+        {/* 封面 */}
+        {article.cover_image && (
+          <div className="h-64 w-full overflow-hidden rounded-2xl bg-gray-100 md:h-96">
+            <img
+              src={resolveAsset(article.cover_image)}
+              alt={article.title}
+              className="h-full w-full object-cover transition-transform duration-300"
+            />
+          </div>
+        )}
+
+        {/* 大标题居中 */}
+        <h1 className="mb-4 mt-6 text-center text-3xl font-semibold leading-snug tracking-tight text-gray-900 sm:text-4xl">
+          {article.title}
+        </h1>
+
+        {/* 元信息 */}
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {article.category_name && (
+            <span className="inline-block rounded-full border border-gray-200 px-4 py-1 text-sm text-gray-600">
+              {article.category_name}
+            </span>
+          )}
+          <span className="inline-block rounded-full border border-gray-200 px-4 py-1 text-sm text-gray-600">
+            {formatDate(article.created)}
+          </span>
+          <span className="inline-block rounded-full border border-gray-200 px-4 py-1 text-sm text-gray-600">
+            约 {readingTime(article.content)} 分钟
+          </span>
+        </div>
+
+        <div className="mt-6 border-t border-gray-200" />
+      </div>
+
+      {/* 正文 + 目录：双栏布局 */}
+      <div className="mx-auto mt-8 grid w-full gap-8 xl:grid-cols-[minmax(0,1fr)_13rem]">
+        <article className="mx-auto w-full max-w-3xl px-4 sm:px-0">
           {/* 返回 */}
           <Link
             to="/"
@@ -160,7 +196,7 @@ export function Article() {
             返回列表
           </Link>
 
-          {/* 封面（原项目：h-64 md:h-96 rounded-2xl） */}
+          {/* 封面 */}
           {article.cover_image && (
             <div className="h-64 w-full overflow-hidden rounded-2xl bg-gray-100 md:h-96">
               <img
@@ -171,12 +207,12 @@ export function Article() {
             </div>
           )}
 
-          {/* 标题（原项目：text-center text-4xl，Shiro 式收紧字距） */}
-          <h1 className="mb-4 mt-4 text-center text-3xl leading-snug tracking-tight text-gray-900 sm:text-4xl">
+          {/* 大标题居中 */}
+          <h1 className="mb-4 mt-6 text-center text-3xl font-semibold leading-snug tracking-tight text-gray-900 sm:text-4xl">
             {article.title}
           </h1>
 
-          {/* 元信息（原项目：rounded-full border px-4 py-1） */}
+          {/* 元信息 */}
           <div className="flex flex-wrap items-center justify-center gap-2">
             {article.category_name && (
               <span className="inline-block rounded-full border border-gray-200 px-4 py-1 text-sm text-gray-600">
@@ -193,7 +229,7 @@ export function Article() {
 
           <div className="mt-5 border-t border-gray-200" />
 
-          {/* 正文（原项目：flex justify-center + max-w-3xl，18px 由 .markdown-body 提供） */}
+          {/* 正文 */}
           <div className="mt-6 flex justify-center">
             <div className="w-full max-w-3xl">
               <Markdown content={article.content} />

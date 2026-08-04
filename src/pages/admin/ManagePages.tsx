@@ -48,7 +48,7 @@ export function ManagePages() {
 
   return (
     <div className="fade-up space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-gray-500">共 {pages.length} 个自定义页面</p>
         <Link
           to="/dashboard/pages/new"

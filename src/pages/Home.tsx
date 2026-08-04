@@ -59,25 +59,21 @@ export function Home() {
 
   return (
     <div className="fade-up space-y-6">
-      {/* Shiro 式欢迎区：仅首页第一屏且无筛选时展示 */}
+      {/* 欢迎区：仅首页第一屏且无筛选时展示 */}
       {page === 1 && !keyword && !categoryId && (
-        <header className="mx-auto mb-8 max-w-2xl text-center">
-          <h2 className="text-3xl font-semibold tracking-tight text-gray-900 sm:text-4xl">
+        <header className="mx-auto max-w-3xl px-4 sm:px-0 text-center">
+          <h2 className="text-3xl font-semibold leading-snug tracking-tight text-gray-900 sm:text-4xl">
             {settings.title || 'Kimo'}
           </h2>
           {settings.ltitle && (
             <p className="mt-3 text-base leading-relaxed text-gray-500">{settings.ltitle}</p>
           )}
-          <div className="mt-6 flex items-center justify-center gap-3 text-gray-300">
-            <span className="h-px w-10 bg-gray-300" />
-            <span className="h-1 w-1 rounded-full bg-gray-300" />
-            <span className="h-px w-10 bg-gray-300" />
-          </div>
+          <div className="mt-6 border-t border-gray-200" />
         </header>
       )}
 
-      {/* 列表头（原项目 index.html：text-xl font-medium + 更多文章 →） */}
-      <div className="mb-2 ml-1 flex items-end justify-between">
+      {/* 列表头 */}
+      <div className="mb-6 ml-1 flex items-end justify-between">
         <div>
           {page === 1 && !keyword && !categoryId && (
             <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.22em] text-gray-400">Posts</p>
