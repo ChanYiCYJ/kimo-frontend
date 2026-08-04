@@ -48,6 +48,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
   const [cooldown, setCooldown] = useState(0)
   const [speakingIdx, setSpeakingIdx] = useState(-1)
   const [webSearch, setWebSearch] = useState(false)
+  const [ttsOn, setTtsOn] = useState(!!config.autoTTS)
   const [consented, setConsented] = useState(() => {
     try { return localStorage.getItem(STORAGE_PREFIX + 'consent_' + pageId) === '1' } catch { return false }
   })
@@ -119,7 +120,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
     } finally { if (abortRef.current === ctrl) abortRef.current = null; setLoading(false) }
     const fin: Message[] = [...allMsgs, { role: 'assistant' as const, content: reply }]; setMessages(fin); save(fin)
     // 自动朗读
-    if (config.autoTTS) { setTimeout(() => speak(reply.replace(/[*_`#~>\[\]\(\)]/g, '').slice(0, 600)), 500) }
+    if (ttsOn) { setTimeout(() => speak(reply.replace(/[*_`#~>\[\]\(\)]/g, '').slice(0, 600)), 500) }
   }
 
   if (!consented) {
@@ -181,6 +182,13 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
             title="联网搜索">
             🌐
           </button>
+          {config.autoTTS && (
+            <button onClick={() => setTtsOn(!ttsOn)}
+              className={`rounded-lg px-1.5 py-1 text-xs transition sm:px-2 ${ttsOn ? 'bg-green-50 text-green-600 dark:bg-green-900/30 dark:text-green-400' : 'text-gray-400 hover:text-gray-600'}`}
+              title={ttsOn ? '关闭自动朗读' : '开启自动朗读'}>
+              {ttsOn ? '🔊' : '🔇'}
+            </button>
+          )}
           <button onClick={() => { setMessages([]); try { localStorage.removeItem(STORAGE_PREFIX + 'history_' + pageId) } catch {} }}
             className="rounded-lg px-1.5 py-1 text-xs text-gray-400 transition hover:text-red-500 sm:px-2">清除</button>
           <button onClick={() => abortRef.current?.abort()} disabled={!loading}
