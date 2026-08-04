@@ -37,6 +37,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [cooldown, setCooldown] = useState(0)
+  const [listening, setListening] = useState(false)
   const [consented, setConsented] = useState(() => {
     try { return localStorage.getItem(STORAGE_PREFIX + 'consent_' + pageId) === '1' } catch { return false }
   })
@@ -61,11 +62,22 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
     return () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null } }
   }, [cooldown])
 
+  const startVoice = useCallback(() => {
+    const w = window as unknown as Record<string, unknown>
+    const SR = (w.SpeechRecognition || w.webkitSpeechRecognition) as (new () => Record<string, unknown>) | undefined
+    if (!SR) return
+    const r = new SR()
+    r.lang = 'zh-CN'; r.interimResults = false
+    r.onresult = (e: unknown) => { const t = ((e as Record<string, unknown>).results as Array<Array<{ transcript: string }>>)?.[0]?.[0]?.transcript; if (t) setInput(p => p + t) }
+    r.onend = () => setListening(false); r.onerror = () => setListening(false)
+    setListening(true); (r as Record<string, () => void>).start()
+  }, [])
+
   const send = async () => {
     const t = input.trim(); if (!t || loading || cooldown > 0) return
     const user: Message = { role: 'user' as const, content: t }
     const next: Message[] = [...messages, user]; setMessages(next); setInput(''); setLoading(true); save(next)
-    setCooldown(10)
+    setCooldown(20)
     const ctrl = new AbortController(); abortRef.current = ctrl; let reply = ''
     try {
       reply = await streamChat(config, next, full => setMessages([...next, { role: 'assistant' as const, content: full }]), ctrl.signal)
@@ -102,7 +114,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
   }
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900" style={{ minHeight: 'min(400px, 70dvh)' }}>
+    <div className="flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 max-sm:rounded-none max-sm:border-0" style={{ minHeight: 'min(400px, 70dvh)', height: 'auto' }}>
       {/* 顶栏 */}
       <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2.5 dark:border-gray-700 sm:px-4 sm:py-3">
         <div className="flex items-center gap-2 sm:gap-3">
@@ -154,6 +166,13 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
       {/* 输入框 */}
       <div className="border-t border-gray-100 p-2.5 dark:border-gray-700 sm:p-3">
         <div className="flex gap-2">
+          <button onClick={startVoice} disabled={loading || cooldown > 0}
+            className={`shrink-0 grid h-10 w-10 place-items-center rounded-xl border transition sm:h-11 sm:w-11 ${listening ? 'border-red-400 bg-red-50 text-red-500 animate-pulse' : 'border-gray-200 text-gray-400 hover:bg-gray-50 dark:border-gray-700'}`}
+            title="语音输入">
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+            </svg>
+          </button>
           <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()} placeholder={`向 ${config.botName || 'AI'} 发消息...`} disabled={loading}
             className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-gray-400 disabled:opacity-50 sm:px-4 sm:py-2.5 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" />
           <button onClick={send} disabled={loading || !input.trim() || cooldown > 0}
