@@ -45,7 +45,13 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [cooldown, setCooldown] = useState(0)
+  const [cooldown, setCooldown] = useState(() => {
+    try {
+      const end = Number(localStorage.getItem(STORAGE_PREFIX + 'cooldown_' + pageId))
+      if (end > Date.now()) return Math.ceil((end - Date.now()) / 1000)
+    } catch {}
+    return 0
+  })
   const [speakingIdx, setSpeakingIdx] = useState(-1)
   const [webSearch, setWebSearch] = useState(false)
   const [ttsOn, setTtsOn] = useState(!!config.autoTTS)
@@ -79,10 +85,14 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
   useEffect(() => {
-    if (cooldown <= 0) { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }; return }
+    if (cooldown <= 0) {
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+      try { localStorage.removeItem(STORAGE_PREFIX + 'cooldown_' + pageId) } catch {}
+      return
+    }
     timerRef.current = setInterval(() => setCooldown(c => c - 1), 1000)
     return () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null } }
-  }, [cooldown])
+  }, [cooldown, pageId])
 
   const playTTS = useCallback((text: string, idx: number) => {
     if (speakingIdx === idx) { window.speechSynthesis.cancel(); setSpeakingIdx(-1); return }
@@ -111,6 +121,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
     }
     setMessages(allMsgs); setInput(''); setLoading(true); save(allMsgs)
     setCooldown(config.cooldown || 60)
+    try { localStorage.setItem(STORAGE_PREFIX + 'cooldown_' + pageId, String(Date.now() + (config.cooldown || 60) * 1000)) } catch {}
     const ctrl = new AbortController(); abortRef.current = ctrl; let reply = ''
     try {
       reply = await streamChat(config, recent, full => setMessages([...allMsgs, { role: 'assistant' as const, content: full }]), ctrl.signal, webSearch, summary)
