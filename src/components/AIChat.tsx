@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import type { AIChatConfig } from '../lib/types'
 
 interface Message {
@@ -198,8 +199,8 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
     return <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 p-8 text-center text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-800/50">AI 对话未配置。请在后台编辑此页面。</div>
   }
 
-  return (
-    <div ref={containerRef} className={`flex flex-col bg-white dark:bg-gray-900 ${fullscreen ? 'fixed inset-0 z-50 rounded-none border-0 max-sm:m-0' : 'sm:rounded-2xl sm:border sm:border-gray-200 sm:dark:border-gray-700 max-sm:-mx-4 max-sm:-mt-10'}`} style={{ height: '100dvh', maxHeight: fullscreen ? '100dvh' : 'calc(100dvh - 4rem)' }}>
+  const card = (
+    <div ref={containerRef} className={`flex flex-col bg-white dark:bg-gray-900 ${fullscreen ? 'fixed inset-0 z-50 rounded-none border-0' : 'sm:rounded-2xl sm:border sm:border-gray-200 sm:dark:border-gray-700 max-sm:-mx-4 max-sm:-mt-10'}`} style={{ height: '100dvh', maxHeight: fullscreen ? '100dvh' : 'calc(100dvh - 4rem)' }}>
       {/* 顶栏 */}
       <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-3 py-2.5 dark:border-gray-700 sm:px-4 sm:py-3 sm:rounded-t-2xl">
         <div className="flex items-center gap-2 sm:gap-3">
@@ -295,4 +296,9 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
       </div>
     </div>
   )
+
+  // 全屏时通过 portal 渲染到 body，避免受祖先 transform 影响
+  return fullscreen
+    ? createPortal(<div className="fixed inset-0 z-[100]">{card}</div>, document.body)
+    : card
 }
