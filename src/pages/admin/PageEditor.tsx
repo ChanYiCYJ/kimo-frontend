@@ -26,6 +26,7 @@ export function PageEditor() {
   const [content, setContent] = useState('')
   const [loading, setLoading] = useState(isEdit)
   const [saving, setSaving] = useState(false)
+  const [hidden, setHidden] = useState(false)
 
   // AI 对话配置
   const [aiEndpoint, setAiEndpoint] = useState('')
@@ -40,6 +41,7 @@ export function PageEditor() {
         .get(Number(id))
         .then((p) => {
           setName(p.name)
+          setHidden(p.status !== 0)
           if (p.type === 'html' && p.content?.startsWith(AI_CHAT_MARKER)) {
             setType('ai-chat')
             setContent('')
@@ -137,7 +139,7 @@ export function PageEditor() {
           systemPrompt: aiPrompt.trim(),
         } as AIChatConfig)
       : (content || null)
-    const payload = { name: name.trim(), type: saveType, content: saveContent, status: 0 }
+    const payload = { name: name.trim(), type: saveType, content: saveContent, status: hidden ? 1 : 0 }
     try {
       if (isEdit) {
         await pageApi.update(Number(id), payload)
@@ -178,13 +180,19 @@ export function PageEditor() {
         </button>
       </div>
 
-      {/* 名称 */}
-      <input
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="页面名称，如：about / 关于"
-        className="w-full rounded-2xl border border-gray-200 bg-white px-5 py-3.5 text-xl font-semibold text-gray-900 outline-none transition placeholder:text-gray-300 focus:border-gray-300 focus:ring-2 focus:ring-gray-100"
-      />
+      {/* 名称 + 隐藏开关 */}
+      <div className="flex items-center gap-3">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="页面名称，如：about / 关于"
+          className="flex-1 rounded-2xl border border-gray-200 bg-white px-5 py-3.5 text-xl font-semibold text-gray-900 outline-none transition placeholder:text-gray-300 focus:border-gray-300 focus:ring-2 focus:ring-gray-100"
+        />
+        <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-500 transition hover:bg-gray-50">
+          <input type="checkbox" checked={hidden} onChange={e => setHidden(e.target.checked)} className="h-4 w-4 accent-gray-900" />
+          隐藏
+        </label>
+      </div>
 
       {/* 类型选择 */}
       <div>

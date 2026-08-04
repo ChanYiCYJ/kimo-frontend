@@ -86,7 +86,7 @@ export function Header() {
             首页
           </NavLink>
 
-          {pages.filter(p => p.type !== 'link' && settings.show_pages !== '0').map((p) => (
+          {pages.filter(p => p.type !== 'link' && p.status === 0 && settings.show_pages !== '0').map((p) => (
             <NavLink
               key={p.id}
               to={`/page/${p.name}`}
@@ -122,13 +122,6 @@ export function Header() {
               管理后台
             </Link>
           ) : settings.show_dashboard !== '0' ? (
-            <Link
-              to="/login"
-              className="flex items-center gap-1 rounded-full border border-gray-200 px-4 py-1.5 font-medium text-gray-700 transition hover:bg-gray-100 hover:text-gray-900"
-            >
-              管理后台
-            </Link>
-          ) : (
             <NavLink
               to="/login"
               className={({ isActive }) =>
@@ -137,7 +130,7 @@ export function Header() {
             >
               {user ? (user.user_name || user.email) : '登录'}
             </NavLink>
-          )}
+          ) : null}
         </nav>
 
         {/* 移动端菜单按钮 */}
@@ -189,7 +182,7 @@ export function Header() {
             <NavLink to="/" end onClick={() => setMobileOpen(false)} className="rounded-lg px-3 py-2 text-gray-700 hover:bg-gray-100">
               首页
             </NavLink>
-            {pages.filter(p => p.type !== 'link' && settings.show_pages !== '0').map((p) => (
+            {pages.filter(p => p.type !== 'link' && p.status === 0 && settings.show_pages !== '0').map((p) => (
               <NavLink
                 key={p.id}
                 to={`/page/${p.name}`}
@@ -219,14 +212,10 @@ export function Header() {
                 管理后台
               </Link>
             ) : settings.show_dashboard !== '0' ? (
-              <Link to="/login" onClick={() => setMobileOpen(false)} className="rounded-lg px-3 py-2 text-gray-900 hover:bg-gray-100">
-                管理后台
-              </Link>
-            ) : (
               <NavLink to="/login" onClick={() => setMobileOpen(false)} className="rounded-lg px-3 py-2 text-gray-700 hover:bg-gray-100">
-                登录 / 注册
+                {user ? (user.user_name || user.email) : '登录 / 注册'}
               </NavLink>
-            )}
+            ) : null}
           </nav>
         </div>
       )}
