@@ -117,19 +117,20 @@ export function PageView() {
 
   return (
     <div className="fade-up">
-      <article className="card mx-auto max-w-3xl p-4 sm:p-6">
-        <Link to="/" className="mb-4 inline-flex items-center gap-1 text-sm text-gray-400 transition hover:text-gray-600">
-          <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 010 1.06L9.332 10l3.458 3.71a.75.75 0 11-1.08 1.04l-4-4.25a.75.75 0 010-1.08l4-4.25a.75.75 0 011.08 0z" clipRule="evenodd" />
-          </svg>
-          返回首页
-        </Link>
-        <h1 className="mb-4 mt-4 text-center text-4xl text-gray-900">{page.name}</h1>
-        <div className="mt-5 border-t border-gray-200" />
-        <div className="mt-6 flex justify-center">
+      {/* 头部：标题 + 分隔 — 与文章页统一 */}
+      <div className="mx-auto max-w-3xl px-4 sm:px-0">
+        <h1 className="mb-4 mt-6 text-center text-3xl font-semibold leading-snug tracking-tight text-gray-900 sm:text-4xl">
+          {page.name}
+        </h1>
+        <div className="mt-6 border-t border-gray-200" />
+      </div>
+
+      {/* 正文 */}
+      <div className="mx-auto mt-8 max-w-3xl px-4 sm:px-0">
+        <div className="flex justify-center">
           <div className="w-full max-w-3xl">{renderContent()}</div>
         </div>
-      </article>
+      </div>
     </div>
   )
 }
