@@ -1,5 +1,5 @@
 // ===== AI 服务（OpenAI 兼容 /chat/completions）=====
-// 配置存于 localStorage（在「站点设置 → AI 润色」中维护），避免把 Key 写进代码/仓库。
+// 优先复用「AI 管理」中配置的机器人模型；旧配置存于 localStorage 作为回退。
 
 export interface AIConfig {
   /** OpenAI 兼容接口 Base URL，如 https://api.openai.com/v1 */
@@ -10,16 +10,27 @@ export interface AIConfig {
 }
 
 const AI_CONFIG_KEY = 'kimo_ai_config'
+/** AICenter 加载时写入的第一个 AI 机器人配置（后台润色等直接复用） */
+const BOT_CONFIG_KEY = 'kimo_ai_bot_config'
 
 const DEFAULTS: AIConfig = { endpoint: '', apiKey: '', model: '', enabled: false }
 
 export function getAIConfig(): AIConfig {
+  // 优先：AI 管理中心自动写入的机器人配置
+  try {
+    const botRaw = localStorage.getItem(BOT_CONFIG_KEY)
+    if (botRaw) {
+      const b = JSON.parse(botRaw) as Partial<AIConfig>
+      if (b && b.endpoint && b.apiKey && b.model) {
+        return { ...DEFAULTS, enabled: true, ...b }
+      }
+    }
+  } catch { /* 忽略 */ }
+  // 回退：旧的站点设置 AI 配置
   try {
     const raw = localStorage.getItem(AI_CONFIG_KEY)
     if (raw) return { ...DEFAULTS, ...(JSON.parse(raw) as Partial<AIConfig>) }
-  } catch {
-    /* 忽略 */
-  }
+  } catch { /* 忽略 */ }
   return { ...DEFAULTS }
 }
 
@@ -31,7 +42,7 @@ export function saveAIConfig(cfg: AIConfig): void {
 function assertConfigured(): AIConfig {
   const cfg = getAIConfig()
   if (!cfg.enabled || !cfg.endpoint || !cfg.apiKey || !cfg.model) {
-    throw new Error('请先在「站点设置 → AI 润色」中配置接口地址、Key 与模型')
+    throw new Error('请先在后台「AI 管理」中配置 AI 助手')
   }
   return cfg
 }

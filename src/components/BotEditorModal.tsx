@@ -26,6 +26,7 @@ export function BotEditorModal({ open, onClose, bot, onSaved }: BotEditorModalPr
   const [maxMessages, setMaxMessages] = useState('')
   const [cooldown, setCooldown] = useState('')
   const [autoTTS, setAutoTTS] = useState(false)
+  const [adminOnly, setAdminOnly] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -44,11 +45,12 @@ export function BotEditorModal({ open, onClose, bot, onSaved }: BotEditorModalPr
       setMaxMessages(c.maxMessages ? String(c.maxMessages) : '')
       setCooldown(c.cooldown ? String(c.cooldown) : '')
       setAutoTTS(!!c.autoTTS)
+      setAdminOnly(!!c.adminOnly)
     } else {
       setName(''); setBotName(''); setAvatar('')
       setModel('gpt-4o-mini'); setEndpoint('https://api.openai.com/v1'); setApiKey('')
       setSystemPrompt('你是一个友好、专业的 AI 助手，请用简体中文回答。')
-      setMaxMessages(''); setCooldown(''); setAutoTTS(false)
+      setMaxMessages(''); setCooldown(''); setAutoTTS(false); setAdminOnly(false)
     }
   }, [open, bot])
 
@@ -68,6 +70,7 @@ export function BotEditorModal({ open, onClose, bot, onSaved }: BotEditorModalPr
       maxMessages: maxMessages ? Number(maxMessages) || undefined : undefined,
       cooldown: cooldown ? Number(cooldown) || undefined : undefined,
       autoTTS,
+      adminOnly,
     }
     const content = AI_CHAT_MARKER + JSON.stringify(cfg)
     try {
@@ -154,6 +157,10 @@ export function BotEditorModal({ open, onClose, bot, onSaved }: BotEditorModalPr
           <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
             <input type="checkbox" checked={autoTTS} onChange={(e) => setAutoTTS(e.target.checked)} className="h-4 w-4 accent-gray-900" />
             自动朗读回复
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input type="checkbox" checked={adminOnly} onChange={(e) => setAdminOnly(e.target.checked)} className="h-4 w-4 accent-gray-900" />
+            仅管理员可使用（普通访客将无法访问此助手）
           </label>
           {error && <p className="text-sm text-red-500">{error}</p>}
         </div>

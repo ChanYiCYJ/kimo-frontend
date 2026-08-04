@@ -25,6 +25,7 @@ const DEFAULT_SETTINGS: SiteSettings = {
   allow_register: '1',
   show_dashboard: '1',
   show_pages: '1',
+  show_ai: '1',
 }
 
 const SiteContext = createContext<SiteContextValue>({

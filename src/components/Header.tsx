@@ -99,7 +99,7 @@ export function Header() {
             </NavLink>
           ))}
 
-          {pages.some(p => p.type === 'html' && p.status === 0 && (p.content || '').startsWith(AI_CHAT_MARKER)) && (
+          {pages.some(p => p.type === 'html' && p.status === 0 && (p.content || '').startsWith(AI_CHAT_MARKER)) && settings.show_ai !== '0' && (
             <NavLink
               to="/ai"
               className={({ isActive }) =>
@@ -204,7 +204,7 @@ export function Header() {
                 {p.name}
               </NavLink>
             ))}
-            {pages.some(p => p.type === 'html' && p.status === 0 && (p.content || '').startsWith(AI_CHAT_MARKER)) && (
+            {pages.some(p => p.type === 'html' && p.status === 0 && (p.content || '').startsWith(AI_CHAT_MARKER)) && settings.show_ai !== '0' && (
               <NavLink
                 to="/ai"
                 onClick={() => setMobileOpen(false)}

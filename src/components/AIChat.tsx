@@ -110,6 +110,8 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const [botMenuOpen, setBotMenuOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [limitReached, setLimitReached] = useState(false)
   const [memory, setMemory] = useState(() => { try { return localStorage.getItem(STORAGE_PREFIX + 'memory_' + pageId) || '' } catch { return '' } })
   const [ttsOn, setTtsOn] = useState(!!config.autoTTS)
   const [consented, setConsented] = useState(() => { try { return localStorage.getItem(STORAGE_PREFIX + 'consent_' + pageId) === '1' } catch { return false } })
@@ -120,6 +122,7 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const importRef = useRef<HTMLInputElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   const active = sessions.find(s => s.id === activeId) || sessions[0]
   const messages = active?.messages || []
@@ -163,6 +166,7 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
     setActiveId(s.id)
     setStick(true)
     setSidebarOpen(false)
+    setLimitReached(false)
   }, [sessions, saveSessions])
 
   const selectSession = useCallback((id: string) => {
@@ -185,6 +189,14 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
   })
 
   useEffect(() => { if (activeId && !sessions.find(s => s.id === activeId)) setActiveId(sessions[0].id) }, [activeId, sessions])
+
+  // 点击外部关闭输入栏功能菜单
+  useEffect(() => {
+    if (!menuOpen) return
+    const onDown = (e: MouseEvent) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [menuOpen])
 
   const isNearBottom = () => { const el = msgListRef.current; if (!el) return true; return el.scrollHeight - el.scrollTop - el.clientHeight < 120 }
   const autoScroll = useCallback(() => { if (isNearBottom()) bottomRef.current?.scrollIntoView({ behavior: 'auto' }) }, [])
@@ -257,10 +269,14 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
 
   const send = async () => {
     const t = input.trim(); if (!t || loading || cooldown > 0) return
-    const max = effCfg.maxMessages || 0
-    if (max > 0 && messages.length >= max) {
-      const msg: Message = { role: 'assistant' as const, content: `对话已达上限（${max} 条），请新建会话继续。` }
-      updateActive(prev => [...prev, msg]); return
+    // 默认服务端 API 有限制；用户自定义 API 时解除次数/冷却限制
+    if (!hasCustom) {
+      const max = effCfg.maxMessages || 0
+      if (max > 0 && messages.length >= max) {
+        setLimitReached(true)
+        const msg: Message = { role: 'assistant' as const, content: `单次对话已达上限（${max} 条）。可使用自定义 API 解除限制，或新建会话。` }
+        updateActive(prev => [...prev, msg]); return
+      }
     }
     const user: Message = { role: 'user' as const, content: t }
     const allMsgs = [...messages, user]
@@ -268,8 +284,10 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
     const recent = allMsgs.length > 6 ? allMsgs.slice(-6) : allMsgs
     if (allMsgs.length > 6) summary = allMsgs.slice(0, allMsgs.length - 6).map((m, i) => `${m.role === 'user' ? '问' : '答'}${i+1}: ${m.content.slice(0, 60)}`).join('; ')
     updateActive(prev => [...prev, user]); setInput(''); setLoading(true); setStick(true)
-    setCooldown(effCfg.cooldown || 60)
-    try { localStorage.setItem(STORAGE_PREFIX + 'cooldown_' + pageId, String(Date.now() + (effCfg.cooldown || 60) * 1000)) } catch {}
+    if (!hasCustom) {
+      setCooldown(effCfg.cooldown || 60)
+      try { localStorage.setItem(STORAGE_PREFIX + 'cooldown_' + pageId, String(Date.now() + (effCfg.cooldown || 60) * 1000)) } catch {}
+    }
     const ctrl = new AbortController(); abortRef.current = ctrl; let reply = ''
     // 网络搜索：开启时先抓取结果注入上下文
     let web = ''
@@ -375,6 +393,19 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
     )
   }
 
+  // 仅管理员可用的助手：普通访客无法访问
+  if (config.adminOnly && !canManage) {
+    return (
+      <div className="flex h-full w-full items-center justify-center px-4">
+        <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-8 text-center dark:border-gray-700 dark:bg-gray-900">
+          <p className="text-base font-medium text-gray-700 dark:text-gray-300">此 AI 助手仅管理员可用</p>
+          <p className="mt-1 text-sm text-gray-400">请联系管理员调整适用范围。</p>
+          <Link to="/" className="mt-4 inline-block text-sm text-blue-600 hover:underline dark:text-blue-400">返回首页</Link>
+        </div>
+      </div>
+    )
+  }
+
   if (!effCfg.endpoint || !effCfg.apiKey || !effCfg.model) {
     return (
       <div className="mx-auto max-w-md rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 p-8 text-center text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-800/50">
@@ -471,9 +502,12 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
         </button>
       </div>
 
-      {/* 消息区 */}
-      <div ref={msgListRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto bg-gray-50/40 dark:bg-gray-950/40">
-        <div className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-6 sm:py-6">
+      {/* 消息区（带 AI 生成水印暗纹，防止被冒用） */}
+      <div ref={msgListRef} onScroll={onScroll} className="relative min-h-0 flex-1 overflow-y-auto bg-gray-50/40 dark:bg-gray-950/40">
+        <div className="pointer-events-none sticky bottom-1 z-0 flex justify-center select-none">
+          <span className="rotate-[-6deg] whitespace-nowrap text-xs font-medium tracking-[0.25em] text-gray-400/25 dark:text-gray-500/20">AI 生成内容 · {settings.title || 'Kimo'}</span>
+        </div>
+        <div className="relative z-10 mx-auto w-full max-w-3xl px-3 py-4 sm:px-6 sm:py-6">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center pt-[12vh] text-center">
               {config.avatar ? <img src={config.avatar} alt={config.botName} className="mb-4 h-16 w-16 rounded-full object-cover" /> : <span className="mb-4 grid h-16 w-16 place-content-center rounded-full bg-gray-100 text-2xl font-bold text-gray-400 dark:bg-gray-800">AI</span>}
@@ -516,7 +550,13 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
                   </div>
                 </div>
               )}
-              <p className="pt-2 text-center text-[11px] text-gray-400/70 dark:text-gray-500/70">AI 生成内容仅供参考 · 联系：jasonchan0654@gmail.com</p>
+              {limitReached && !hasCustom && (
+                <div className="flex justify-center pt-3">
+                  <button onClick={() => setApiModalOpen(true)} className="rounded-full border border-gray-300 bg-white px-4 py-2 text-xs text-gray-600 transition hover:border-gray-500 hover:text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                    配置自定义 API 消除限制
+                  </button>
+                </div>
+              )}
             </>
           )}
           <div ref={bottomRef} />
@@ -527,28 +567,42 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
       <div className="shrink-0 bg-white px-3 pb-3 pt-2 dark:bg-gray-900 sm:px-6 sm:pb-4">
         <div className="mx-auto w-full max-w-3xl">
           <div className="flex items-center gap-0.5 rounded-[24px] border border-gray-300 bg-white p-1.5 shadow-sm transition focus-within:border-gray-500 focus-within:shadow-md dark:border-gray-600 dark:bg-gray-800">
-            <button onClick={() => fileRef.current?.click()} className={iconBtn} title="上传 Markdown 文件" aria-label="上传文件">
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" /></svg>
-            </button>
+            {/* 功能菜单：上传 / 网络搜索 / Coser / 导出 合并为一个按钮（图标统一单色） */}
+            <div ref={menuRef} className="relative shrink-0">
+              <button onClick={() => setMenuOpen(v => !v)} className={`${iconBtn} ${menuOpen ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300' : ''}`} title="更多功能" aria-label="更多功能">
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+              </button>
+              {menuOpen && (
+                <div className="absolute bottom-full left-0 z-40 mb-1.5 w-52 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+                  <button onClick={() => { fileRef.current?.click(); setMenuOpen(false) }} className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-gray-600 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800">
+                    <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" /></svg>
+                    上传 Markdown
+                  </button>
+                  <button onClick={() => { toggleWebSearch(); setMenuOpen(false) }} className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-gray-600 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800">
+                    <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" /></svg>
+                    网络搜索 {webSearchOn && <span className="ml-auto text-xs text-gray-400">✓</span>}
+                  </button>
+                  <button onClick={() => { setKbOpen(true); setMenuOpen(false) }} className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-gray-600 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800">
+                    <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>
+                    Coser 角色设定 {kbOn && <span className="ml-auto text-xs text-gray-400">✓</span>}
+                  </button>
+                  {messages.length > 0 && (
+                    <button onClick={() => { exportChat(); setMenuOpen(false) }} className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-gray-600 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800">
+                      <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                      导出当前对话
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
             <input ref={fileRef} type="file" accept=".md,.markdown,text/markdown" onChange={onUpload} className="hidden" />
             <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
               placeholder={`向 ${config.botName || 'AI'} 发送消息...`} disabled={loading}
               rows={1} style={{ resize: 'none' }}
-              className="max-h-40 min-h-[38px] flex-1 self-center bg-transparent px-2 py-2 text-[15px] leading-6 text-gray-800 outline-none placeholder:text-gray-400 disabled:opacity-50 dark:text-gray-100" />
-            <button onClick={toggleWebSearch} className={`${iconBtn} ${webSearchOn ? 'text-blue-500' : ''}`} title={webSearchOn ? '关闭网络搜索' : '开启网络搜索'} aria-label="网络搜索">
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill={webSearchOn ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" /></svg>
-            </button>
-            <button onClick={() => setKbOpen(true)} className={`${iconBtn} ${kbOn ? 'text-indigo-500 dark:text-indigo-400' : ''}`} title="Coser 角色扮演设定" aria-label="Coser 角色设定">
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill={kbOn ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>
-            </button>
+              className="max-h-40 min-h-[38px] flex-1 self-center bg-transparent px-1.5 py-2 text-sm leading-6 text-gray-800 outline-none placeholder:text-gray-400 disabled:opacity-50 sm:text-[15px] dark:text-gray-100" />
             {config.autoTTS && (
-              <button onClick={() => setTtsOn(!ttsOn)} className={`${iconBtn} ${ttsOn ? 'text-green-500' : ''}`} title={ttsOn ? '关闭自动朗读' : '开启自动朗读'} aria-label="自动朗读">
+              <button onClick={() => setTtsOn(!ttsOn)} className={`${iconBtn} ${ttsOn ? 'text-gray-700 dark:text-gray-200' : ''}`} title={ttsOn ? '关闭自动朗读' : '开启自动朗读'} aria-label="自动朗读">
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill={ttsOn ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.6"><path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" /></svg>
-              </button>
-            )}
-            {messages.length > 0 && (
-              <button onClick={exportChat} className={iconBtn} title="导出对话" aria-label="导出">
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
               </button>
             )}
             <button onClick={send} disabled={loading || !input.trim() || cooldown > 0}
@@ -566,15 +620,10 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
 
   const sidebar = (
     <div className="flex h-full w-64 flex-col bg-gray-50 dark:bg-gray-950">
-      {/* 侧边栏小标题栏文字 */}
+      {/* 侧边栏小标题栏文字（不显示模型，站点名在底部） */}
       <div className="flex items-center gap-2 px-4 pb-2 pt-3.5">
-        {config.avatar
-          ? <img src={config.avatar} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" />
-          : <span className="grid h-6 w-6 shrink-0 place-content-center rounded-full bg-gray-900 text-[9px] font-bold text-white dark:bg-gray-200 dark:text-gray-900">{(config.botName || 'AI').slice(0, 2)}</span>}
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">{config.botName || 'AI 助手'}</p>
-          <p className="truncate text-[11px] text-gray-400">Kimo AI · {settings.title || '博客'}</p>
-        </div>
+        <span className="grid h-6 w-6 shrink-0 place-content-center rounded-full bg-gray-900 text-[10px] font-bold text-white dark:bg-gray-200 dark:text-gray-900">AI</span>
+        <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">AI 对话</p>
       </div>
       <div className="px-3 pb-2">
         <button onClick={newSession} className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
@@ -599,11 +648,11 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
               <span className="min-w-0 flex-1 truncate">{s.title}</span>
             )}
             {s.id !== editingSessionId && (
-              <button onClick={e => startRename(e, s)} className="hidden shrink-0 text-gray-300 transition hover:text-gray-600 group-hover:block" title="重命名" aria-label="重命名">
+              <button onClick={e => startRename(e, s)} className="hidden shrink-0 p-1 text-gray-400 transition hover:text-gray-700 group-hover:block max-sm:block dark:hover:text-gray-200" title="重命名" aria-label="重命名">
                 <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" /></svg>
               </button>
             )}
-            <button onClick={e => deleteSession(e, s.id)} className="hidden shrink-0 text-gray-300 transition hover:text-red-500 group-hover:block" title="删除">×</button>
+            <button onClick={e => deleteSession(e, s.id)} className="hidden shrink-0 p-1 text-gray-400 transition hover:text-red-500 group-hover:block max-sm:block" title="删除" aria-label="删除">×</button>
           </div>
         ))}
       </div>
@@ -626,6 +675,8 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
             {hasCustom ? '自定义 API 已启用' : '模型 API 设置'}
           </button>
         )}
+        <p className="mt-2 truncate px-1 text-[11px] font-medium text-gray-400 dark:text-gray-500">{settings.title || 'Kimo'}</p>
+        <p className="px-1 pb-1 text-[10px] leading-relaxed text-gray-300 dark:text-gray-600">AI 生成内容仅供参考</p>
       </div>
     </div>
   )

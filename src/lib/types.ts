@@ -92,6 +92,8 @@ export interface AIChatConfig {
   maxMessages?: number
   cooldown?: number
   autoTTS?: boolean
+  /** 仅管理员可使用 */
+  adminOnly?: boolean
 }
 
 // API Key 简单混淆（base64，防明文泄露，非真正加密）

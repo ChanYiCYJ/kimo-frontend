@@ -27,7 +27,19 @@ export function AICenter() {
   const loadBots = useCallback(async () => {
     try {
       const pages = await pageApi.list()
-      setBots(pages.map(parseBot).filter((b): b is BotItem => !!b))
+      const items = pages.map(parseBot).filter((b): b is BotItem => !!b)
+      setBots(items)
+      // 把第一个机器人配置写入共享缓存，供后台 AI 润色等直接复用
+      if (items.length) {
+        try {
+          localStorage.setItem('kimo_ai_bot_config', JSON.stringify({
+            endpoint: items[0].config.endpoint,
+            apiKey: items[0].config.apiKey,
+            model: items[0].config.model,
+            enabled: true,
+          }))
+        } catch { /* 忽略 */ }
+      }
     } catch {
       setBots([])
     } finally {
