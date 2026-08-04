@@ -6,6 +6,7 @@ import { ConfirmDialog } from '../../components/Modal'
 import { EmptyState } from '../../components/ui'
 import { useToast } from '../../lib/toast'
 import { useSite } from '../../lib/site'
+import { getAIConfig, saveAIConfig, type AIConfig } from '../../lib/ai'
 
 const KNOWN_KEYS: Array<{ key: string; label: string; placeholder: string; type?: 'text' | 'textarea' }> = [
   { key: 'title', label: '站点标题', placeholder: 'Kimo' },
@@ -25,6 +26,7 @@ export function Settings() {
   const [deletingKey, setDeletingKey] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement>(null)
+  const [ai, setAi] = useState<AIConfig>(getAIConfig())
 
   useEffect(() => {
     if (loaded) setForm(settings)
@@ -164,6 +166,67 @@ export function Settings() {
               </svg>
             )}
             保存设置
+          </button>
+        </div>
+      </section>
+
+      {/* AI 润色设置（本地存储，不写入站点键值） */}
+      <section className="card space-y-4 p-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-gray-800">AI 润色</h2>
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-600">
+            <input
+              type="checkbox"
+              checked={ai.enabled}
+              onChange={(e) => setAi((a) => ({ ...a, enabled: e.target.checked }))}
+              className="h-4 w-4 accent-gray-900"
+            />
+            启用
+          </label>
+        </div>
+        <p className="text-xs leading-relaxed text-gray-400">
+          在文章编辑器的工具栏中使用「AI 润色」按钮。支持任意 OpenAI 兼容接口（DeepSeek、Moonshot、OpenAI 等）。
+          配置仅保存在浏览器本地，不会上传到服务器。
+        </p>
+
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-gray-600">接口地址（Base URL）</label>
+          <input
+            value={ai.endpoint}
+            onChange={(e) => setAi((a) => ({ ...a, endpoint: e.target.value }))}
+            placeholder="https://api.deepseek.com/v1"
+            className={inputCls}
+          />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-gray-600">API Key</label>
+          <input
+            type="password"
+            value={ai.apiKey}
+            onChange={(e) => setAi((a) => ({ ...a, apiKey: e.target.value }))}
+            placeholder="sk-..."
+            className={inputCls}
+          />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-gray-600">模型</label>
+          <input
+            value={ai.model}
+            onChange={(e) => setAi((a) => ({ ...a, model: e.target.value }))}
+            placeholder="deepseek-chat"
+            className={inputCls}
+          />
+        </div>
+
+        <div className="flex justify-end">
+          <button
+            onClick={() => {
+              saveAIConfig(ai)
+              success('AI 润色配置已保存')
+            }}
+            className="rounded-xl bg-gray-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 active:scale-[0.98]"
+          >
+            保存 AI 配置
           </button>
         </div>
       </section>

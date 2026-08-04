@@ -34,6 +34,9 @@ const CategoriesTags = lazy(() =>
 const Settings = lazy(() =>
   import('./pages/admin/Settings').then((m) => ({ default: m.Settings })),
 )
+const UserManagement = lazy(() =>
+  import('./pages/admin/UserManagement').then((m) => ({ default: m.UserManagement })),
+)
 
 function lazyEl(Comp: ComponentType) {
   return (
@@ -70,6 +73,7 @@ export default function App() {
                 <Route path="pages/:id/edit" element={lazyEl(PageEditor)} />
                 <Route path="categories" element={lazyEl(CategoriesTags)} />
                 <Route path="settings" element={lazyEl(Settings)} />
+                <Route path="users" element={lazyEl(UserManagement)} />
               </Route>
             </Routes>
           </ToastProvider>

@@ -201,7 +201,16 @@ export const mockAdmin: User = {
   email: 'admin@kimo.dev',
   user_name: 'admin',
   role: 0,
+  created_at: daysAgo(120),
 }
+
+// 演示模式的用户列表（后端不可用时展示）
+export let mockUsers: User[] = [
+  { id: 1, email: 'admin@kimo.dev', user_name: 'admin', role: 0, created_at: daysAgo(120) },
+  { id: 2, email: 'alice@kimo.dev', user_name: 'alice', role: 1, created_at: daysAgo(80) },
+  { id: 3, email: 'bob@kimo.dev', user_name: 'bob', role: 1, created_at: daysAgo(45) },
+  { id: 4, email: 'charlie@kimo.dev', user_name: 'charlie', role: 1, created_at: daysAgo(12) },
+]
 
 const wait = (ms = 350) => new Promise((r) => setTimeout(r, ms))
 
@@ -269,6 +278,46 @@ export const mockApi = {
     const p = mockPages.find((x) => x.name === name)
     if (!p) throw new Error('页面不存在')
     return p
+  },
+  async createPage(payload: { name: string; content?: string | null; type?: Page['type']; status?: number }): Promise<Page> {
+    await wait(200)
+    const p: Page = {
+      id: mockPages.length + 1,
+      name: payload.name,
+      content: payload.content ?? null,
+      type: payload.type ?? 'markdown',
+      status: payload.status ?? 0,
+    }
+    mockPages.push(p)
+    return p
+  },
+  async updatePage(id: number, payload: Partial<Page>): Promise<Page> {
+    await wait(200)
+    const i = mockPages.findIndex((x) => x.id === id)
+    if (i < 0) throw new Error('页面不存在')
+    mockPages[i] = { ...mockPages[i], ...payload }
+    return mockPages[i]
+  },
+  async deletePage(id: number): Promise<void> {
+    await wait(150)
+    const i = mockPages.findIndex((x) => x.id === id)
+    if (i >= 0) mockPages.splice(i, 1)
+  },
+  async getUsers(): Promise<User[]> {
+    await wait(250)
+    return mockUsers.map((u) => ({ ...u }))
+  },
+  async updateUserRole(id: number, role: number): Promise<User> {
+    await wait(200)
+    const u = mockUsers.find((x) => x.id === id)
+    if (!u) throw new Error('用户不存在')
+    u.role = role
+    return { ...u }
+  },
+  async deleteUser(id: number): Promise<void> {
+    await wait(150)
+    const i = mockUsers.findIndex((x) => x.id === id)
+    if (i >= 0) mockUsers.splice(i, 1)
   },
   async getSettings(): Promise<SiteSettings> {
     await wait(200)

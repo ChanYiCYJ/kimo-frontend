@@ -14,6 +14,7 @@ export interface User {
   user_name: string | null
   /** 0=管理员, 1=普通用户 */
   role: number
+  created_at?: string | null
 }
 
 export interface TokenResult {

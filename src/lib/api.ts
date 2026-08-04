@@ -247,7 +247,7 @@ export const pageApi = {
           method: 'POST',
           body: JSON.stringify(payload),
         }),
-      async () => ({ id: 99, name: payload.name, content: payload.content ?? null, type: payload.type ?? 'markdown', status: payload.status ?? 0 }),
+      () => mockApi.createPage(payload),
     ),
   update: (id: number, payload: Partial<PagePayload>) =>
     call<Page>(
@@ -256,12 +256,35 @@ export const pageApi = {
           method: 'PUT',
           body: JSON.stringify(payload),
         }),
-      async () => ({ id, name: payload.name ?? '页面', content: payload.content ?? null, type: payload.type ?? 'markdown', status: payload.status ?? 0 }),
+      () => mockApi.updatePage(id, payload),
     ),
   remove: (id: number) =>
     call<unknown>(
       () => request(`/pages/${id}`, { method: 'DELETE' }),
-      async () => undefined,
+      () => mockApi.deletePage(id),
+    ),
+}
+
+// ================= 用户管理（仅管理员） =================
+export const userApi = {
+  list: () =>
+    call<User[]>(
+      () => request('/users'),
+      () => mockApi.getUsers(),
+    ),
+  setRole: (id: number, role: number) =>
+    call<User>(
+      () =>
+        request(`/users/${id}/role`, {
+          method: 'PUT',
+          body: JSON.stringify({ role }),
+        }),
+      () => mockApi.updateUserRole(id, role),
+    ),
+  remove: (id: number) =>
+    call<unknown>(
+      () => request(`/users/${id}`, { method: 'DELETE' }),
+      () => mockApi.deleteUser(id),
     ),
 }
 

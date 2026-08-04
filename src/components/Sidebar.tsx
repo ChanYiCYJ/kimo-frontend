@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { categoryApi, pageApi, tagApi, resolveAsset } from '../lib/api'
+import { articleApi, categoryApi, pageApi, tagApi, resolveAsset } from '../lib/api'
 import type { Category, Page, Tag } from '../lib/types'
 import { useSite } from '../lib/site'
 import { Skeleton } from './ui'
@@ -10,17 +10,19 @@ export function Sidebar() {
   const [categories, setCategories] = useState<Category[]>([])
   const [tags, setTags] = useState<Tag[]>([])
   const [pages, setPages] = useState<Page[]>([])
+  const [articleTotal, setArticleTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [params] = useSearchParams()
   const navigate = useNavigate()
 
   useEffect(() => {
     let active = true
-    Promise.allSettled([categoryApi.list(), tagApi.list(), pageApi.list()]).then((res) => {
+    Promise.allSettled([articleApi.list(1), categoryApi.list(), tagApi.list(), pageApi.list()]).then((res) => {
       if (!active) return
-      if (res[0].status === 'fulfilled') setCategories(res[0].value)
-      if (res[1].status === 'fulfilled') setTags(res[1].value)
-      if (res[2].status === 'fulfilled') setPages(res[2].value)
+      if (res[0].status === 'fulfilled') setArticleTotal(res[0].value.total)
+      if (res[1].status === 'fulfilled') setCategories(res[1].value)
+      if (res[2].status === 'fulfilled') setTags(res[2].value)
+      if (res[3].status === 'fulfilled') setPages(res[3].value)
       setLoading(false)
     })
     return () => {
@@ -60,10 +62,28 @@ export function Sidebar() {
         </div>
       </section>
 
+      {/* 站点统计（mx-space 风格） */}
+      <section className="card p-4">
+        <h3 className="mb-3 text-sm font-semibold text-gray-900">站点统计</h3>
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <Link to="/" className="rounded-xl bg-gray-50 py-2.5 transition hover:bg-gray-100">
+            <p className="text-lg font-semibold text-gray-900">{articleTotal}</p>
+            <p className="text-xs text-gray-400">文章</p>
+          </Link>
+          <div className="rounded-xl bg-gray-50 py-2.5">
+            <p className="text-lg font-semibold text-gray-900">{categories.length}</p>
+            <p className="text-xs text-gray-400">分类</p>
+          </div>
+          <div className="rounded-xl bg-gray-50 py-2.5">
+            <p className="text-lg font-semibold text-gray-900">{tags.length}</p>
+            <p className="text-xs text-gray-400">标签</p>
+          </div>
+        </div>
+      </section>
+
       {/* 分类 */}
       <section className="card p-4">
-        <h3 className="mb-3 text-sm font-semibold text-gray-900">分类</h3>
-        <div className="flex flex-wrap gap-1.5">
+        <h3 className="mb-3 text-sm font-semibold text-gray-900">分类</h3>        <div className="flex flex-wrap gap-1.5">
           <button
             onClick={() => navigate('/')}
             className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${

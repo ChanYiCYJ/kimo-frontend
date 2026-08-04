@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { articleApi, categoryApi, pageApi, tagApi } from '../../lib/api'
+import { articleApi, categoryApi, pageApi, tagApi, userApi } from '../../lib/api'
 import { Skeleton } from '../../components/ui'
 
 export function DashboardHome() {
@@ -9,6 +9,7 @@ export function DashboardHome() {
     categories: 0,
     tags: 0,
     pages: 0,
+    users: 0,
   })
   const [loading, setLoading] = useState(true)
 
@@ -19,6 +20,7 @@ export function DashboardHome() {
       categoryApi.list(),
       tagApi.list(),
       pageApi.list(),
+      userApi.list(),
     ]).then((res) => {
       if (!active) return
       setStats({
@@ -26,6 +28,7 @@ export function DashboardHome() {
         categories: res[1].status === 'fulfilled' ? res[1].value.length : 0,
         tags: res[2].status === 'fulfilled' ? res[2].value.length : 0,
         pages: res[3].status === 'fulfilled' ? res[3].value.length : 0,
+        users: res[4].status === 'fulfilled' ? res[4].value.length : 0,
       })
       setLoading(false)
     })
@@ -38,7 +41,8 @@ export function DashboardHome() {
     { to: '/dashboard/articles/new', title: '创建文章', desc: '写一篇新的文章' },
     { to: '/dashboard/articles', title: '管理文章', desc: '编辑、删除已有文章' },
     { to: '/dashboard/pages/new', title: '创建页面', desc: '关于、友链等自定义页面' },
-    { to: '/dashboard/settings', title: '站点设置', desc: '标题、副标题、头像等' },
+    { to: '/dashboard/users', title: '用户管理', desc: '管理注册用户与权限' },
+    { to: '/dashboard/settings', title: '站点设置', desc: '标题、副标题、AI 润色等' },
   ]
 
   return (
@@ -67,6 +71,10 @@ export function DashboardHome() {
           <div className="card p-5">
             <p className="text-3xl font-semibold text-gray-900">{stats.pages}</p>
             <p className="mt-1 text-sm text-gray-500">页面</p>
+          </div>
+          <div className="card p-5">
+            <p className="text-3xl font-semibold text-gray-900">{stats.users}</p>
+            <p className="mt-1 text-sm text-gray-500">用户</p>
           </div>
         </div>
       )}

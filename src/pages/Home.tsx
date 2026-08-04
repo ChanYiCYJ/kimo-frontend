@@ -77,8 +77,13 @@ export function Home() {
       )}
 
       {/* 列表头（原项目 index.html：text-xl font-medium + 更多文章 →） */}
-      <div className="mb-2 ml-1 flex items-center justify-between">
-        <h2 className="text-xl font-medium tracking-tight text-gray-800">{title}</h2>
+      <div className="mb-2 ml-1 flex items-end justify-between">
+        <div>
+          {page === 1 && !keyword && !categoryId && (
+            <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.22em] text-gray-400">Posts</p>
+          )}
+          <h2 className="text-xl font-medium tracking-tight text-gray-800">{title}</h2>
+        </div>
         {!keyword && total > 5 && (
           <Link to={`/?page=${page + 1}`} className="text-xl font-medium text-gray-800 transition hover:text-gray-600">
             更多文章 →
