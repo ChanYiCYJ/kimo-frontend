@@ -222,12 +222,6 @@ export function Article() {
               <Link to="/" className="inline-flex items-center gap-1 text-gray-400 transition hover:text-gray-600">
                 ← 返回列表
               </Link>
-              <button
-                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-                className="text-gray-400 transition hover:text-gray-600"
-              >
-                回到顶部 ↑
-              </button>
             </div>
           </div>
         </article>
