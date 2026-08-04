@@ -9,6 +9,7 @@ import { PageSpinner } from './components/Spinner'
 import { Home } from './pages/Home'
 import { Article } from './pages/Article'
 import { PageView } from './pages/PageView'
+import { AICenter } from './pages/AICenter'
 import { Login } from './pages/Login'
 import { NotFound } from './pages/NotFound'
 
@@ -58,6 +59,8 @@ export default function App() {
                 <Route path="/" element={<Home />} />
                 <Route path="/article/:id" element={<Article />} />
                 <Route path="/page/:name" element={<PageView />} />
+                <Route path="/ai" element={<AICenter />} />
+                <Route path="/ai/:botId" element={<AICenter />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="*" element={<NotFound />} />
               </Route>

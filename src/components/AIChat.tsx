@@ -1,9 +1,14 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import { Link } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { articleApi, categoryApi, pageApi, tagApi } from '../lib/api'
-import type { AIChatConfig } from '../lib/types'
+import type { AIChatConfig, Page } from '../lib/types'
+import { useSite } from '../lib/site'
+import { useTheme } from '../lib/theme'
+import { webSearch } from '../lib/search'
+import { getKbSelections, getKbNotes, assembleKnowledge } from '../lib/kb'
+import { KbModal } from './KbModal'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -17,13 +22,31 @@ interface Session {
   createdAt: number
 }
 
+export interface BotItem {
+  id: number
+  name: string
+  config: AIChatConfig
+  page: Page
+}
+
+interface AIChatProps {
+  config: AIChatConfig
+  pageId: number
+  center?: boolean
+  bots?: BotItem[]
+  onSwitchBot?: (id: number) => void
+  canManage?: boolean
+  onManage?: () => void
+}
+
 const STORAGE_PREFIX = 'kimo_chat_'
 
-async function streamChat(cfg: AIChatConfig, msgs: Message[], onChunk: (t: string) => void, signal: AbortSignal, summary = '', knowledge = '', memory = '') {
+async function streamChat(cfg: AIChatConfig, msgs: Message[], onChunk: (t: string) => void, signal: AbortSignal, summary = '', knowledge = '', memory = '', web = '') {
   const sys = (cfg.systemPrompt || '')
     + (memory ? `\n\n以下是过往对话中学习到的用户偏好与经验，请据此优化你的回答：\n${memory}` : '')
     + (summary ? `\n\n对话上下文摘要：\n${summary}` : '')
     + (knowledge ? `\n\n以下是本站点知识库内容，请优先基于它回答问题：\n${knowledge}` : '')
+    + (web ? `\n\n以下是来自网络的最新搜索结果，请基于它们回答（并在适当时注明来源）：\n${web}` : '')
   const res = await fetch(cfg.endpoint.replace(/\/+$/, '') + '/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
@@ -59,7 +82,9 @@ const SESSION_STORAGE = (pageId: number) => STORAGE_PREFIX + 'sessions_' + pageI
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7) }
 
-export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: number }) {
+export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, onManage }: AIChatProps) {
+  const { settings } = useSite()
+  const { theme, toggle: toggleTheme } = useTheme()
   const [sessions, setSessions] = useState<Session[]>(() => {
     try { const r = localStorage.getItem(SESSION_STORAGE(pageId)); if (r) { const p = JSON.parse(r); if (Array.isArray(p) && p.length) return p } } catch {}
     return [{ id: uid(), title: '新对话', messages: [], createdAt: Date.now() }]
@@ -77,8 +102,12 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const [kbOn, setKbOn] = useState(false)
-  const [kbLoading, setKbLoading] = useState(false)
-  const [kbData, setKbData] = useState('')
+  const [kbText, setKbText] = useState('')
+  const [kbOpen, setKbOpen] = useState(false)
+  const [webSearchOn, setWebSearchOn] = useState(() => { try { return localStorage.getItem('kimo_ai_websearch') === '1' } catch { return false } })
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [botMenuOpen, setBotMenuOpen] = useState(false)
   const [memory, setMemory] = useState(() => { try { return localStorage.getItem(STORAGE_PREFIX + 'memory_' + pageId) || '' } catch { return '' } })
   const [ttsOn, setTtsOn] = useState(!!config.autoTTS)
   const [consented, setConsented] = useState(() => { try { return localStorage.getItem(STORAGE_PREFIX + 'consent_' + pageId) === '1' } catch { return false } })
@@ -104,7 +133,13 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
   // 更新当前会话消息：用函数式 setState 避免异步流式回调里的旧闭包导致消息丢失
   const updateActive = useCallback((mut: (msgs: Message[]) => Message[]) => {
     setSessions(prev => {
-      const next = prev.map(s => s.id === activeId ? { ...s, messages: mut(s.messages) } : s)
+      const next = prev.map(s => {
+        if (s.id !== activeId) return s
+        const msgs = mut(s.messages)
+        // 首次对话自动根据用户消息设置标题
+        const title = s.title === '新对话' && msgs.length && msgs[0].role === 'user' ? msgs[0].content.slice(0, 20) : s.title
+        return { ...s, messages: msgs, title }
+      })
       persistSessions(next)
       return next
     })
@@ -158,22 +193,35 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
     const check = setInterval(() => { if (!window.speechSynthesis.speaking) { setSpeakingIdx(-1); clearInterval(check) } }, 300)
   }, [speakingIdx])
 
-  const loadKnowledge = useCallback(async () => {
-    setKbLoading(true)
+  // 知识库：根据选择 + 本地笔记组装文本（KbModal 保存后调用 refreshKb 刷新缓存）
+  const refreshKb = useCallback(async () => {
     try {
-      const [articles, categories, tags, pages] = await Promise.allSettled([articleApi.list(1), categoryApi.list(), tagApi.list(), pageApi.list()])
-      const parts: string[] = []
-      if (articles.status === 'fulfilled' && articles.value.items.length) parts.push('【文章】' + articles.value.items.map(a => `《${a.title}》[${a.category_name || '未分类'}]：${a.description || ''}`).join('\n'))
-      if (categories.status === 'fulfilled' && categories.value.length) parts.push('【分类】' + categories.value.map(c => `${c.name}(/${c.slug})`).join('、'))
-      if (tags.status === 'fulfilled' && tags.value.length) parts.push('【标签】' + tags.value.map(t => `#${t.tag_name}`).join(' '))
-      if (pages.status === 'fulfilled' && pages.value.length) parts.push('【页面】' + pages.value.map(p => `${p.name}(${p.type})`).join('、'))
-      setKbData(parts.join('\n\n'))
-    } catch { setKbData('') } finally { setKbLoading(false) }
+      const sel = getKbSelections(pageId)
+      const notes = getKbNotes()
+      const text = await assembleKnowledge(sel, notes)
+      setKbText(text)
+    } catch { setKbText('') }
+  }, [pageId])
+
+  const toggleKb = useCallback((on: boolean) => {
+    setKbOn(on)
+    if (on) refreshKb()
+  }, [refreshKb])
+
+  const toggleWebSearch = useCallback(() => {
+    setWebSearchOn(prev => { const n = !prev; try { localStorage.setItem('kimo_ai_websearch', n ? '1' : '0') } catch {}; return n })
   }, [])
 
-  const toggleKb = useCallback(() => {
-    setKbOn(prev => { const next = !prev; if (next && !kbData) loadKnowledge(); return next })
-  }, [kbData, loadKnowledge])
+  // 会话重命名
+  const startRename = useCallback((e: React.MouseEvent, s: Session) => {
+    e.stopPropagation(); setEditingSessionId(s.id); setEditTitle(s.title)
+  }, [])
+  const commitRename = useCallback(() => {
+    if (editingSessionId) {
+      saveSessions(sessions.map(x => x.id === editingSessionId ? { ...x, title: editTitle.trim() || '新对话' } : x))
+    }
+    setEditingSessionId(null)
+  }, [editingSessionId, editTitle, sessions, saveSessions])
 
   const learn = useCallback((q: string, a: string) => {
     const insight = `用户问：${q.slice(0, 50)} → AI 答：${a.slice(0, 80)}${a.length > 80 ? '…' : ''}`
@@ -211,6 +259,9 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
     setCooldown(config.cooldown || 60)
     try { localStorage.setItem(STORAGE_PREFIX + 'cooldown_' + pageId, String(Date.now() + (config.cooldown || 60) * 1000)) } catch {}
     const ctrl = new AbortController(); abortRef.current = ctrl; let reply = ''
+    // 网络搜索：开启时先抓取结果注入上下文
+    let web = ''
+    if (webSearchOn) { try { web = await webSearch(t) } catch { web = '' } }
     // 流式：始终只保留一条正在增长的 assistant 消息（替换上一条）
     const upsertAssistant = (content: string) => updateActive(prev => {
       const last = prev[prev.length - 1]
@@ -219,7 +270,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
         : [...prev, { role: 'assistant' as const, content }]
     })
     try {
-      reply = await streamChat(config, recent, upsertAssistant, ctrl.signal, summary, kbOn ? kbData : '', memory)
+      reply = await streamChat(config, recent, upsertAssistant, ctrl.signal, summary, kbOn ? kbText : '', memory, web)
     } catch (e: unknown) {
       if ((e as Error).name === 'AbortError') return
       reply = `错误：${e instanceof Error ? e.message : '请求失败'}`
@@ -272,24 +323,88 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
 
   const chatBody = (
     <div className="flex h-full min-h-0 flex-col bg-white dark:bg-gray-900">
-      {/* 顶栏：ChatGPT 风格极简 */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-gray-100 px-3 py-2.5 dark:border-gray-700 sm:px-4">
+      {/* 顶栏：/ai 中心页提供品牌+机器人切换+主题+管理；页面模式提供返回 */}
+      <div className="flex shrink-0 items-center gap-1.5 border-b border-gray-100 px-3 py-2 dark:border-gray-700 sm:px-4">
         <button onClick={() => setSidebarOpen(true)} className={`${iconBtn} sm:hidden`} title="会话列表" aria-label="会话列表">
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
         </button>
+
+        {center ? (
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            <Link to="/" className="flex shrink-0 items-center gap-2 rounded-lg px-1.5 py-1 transition hover:bg-gray-100 dark:hover:bg-gray-800" title="返回网站">
+              {settings.avatar
+                ? <img src={settings.avatar} alt="logo" className="h-7 w-7 rounded-full object-cover" />
+                : <span className="grid h-7 w-7 place-content-center rounded-full bg-gray-900 text-sm font-bold text-white dark:bg-gray-200 dark:text-gray-900">{(settings.title || 'K').slice(0, 1)}</span>}
+              <span className="hidden text-sm font-medium text-gray-900 sm:block dark:text-gray-100">{settings.title || 'Kimo'}</span>
+            </Link>
+            <div className="h-5 w-px shrink-0 bg-gray-200 dark:bg-gray-700" />
+            {bots && bots.length > 1 ? (
+              <div className="relative min-w-0">
+                <button onClick={() => setBotMenuOpen(v => !v)} className="flex max-w-[170px] items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                  {config.avatar ? <img src={config.avatar} alt="" className="h-5 w-5 shrink-0 rounded-full object-cover" /> : <span className="grid h-5 w-5 shrink-0 place-content-center rounded-full bg-gray-900 text-[9px] font-bold text-white dark:bg-gray-200 dark:text-gray-900">{(config.botName || 'AI').slice(0, 2)}</span>}
+                  <span className="min-w-0 truncate">{config.botName || 'AI'}</span>
+                  <svg className="h-3.5 w-3.5 shrink-0 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
+                </button>
+                {botMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setBotMenuOpen(false)} />
+                    <div className="absolute left-0 top-full z-40 mt-1 w-60 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+                      <p className="px-3 pb-1 pt-1.5 text-[11px] font-medium text-gray-400">切换 AI 助手</p>
+                      {bots.map(b => (
+                        <button key={b.id} onClick={() => { onSwitchBot?.(b.id); setBotMenuOpen(false) }} className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition hover:bg-gray-50 dark:hover:bg-gray-800 ${b.id === pageId ? 'font-medium text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-300'}`}>
+                          {b.config.avatar ? <img src={b.config.avatar} alt="" className="h-5 w-5 shrink-0 rounded-full object-cover" /> : <span className="grid h-5 w-5 shrink-0 place-content-center rounded-full bg-gray-100 text-[9px] font-bold text-gray-500 dark:bg-gray-800">{b.name.slice(0, 2)}</span>}
+                          <span className="min-w-0 flex-1 truncate">{b.name}</span>
+                          {b.id === pageId && <span className="text-xs text-gray-400">✓</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="flex min-w-0 items-center gap-2">
+                {config.avatar ? <img src={config.avatar} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" /> : <span className="grid h-7 w-7 shrink-0 place-content-center rounded-full bg-gray-900 text-xs font-bold text-white dark:bg-gray-200 dark:text-gray-900">{(config.botName || 'AI').slice(0, 2)}</span>}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">{config.botName || 'AI 助手'}</span>
+                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${loading ? 'animate-pulse bg-green-400' : 'bg-green-500'}`} />
+                  </div>
+                  <p className="truncate text-[11px] text-gray-400">{loading ? '回复中...' : active?.title || '新对话'}</p>
+                </div>
+              </div>
+            )}
+            <div className="flex-1" />
+            {canManage && (
+              <button onClick={onManage} className="shrink-0 rounded-lg px-2.5 py-1.5 text-sm text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800">管理</button>
+            )}
+            <button onClick={toggleTheme} className={iconBtn} title="切换主题" aria-label="切换主题">
+              {theme === 'light' ? (
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" /></svg>
+              ) : (
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" /></svg>
+              )}
+            </button>
+          </div>
+        ) : (
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <Link to="/" className="flex shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800" title="返回首页">
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>
+              <span className="hidden text-sm sm:block">返回</span>
+            </Link>
+            {config.avatar ? <img src={config.avatar} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" /> : <span className="grid h-7 w-7 shrink-0 place-content-center rounded-full bg-gray-900 text-xs font-bold text-white dark:bg-gray-200 dark:text-gray-900">{(config.botName || 'AI').slice(0, 2)}</span>}
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">{config.botName || 'AI 助手'}</span>
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${loading ? 'animate-pulse bg-green-400' : 'bg-green-500'}`} />
+              </div>
+              <p className="truncate text-[11px] text-gray-400">{loading ? '回复中...' : active?.title || '新对话'}</p>
+            </div>
+          </div>
+        )}
+
         <button onClick={() => setCollapsed(!collapsed)} className={`${iconBtn} hidden lg:grid`} title={collapsed ? '展开侧边栏' : '收起侧边栏'} aria-label="切换侧边栏">
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
         </button>
-        <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          {config.avatar ? <img src={config.avatar} alt={config.botName} className="h-8 w-8 shrink-0 rounded-full object-cover" /> : <span className="grid h-8 w-8 shrink-0 place-content-center rounded-full bg-gray-900 text-xs font-bold text-white dark:bg-gray-200 dark:text-gray-900">{(config.botName || 'AI').slice(0, 2)}</span>}
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <span className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">{config.botName || 'AI 助手'}</span>
-              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${loading ? 'animate-pulse bg-green-400' : 'bg-green-500'}`} />
-            </div>
-            <p className="truncate text-[11px] text-gray-400">{loading ? '回复中...' : active?.title || '新对话'}</p>
-          </div>
-        </div>
         <button onClick={() => setFullscreen(!fullscreen)} className={iconBtn} title={fullscreen ? '退出全屏' : '全屏'} aria-label="全屏">
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
             {fullscreen
@@ -354,17 +469,20 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
       {/* 输入栏：ChatGPT 风格整合，按钮统一尺寸 */}
       <div className="shrink-0 bg-white px-3 pb-3 pt-2 dark:bg-gray-900 sm:px-6 sm:pb-4">
         <div className="mx-auto w-full max-w-3xl">
-          <div className="flex items-end gap-1 rounded-[24px] border border-gray-300 bg-white p-1.5 shadow-sm transition focus-within:border-gray-500 focus-within:shadow-md dark:border-gray-600 dark:bg-gray-800">
-            <button onClick={() => fileRef.current?.click()} className={`${iconBtn}`} title="上传 Markdown 文件" aria-label="上传文件">
+          <div className="flex items-center gap-0.5 rounded-[24px] border border-gray-300 bg-white p-1.5 shadow-sm transition focus-within:border-gray-500 focus-within:shadow-md dark:border-gray-600 dark:bg-gray-800">
+            <button onClick={() => fileRef.current?.click()} className={iconBtn} title="上传 Markdown 文件" aria-label="上传文件">
               <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" /></svg>
             </button>
             <input ref={fileRef} type="file" accept=".md,.markdown,text/markdown" onChange={onUpload} className="hidden" />
             <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
               placeholder={`向 ${config.botName || 'AI'} 发送消息...`} disabled={loading}
               rows={1} style={{ resize: 'none' }}
-              className="max-h-40 min-h-[38px] flex-1 bg-transparent px-2 py-2.5 text-[15px] leading-relaxed text-gray-800 outline-none placeholder:text-gray-400 disabled:opacity-50 dark:text-gray-100" />
-            <button onClick={toggleKb} className={`${iconBtn} ${kbOn ? 'text-indigo-500 dark:text-indigo-400' : ''}`} title={kbOn ? '关闭知识库' : '开启知识库'} aria-label="知识库">
-              <svg className={`h-5 w-5 ${kbLoading ? 'animate-spin' : ''}`} viewBox="0 0 24 24" fill={kbOn ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>
+              className="max-h-40 min-h-[38px] flex-1 self-center bg-transparent px-2 py-2 text-[15px] leading-6 text-gray-800 outline-none placeholder:text-gray-400 disabled:opacity-50 dark:text-gray-100" />
+            <button onClick={toggleWebSearch} className={`${iconBtn} ${webSearchOn ? 'text-blue-500' : ''}`} title={webSearchOn ? '关闭网络搜索' : '开启网络搜索'} aria-label="网络搜索">
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill={webSearchOn ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" /></svg>
+            </button>
+            <button onClick={() => setKbOpen(true)} className={`${iconBtn} ${kbOn ? 'text-indigo-500 dark:text-indigo-400' : ''}`} title="知识库设置" aria-label="知识库">
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill={kbOn ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>
             </button>
             {config.autoTTS && (
               <button onClick={() => setTtsOn(!ttsOn)} className={`${iconBtn} ${ttsOn ? 'text-green-500' : ''}`} title={ttsOn ? '关闭自动朗读' : '开启自动朗读'} aria-label="自动朗读">
@@ -400,8 +518,25 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
         {sessions.map(s => (
           <div key={s.id} onClick={() => selectSession(s.id)} className={`group mb-1 flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition ${s.id === activeId ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-800 dark:text-gray-100' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-900'}`}>
             <svg className="h-3.5 w-3.5 shrink-0 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" /></svg>
-            <span className="min-w-0 flex-1 truncate">{s.title}</span>
-            <button onClick={e => deleteSession(e, s.id)} className="hidden shrink-0 text-gray-300 transition hover:text-red-500 group-hover:block">×</button>
+            {s.id === editingSessionId ? (
+              <input
+                autoFocus
+                value={editTitle}
+                onChange={e => setEditTitle(e.target.value)}
+                onBlur={commitRename}
+                onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setEditingSessionId(null) }}
+                onClick={e => e.stopPropagation()}
+                className="min-w-0 flex-1 rounded-md border border-gray-300 bg-white px-1.5 py-0.5 text-xs outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+              />
+            ) : (
+              <span className="min-w-0 flex-1 truncate">{s.title}</span>
+            )}
+            {s.id !== editingSessionId && (
+              <button onClick={e => startRename(e, s)} className="hidden shrink-0 text-gray-300 transition hover:text-gray-600 group-hover:block" title="重命名" aria-label="重命名">
+                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" /></svg>
+              </button>
+            )}
+            <button onClick={e => deleteSession(e, s.id)} className="hidden shrink-0 text-gray-300 transition hover:text-red-500 group-hover:block" title="删除">×</button>
           </div>
         ))}
       </div>
@@ -430,7 +565,12 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
     </div>
   )
 
-  return fullscreen
-    ? createPortal(<div className="fixed inset-0 z-[100] bg-white dark:bg-gray-900">{layout}</div>, document.body)
-    : layout
+  return (
+    <>
+      <KbModal open={kbOpen} onClose={() => setKbOpen(false)} pageId={pageId} kbOn={kbOn} onToggleKb={toggleKb} onApplied={refreshKb} />
+      {fullscreen
+        ? createPortal(<div className="fixed inset-0 z-[100] bg-white dark:bg-gray-900">{layout}</div>, document.body)
+        : layout}
+    </>
+  )
 }

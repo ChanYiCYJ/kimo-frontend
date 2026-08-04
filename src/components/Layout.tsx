@@ -42,13 +42,13 @@ export function Layout() {
     }
   }, [settings.title, settings.avatar])
 
-  // AI 对话页：ChatGPT 风格沉浸式全屏，无侧边栏/页脚
-  if (isAIChat) {
+  // AI 对话页/中心：ChatGPT 风格沉浸式全屏，无全局菜单栏/侧边栏/页脚（避免顶栏重复）
+  const isImmersive = isAIChat || location.pathname.startsWith('/ai')
+  if (isImmersive) {
     return (
       <div className="flex h-dvh flex-col overflow-hidden">
         <div className="bg-fixed-cover" style={settings.background ? { backgroundImage: `url(${resolveAsset(settings.background)})` } : undefined} />
         <div className="bg-blur-overlay" />
-        <Header />
         <main className="min-h-0 flex-1">
           <Outlet />
         </main>

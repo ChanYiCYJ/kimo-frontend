@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth'
 import { useTheme } from '../lib/theme'
 import { pageApi, resolveAsset } from '../lib/api'
 import type { Page } from '../lib/types'
+import { AI_CHAT_MARKER } from '../lib/types'
 
 export function Header() {
   const { settings } = useSite()
@@ -97,6 +98,17 @@ export function Header() {
               {p.name}
             </NavLink>
           ))}
+
+          {pages.some(p => p.type === 'html' && p.status === 0 && (p.content || '').startsWith(AI_CHAT_MARKER)) && (
+            <NavLink
+              to="/ai"
+              className={({ isActive }) =>
+                `transition ${isActive ? 'font-medium text-gray-900' : 'hover:text-gray-900'}`
+              }
+            >
+              AI
+            </NavLink>
+          )}
 
           <button
             onClick={toggleTheme}
@@ -192,6 +204,15 @@ export function Header() {
                 {p.name}
               </NavLink>
             ))}
+            {pages.some(p => p.type === 'html' && p.status === 0 && (p.content || '').startsWith(AI_CHAT_MARKER)) && (
+              <NavLink
+                to="/ai"
+                onClick={() => setMobileOpen(false)}
+                className="rounded-lg px-3 py-2 text-gray-700 hover:bg-gray-100"
+              >
+                AI
+              </NavLink>
+            )}
             <button
               onClick={() => { toggleTheme(); setMobileOpen(false) }}
               className="flex items-center gap-2 rounded-lg px-3 py-2 text-gray-700 hover:bg-gray-100"
