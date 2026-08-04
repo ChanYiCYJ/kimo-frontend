@@ -403,7 +403,7 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
             </section>
             <section>
               <p className="font-medium text-gray-800 dark:text-gray-300">📧 联系与反馈</p>
-              <p className="mt-1">如有问题或建议，请联系 <a href="mailto:jasonchan0654@gmail.com" className="text-blue-600 hover:underline dark:text-blue-400">jasonchan0654@gmail.com</a></p>
+              <p className="mt-1">如有问题或建议，欢迎到 <a href="https://github.com/ChanYiCYJ/kimo-frontend/issues" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline dark:text-blue-400">GitHub Issues</a> 反馈。</p>
             </section>
           </div>
           <button onClick={() => { setConsented(true); try { localStorage.setItem(STORAGE_PREFIX + 'consent_' + pageId, '1') } catch {} }}

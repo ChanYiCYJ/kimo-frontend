@@ -124,9 +124,19 @@ vercel --prod
 
 > 💡 前端请求仍走相对路径 `/api/v1`（`VITE_API_BASE` 保持默认），由 Vercel 反代到 `API_BACKEND`，因此同源、无跨域问题。
 
-## ⚡ 部署到 Cloudflare Workers
+## ⚡ 一键部署到 Cloudflare Workers
 
 同样**不内置后端地址**，用 `worker.js` 在 Worker 边缘把 `/api`、`/static` 反代到真实后端（服务端转发，无 CORS 问题），静态资源由 Cloudflare **Assets** 托管，前端路由刷新回退到 `index.html`（`wrangler.jsonc` 中 `not_found_handling = "single-page-application"`）。
+
+> 点击下方按钮，把本仓库导入你的 Cloudflare 账户、构建并创建 Worker：
+
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/ChanYiCYJ/kimo-frontend)
+
+> 一键部署完成后，还需在控制台做两步：
+> 1. Worker「设置 → 变量和 Secret」添加 `API_BACKEND`（后端地址，**不带尾部斜杠**，如 `https://api.example.com`）
+> 2. Worker「设置 → 域」绑定自定义域名（如 `v2.yogofor.top`），即可访问
+>
+> 若按钮未能自动构建（`dist` 不在仓库中），请使用下方 CLI 方式。
 
 ### 方式一：CLI 部署
 

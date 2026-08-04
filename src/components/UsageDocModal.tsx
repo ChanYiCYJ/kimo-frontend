@@ -73,8 +73,8 @@ export function UsageDocModal({ open, onClose, hasCustom, canManage }: UsageDocM
           <S title="🧭 开源与反馈">
             <ul className="ml-4 list-disc space-y-1">
               <li>本项目开源：<a href="https://github.com/ChanYiCYJ/kimo-frontend" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline dark:text-blue-400">github.com/ChanYiCYJ/kimo-frontend</a>，欢迎提交 Issue 或 PR。</li>
-              <li>关于部署、合规与重定向（如主站在国内、镜像在 Vercel）的建议，见仓库 README 与部署说明。</li>
-              <li>联系：<a href="mailto:jasonchan0654@gmail.com" className="text-blue-600 hover:underline dark:text-blue-400">jasonchan0654@gmail.com</a></li>
+              <li>关于部署、合规与重定向（如主站在国内、镜像在海外）的建议，见仓库 README 与部署说明。</li>
+              <li>反馈与建议：<a href="https://github.com/ChanYiCYJ/kimo-frontend/issues" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline dark:text-blue-400">GitHub Issues</a>。</li>
             </ul>
           </S>
         </div>
