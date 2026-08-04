@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Kimo 前端部署到 Cloudflare Workers
+  // 说明：
+  //  - assets.directory 指向构建产物 dist，静态资源由 Cloudflare 自动托管
+  //  - not_found_handling 为 single-page-application：前端路由(/ai、/article/1 等)刷新时回退到 index.html
+  //  - worker.js 负责把 /api 与 /static 反代到真实后端(服务端转发，无 CORS 问题)
+  // 部署步骤：
+  //  1. 构建：            npm run build
+  //  2. 配置后端地址：    npx wrangler secret put API_BACKEND   (或改下方 vars)
+  //  3. 部署：            npx wrangler deploy
+  //  4. 绑定自定义域名：  Cloudflare 控制台 → Workers → 你的 Worker → 设置 → 域(如 v2.yogofor.top)
+  "name": "kimo-frontend",
+  "main": "worker.js",
+  "compatibility_date": "2025-04-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "vars": {
+    // 后端地址，不带尾部斜杠；生产建议用 secret 替代明文（wrangler secret put API_BACKEND）
+    "API_BACKEND": ""
+  },
+  "observability": {
+    "enabled": true
+  }
+}

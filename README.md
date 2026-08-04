@@ -124,9 +124,49 @@ vercel --prod
 
 > 💡 前端请求仍走相对路径 `/api/v1`（`VITE_API_BASE` 保持默认），由 Vercel 反代到 `API_BACKEND`，因此同源、无跨域问题。
 
+## ⚡ 部署到 Cloudflare Workers
+
+同样**不内置后端地址**，用 `worker.js` 在 Worker 边缘把 `/api`、`/static` 反代到真实后端（服务端转发，无 CORS 问题），静态资源由 Cloudflare **Assets** 托管，前端路由刷新回退到 `index.html`（`wrangler.jsonc` 中 `not_found_handling = "single-page-application"`）。
+
+### 方式一：CLI 部署
+
+```bash
+# 1. 安装依赖（已含 wrangler）
+npm install
+
+# 2. 配置后端地址（写入 Worker 环境变量/Secret）
+npx wrangler secret put API_BACKEND
+# 输入：https://your-api.example.com（不带尾部斜杠）
+
+# 3. 构建并部署
+npm run deploy:cf        # 等价于 npm run build && wrangler deploy
+```
+
+### 方式二：Cloudflare Dashboard
+
+1. 构建：`npm run build`（产出 `dist/`）
+2. 在 Cloudflare 控制台创建 **Workers**，把 `dist` 作为 **Assets** 上传，`worker.js` 作为 Worker 脚本
+3. 在 Worker「设置 → 变量和 Secret」添加 `API_BACKEND`
+4. 在「设置 → 域」绑定自定义域名（如 `v2.yogofor.top`）
+
+### 本地预览（Cloudflare）
+
+```bash
+cp .dev.vars.example .dev.vars   # 填入 API_BACKEND
+npx wrangler dev                 # 或 npm run dev:cf
+```
+
+| 文件 | 作用 |
+| --- | --- |
+| `wrangler.jsonc` | Worker 配置：`assets`(dist 静态托管 + SPA 回退)、`API_BACKEND` 变量 |
+| `worker.js` | 反代 `/api`、`/static` 到后端，其余交给 Assets |
+| `.dev.vars.example` | 本地 `wrangler dev` 环境变量示例 |
+
+> 💡 部署到任意平台（Vercel / Cloudflare / 宝塔 Nginx）的**落地页跳转逻辑一致**：`route_map` 精确匹配优先。若某个精确域名被父域后缀匹配抢先导致不跳转（如 `v2.yogofor.top` 被 `yogofor.top` 抢成 `/`），请确保使用最新代码（该 bug 已修复）。
+
 ## 🌍 域名与合规（国内外分站）
 
-若国内主站与海外镜像同时存在（例如国内 `yogofor.top` + Vercel `v2.yogofor.top`），可在后台「站点设置 → 功能开关 → 默认落地页」配置：
+若国内主站与海外镜像同时存在（例如国内 `yogofor.top` + 海外 `v2.yogofor.top`），可在后台「站点设置 → 功能开关 → 默认落地页」配置：
 
 - **域名 → 落地页映射**（`route_map`，JSON，优先）：
   ```json
@@ -135,7 +175,9 @@ vercel --prod
     "v2.yogofor.top": "/ai"
   }
   ```
-- **默认落地页**：`default_route`（国内）/ `default_route_vercel`（Vercel 海外，hostname 含 `vercel.app` 时生效）
+- **默认落地页**：`default_route`（兜底，对所有未列出的域名生效）
+- 匹配规则：**精确域名优先**，再子域名后缀匹配——例如 `v2.yogofor.top` 精确命中 `v2.yogofor.top` 落 `/ai`，而 `www.yogofor.top` 无精确项时回退匹配父域 `yogofor.top` 落 `/`；访问 `127.0.0.1` 需单独写 `"127.0.0.1"` 键。
+- 后台设置里 `route_map` 带**实时 JSON 校验**（非法红字 / 合法绿字），非法内容会阻止保存。
 - 访客打开首页时会按域名自动重定向到对应页面，便于分站差异化与合规
 
 > 合规提示：AI 生成内容带水印，请勿冒充人工原创用于需要真实性的场合；请遵守部署所在地法律与所用模型服务条款。

@@ -17,10 +17,12 @@ export function Layout() {
     const host = window.location.hostname
     if (location.pathname !== '/') return
     let route = ''
-    // 1) 域名 → 落地页映射表（优先，支持任意域名与子域名后缀匹配）
+    // 1) 域名 → 落地页映射表（精确匹配优先，再子域名后缀匹配）
+    //    避免 v2.yogofor.top 被父域 yogofor.top 的后缀匹配抢先导致跳到 '/'
     try {
       const map = JSON.parse(settings.route_map || '{}') as Record<string, string>
-      const key = Object.keys(map).find((k) => host === k || host.endsWith('.' + k))
+      const keys = Object.keys(map)
+      const key = keys.find((k) => host === k) || keys.find((k) => host.endsWith('.' + k))
       if (key && map[key]) route = map[key]
     } catch (e) { console.warn('[route_map] JSON 解析失败，请检查后台设置的 route_map：', e) }
     // 2) 回退：默认落地页
