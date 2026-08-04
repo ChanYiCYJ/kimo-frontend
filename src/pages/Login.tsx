@@ -23,6 +23,14 @@ export function Login() {
   const [email, setEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  // 站点是否开放注册（allow_register：'0'/false 时关闭注册）
+  const registerOpen = settings.allow_register !== '0' && settings.allow_register !== 'false'
+
+  // 注册被关闭时，强制停留在登录 Tab
+  useEffect(() => {
+    if (!registerOpen && mode === 'register') setMode('login')
+  }, [registerOpen, mode])
+
   // 已登录用户直接跳转
   useEffect(() => {
     if (!loading && user) {
@@ -98,13 +106,24 @@ export function Login() {
             </button>
             <button
               onClick={() => setMode('register')}
+              disabled={!registerOpen}
+              title={registerOpen ? undefined : '当前站点未开放注册'}
               className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${
                 mode === 'register' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
+              } ${registerOpen ? '' : 'cursor-not-allowed opacity-50'}`}
             >
               注册
             </button>
           </div>
+
+          {!registerOpen && (
+            <div className="mb-4 flex items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-500">
+              <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+              </svg>
+              当前站点未开放注册，请联系管理员开通账号
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === 'login' ? (

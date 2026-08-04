@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS: SiteSettings = {
   avatar: '/favicon.svg',
   background: 'https://api.1314.cool/bingimg',
   footer: '© Kimo · Powered by FastAPI + React',
+  allow_register: '1',
 }
 
 const SiteContext = createContext<SiteContextValue>({

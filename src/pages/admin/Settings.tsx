@@ -153,6 +153,31 @@ export function Settings() {
           </div>
         ))}
 
+        {/* 开放注册开关（allow_register：'1'=开放，'0'=关闭） */}
+        <div className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50/60 px-4 py-3">
+          <div>
+            <p className="text-sm font-medium text-gray-700">开放注册</p>
+            <p className="mt-0.5 text-xs text-gray-400">关闭后，新用户无法在登录页注册（后端也会拒绝注册请求）</p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={form.allow_register !== '0'}
+            onClick={() =>
+              setForm((f) => ({ ...f, allow_register: f.allow_register === '0' ? '1' : '0' }))
+            }
+            className={`relative h-6 w-11 shrink-0 rounded-full transition ${
+              form.allow_register !== '0' ? 'bg-gray-900' : 'bg-gray-300'
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                form.allow_register !== '0' ? 'left-[22px]' : 'left-0.5'
+              }`}
+            />
+          </button>
+        </div>
+
         <div className="flex justify-end">
           <button
             onClick={save}

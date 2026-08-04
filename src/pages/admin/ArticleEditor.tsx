@@ -104,8 +104,8 @@ export function ArticleEditor() {
 
   return (
     <div className="fade-up">
-      {/* 顶栏：返回 + 标题 + 发布（写作优先） */}
-      <div className="sticky top-0 z-30 -mx-6 -mt-6 mb-5 flex items-center gap-3 border-b border-gray-200 bg-gray-50/95 px-6 py-3 backdrop-blur">
+      {/* 顶栏：返回 + 标题 + 发布（写作优先），与编辑器之间留出间距 */}
+      <div className="sticky top-0 z-30 -mx-6 -mt-6 mb-8 flex items-center gap-3 border-b border-gray-200 bg-gray-50/95 px-6 py-3 backdrop-blur">
         <button
           onClick={() => navigate('/dashboard/articles')}
           title="返回"

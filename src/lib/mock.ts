@@ -171,6 +171,8 @@ const DEFAULT_SETTINGS: SiteSettings = {
   avatar: '/favicon.svg',
   background: 'https://api.1314.cool/bingimg',
   footer: '© Kimo · Powered by FastAPI + React',
+  // 是否开放注册：'1'=开放，'0'=关闭（与后端 allow_register 键对应）
+  allow_register: '1',
 }
 
 // 演示模式的站点设置持久化到 localStorage，避免整页刷新后丢失
