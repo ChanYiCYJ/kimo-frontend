@@ -14,6 +14,17 @@ export function Layout() {
     window.scrollTo(0, 0)
   }, [location.pathname])
 
+  // 动态设置网站图标和标题
+  useEffect(() => {
+    if (settings.title) {
+      document.title = settings.title
+    }
+    if (settings.avatar) {
+      const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
+      if (link) link.href = resolveAsset(settings.avatar)
+    }
+  }, [settings.title, settings.avatar])
+
   return (
     <div className="flex min-h-screen flex-col">
       {/* 背景（原项目：Bing 图 + 白色模糊遮罩） */}
