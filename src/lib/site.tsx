@@ -27,6 +27,9 @@ const DEFAULT_SETTINGS: SiteSettings = {
   show_pages: '1',
   show_ai: '1',
   enable_ai_articles: '0',
+  enable_custom_api: '1',
+  default_route: '',
+  default_route_vercel: '',
 }
 
 const SiteContext = createContext<SiteContextValue>({

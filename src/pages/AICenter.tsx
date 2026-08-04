@@ -88,6 +88,7 @@ export function AICenter() {
           canManage={isAdmin}
           onManage={() => navigate('/dashboard/ai')}
           enableArticles={settings.enable_ai_articles === '1'}
+          enableCustomApi={settings.enable_custom_api !== '0'}
         />
       ) : (
         <div className="flex h-full flex-col items-center justify-center gap-4 bg-white p-8 text-center dark:bg-gray-900">

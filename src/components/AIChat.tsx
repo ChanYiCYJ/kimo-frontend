@@ -12,6 +12,7 @@ import { KbModal } from './KbModal'
 import { LocalApiModal } from './LocalApiModal'
 import { UsageDocModal } from './UsageDocModal'
 import { ArticleComposerModal } from './ArticleComposerModal'
+import { UserSettingsPanel } from './UserSettingsPanel'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -41,6 +42,7 @@ interface AIChatProps {
   canManage?: boolean
   onManage?: () => void
   enableArticles?: boolean
+  enableCustomApi?: boolean
 }
 
 const STORAGE_PREFIX = 'kimo_chat_'
@@ -86,7 +88,7 @@ const SESSION_STORAGE = (pageId: number) => STORAGE_PREFIX + 'sessions_' + pageI
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7) }
 
-export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, onManage, enableArticles }: AIChatProps) {
+export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, onManage, enableArticles, enableCustomApi }: AIChatProps) {
   const { settings } = useSite()
   const { theme, toggle: toggleTheme } = useTheme()
   const [sessions, setSessions] = useState<Session[]>(() => {
@@ -108,6 +110,9 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
   const [apiModalOpen, setApiModalOpen] = useState(false)
   const [docOpen, setDocOpen] = useState(false)
   const [articleOpen, setArticleOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [attachedFile, setAttachedFile] = useState('')
+  const [searching, setSearching] = useState(false)
   const [kbOn, setKbOn] = useState(false)
   const [kbText, setKbText] = useState('')
   const [kbOpen, setKbOpen] = useState(false)
@@ -118,7 +123,15 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
   const [menuOpen, setMenuOpen] = useState(false)
   const [limitReached, setLimitReached] = useState(false)
   const [memory, setMemory] = useState(() => { try { return localStorage.getItem(STORAGE_PREFIX + 'memory_' + pageId) || '' } catch { return '' } })
-  const [ttsOn, setTtsOn] = useState(!!config.autoTTS)
+  // 自动朗读：优先用户浏览器偏好（kimo_ai_tts），默认关；用户关闭则进入页面即为关
+  const [ttsOn, setTtsOn] = useState(() => {
+    try { const p = localStorage.getItem('kimo_ai_tts'); if (p) return p === '1' } catch { /* 忽略 */ }
+    return !!config.autoTTS
+  })
+  const toggleTts = useCallback(() => {
+    setTtsOn(prev => { const n = !prev; try { localStorage.setItem('kimo_ai_tts', n ? '1' : '0') } catch {}; return n })
+  }, [])
+  const customApiEnabled = enableCustomApi !== false
   const [consented, setConsented] = useState(() => { try { return localStorage.getItem(STORAGE_PREFIX + 'consent_' + pageId) === '1' } catch { return false } })
   const bottomRef = useRef<HTMLDivElement>(null)
   const msgListRef = useRef<HTMLDivElement>(null)
@@ -262,6 +275,7 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
   // Markdown 文件上传解析
   const onUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return
+    setAttachedFile(file.name)
     const reader = new FileReader()
     reader.onload = () => {
       const text = String(reader.result || '')
@@ -295,9 +309,12 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
       try { localStorage.setItem(STORAGE_PREFIX + 'cooldown_' + pageId, String(Date.now() + (effCfg.cooldown || 60) * 1000)) } catch {}
     }
     const ctrl = new AbortController(); abortRef.current = ctrl; let reply = ''
-    // 网络搜索：开启时先抓取结果注入上下文
+    // 网络搜索：开启时先抓取结果注入上下文（带加载动画）
     let web = ''
-    if (webSearchOn) { try { web = await webSearch(t) } catch { web = '' } }
+    if (webSearchOn) {
+      setSearching(true)
+      try { web = await webSearch(t) } catch { web = '' } finally { setSearching(false) }
+    }
     // 流式：始终只保留一条正在增长的 assistant 消息（替换上一条）
     const upsertAssistant = (content: string) => updateActive(prev => {
       const last = prev[prev.length - 1]
@@ -416,7 +433,7 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
     return (
       <div className="mx-auto max-w-md rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 p-8 text-center text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-800/50">
         <p>AI 对话未配置。</p>
-        {!canManage ? (
+        {!canManage && customApiEnabled ? (
           <button onClick={() => setApiModalOpen(true)} className="mt-4 rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-700 dark:bg-gray-200 dark:text-gray-900">
             在本机配置模型 API
           </button>
@@ -508,12 +525,17 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
         </button>
       </div>
 
-      {/* 消息区（带 AI 生成水印暗纹，防止被冒用） */}
-      <div ref={msgListRef} onScroll={onScroll} className="relative min-h-0 flex-1 overflow-y-auto bg-gray-50/40 dark:bg-gray-950/40">
-        <div className="pointer-events-none sticky bottom-1 z-0 flex justify-center select-none">
-          <span className="rotate-[-6deg] whitespace-nowrap text-xs font-medium tracking-[0.2em] text-gray-400/25 dark:text-gray-500/20">AI 生成 · {effCfg.model || 'AI'} · {hasCustom ? '自定义 API' : '站点 API'}</span>
+      {/* 消息区（铺满的多重水印暗纹网格，不随消息滚动） */}
+      <div className="relative min-h-0 flex-1">
+        <div className="pointer-events-none absolute inset-0 z-0 select-none overflow-hidden">
+          <div className="grid h-full grid-cols-3 content-center gap-x-6 gap-y-10 px-4 opacity-25 sm:grid-cols-4">
+            {Array.from({ length: 18 }).map((_, i) => (
+              <span key={i} className="rotate-[-16deg] whitespace-nowrap text-[10px] font-medium tracking-[0.2em] text-gray-400/60 dark:text-gray-500/40">AI 生成 · {effCfg.model || 'AI'} · {hasCustom ? '自定义' : '站点'}</span>
+            ))}
+          </div>
         </div>
-        <div className="relative z-10 mx-auto w-full max-w-3xl px-3 py-4 sm:px-6 sm:py-6">
+        <div ref={msgListRef} onScroll={onScroll} className="absolute inset-0 z-10 overflow-y-auto">
+          <div className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-6 sm:py-6">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center pt-[12vh] text-center">
               {config.avatar ? <img src={config.avatar} alt={config.botName} className="mb-4 h-16 w-16 rounded-full object-cover" /> : <span className="mb-4 grid h-16 w-16 place-content-center rounded-full bg-gray-100 text-2xl font-bold text-gray-400 dark:bg-gray-800">AI</span>}
@@ -556,7 +578,7 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
                   </div>
                 </div>
               )}
-              {limitReached && !hasCustom && (
+              {limitReached && !hasCustom && customApiEnabled && (
                 <div className="flex justify-center pt-3">
                   <button onClick={() => setApiModalOpen(true)} className="rounded-full border border-gray-300 bg-white px-4 py-2 text-xs text-gray-600 transition hover:border-gray-500 hover:text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300">
                     配置自定义 API 消除限制
@@ -567,11 +589,35 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
           )}
           <div ref={bottomRef} />
         </div>
+        </div>
       </div>
 
       {/* 输入栏：ChatGPT 风格整合，按钮统一尺寸 */}
       <div className="shrink-0 bg-white px-3 pb-3 pt-2 dark:bg-gray-900 sm:px-6 sm:pb-4">
         <div className="mx-auto w-full max-w-3xl">
+          {/* 可关闭的圆角小卡片（网络搜索 / 附加文件 / 搜索中） */}
+          {(webSearchOn || attachedFile || searching) && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {searching && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                  <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                  正在网络搜索…
+                </span>
+              )}
+              {webSearchOn && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                  网络搜索
+                  <button onClick={toggleWebSearch} className="text-gray-400 transition hover:text-gray-600" aria-label="关闭网络搜索">×</button>
+                </span>
+              )}
+              {attachedFile && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                  文件：{attachedFile}
+                  <button onClick={() => setAttachedFile('')} className="text-gray-400 transition hover:text-gray-600" aria-label="移除文件">×</button>
+                </span>
+              )}
+            </div>
+          )}
           <div className="flex items-center gap-0.5 rounded-[24px] border border-gray-300 bg-white p-1.5 shadow-sm transition focus-within:border-gray-500 focus-within:shadow-md dark:border-gray-600 dark:bg-gray-800">
             {/* 功能菜单：上传 / 网络搜索 / Coser / 导出 合并为一个按钮（图标统一单色） */}
             <div ref={menuRef} className="relative shrink-0">
@@ -613,8 +659,8 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
               rows={1} style={{ resize: 'none' }}
               className="no-scrollbar max-h-40 min-h-[38px] flex-1 self-center bg-transparent px-1.5 py-2 text-sm leading-6 text-gray-800 outline-none placeholder:text-gray-400 disabled:opacity-50 sm:text-[15px] dark:text-gray-100" />
             {config.autoTTS && (
-              <button onClick={() => setTtsOn(!ttsOn)} className={`${iconBtn} ${ttsOn ? 'text-gray-700 dark:text-gray-200' : ''}`} title={ttsOn ? '关闭自动朗读' : '开启自动朗读'} aria-label="自动朗读">
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill={ttsOn ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.6"><path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" /></svg>
+              <button onClick={toggleTts} className={`${iconBtn} ${ttsOn ? 'text-gray-700 dark:text-gray-200' : ''}`} title={ttsOn ? '关闭自动朗读' : '开启自动朗读'} aria-label="自动朗读">
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill={ttsOn ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" /></svg>
               </button>
             )}
             <button onClick={send} disabled={loading || !input.trim() || cooldown > 0}
@@ -663,36 +709,14 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
           </div>
         ))}
       </div>
-      {/* 底部：导出全部 / 导入 / 本地 API */}
+      {/* 底部：用户设置（导出导入 / 模型 / 文档 / GitHub 整合进设置面板） */}
       <div className="shrink-0 border-t border-gray-200 p-2 dark:border-gray-800">
-        <div className="mb-1.5 flex gap-1.5">
-          <button onClick={exportAllSessions} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
-            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-            导出全部
-          </button>
-          <button onClick={() => importRef.current?.click()} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
-            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M7.5 12a4.5 4.5 0 109 0m-4.5-9v13.5" /></svg>
-            导入
-          </button>
-          <input ref={importRef} type="file" accept=".json,application/json" onChange={onImportAll} className="hidden" />
-        </div>
-        {!canManage && (
-          <button onClick={() => setApiModalOpen(true)} className={`flex w-full items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs transition dark:border-gray-700 ${hasCustom ? 'border-indigo-200 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400' : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-400'}`}>
-            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" /></svg>
-            {hasCustom ? '自定义 API 已启用' : '模型 API 设置'}
-          </button>
-        )}
-        <div className="mb-1.5 mt-2 grid grid-cols-2 gap-1.5">
-          <button onClick={() => setDocOpen(true)} className="flex items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
-            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
-            使用文档
-          </button>
-          <a href="https://github.com/ChanYiCYJ/kimo-frontend" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
-            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58 0-.29-.01-1.04-.02-2.05-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.21.08 1.85 1.24 1.85 1.24 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.34-5.47-5.95 0-1.31.47-2.39 1.24-3.23-.13-.3-.54-1.53.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 016 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.65.25 2.88.12 3.18.77.84 1.24 1.92 1.24 3.23 0 4.62-2.8 5.64-5.48 5.94.43.37.81 1.1.81 2.22 0 1.6-.01 2.89-.01 3.28 0 .32.21.7.83.58A12.01 12.01 0 0024 12.5C24 5.87 18.63.5 12 .5z" /></svg>
-            GitHub
-          </a>
-        </div>
-        <p className="px-1 text-[11px] font-medium text-gray-400 dark:text-gray-500">{settings.title || 'Kimo'}</p>
+        <input ref={importRef} type="file" accept=".json,application/json" onChange={onImportAll} className="hidden" />
+        <button onClick={() => setSettingsOpen(true)} className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+          用户设置
+        </button>
+        <p className="mt-2 px-1 text-[11px] font-medium text-gray-400 dark:text-gray-500">{settings.title || 'Kimo'}</p>
         <p className="px-1 pb-1 text-[10px] leading-relaxed text-gray-300 dark:text-gray-600">AI 生成内容仅供参考</p>
       </div>
     </div>
@@ -726,6 +750,23 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
       <LocalApiModal open={apiModalOpen} onClose={() => setApiModalOpen(false)} pageId={pageId} botName={config.botName || 'AI'} onSaved={() => setLocalCfg(getLocalCfg(pageId))} />
       <UsageDocModal open={docOpen} onClose={() => setDocOpen(false)} hasCustom={hasCustom} canManage={!!canManage} />
       <ArticleComposerModal open={articleOpen} onClose={() => setArticleOpen(false)} />
+      <UserSettingsPanel
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        pageId={pageId}
+        canManage={!!canManage}
+        hasCustom={hasCustom}
+        botName={config.botName || 'AI'}
+        ttsOn={ttsOn}
+        onToggleTts={toggleTts}
+        webSearchOn={webSearchOn}
+        onToggleWebSearch={toggleWebSearch}
+        onExportAll={exportAllSessions}
+        onImport={() => importRef.current?.click()}
+        onOpenDoc={() => { setSettingsOpen(false); setDocOpen(true) }}
+        onCustomSaved={() => setLocalCfg(getLocalCfg(pageId))}
+        allowCustomApi={customApiEnabled}
+      />
       {layout}
     </>
   )

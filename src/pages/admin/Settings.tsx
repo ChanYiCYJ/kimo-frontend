@@ -384,6 +384,44 @@ export function Settings() {
             />
           </label>
         </div>
+        <div className="flex items-center justify-between rounded-xl border border-gray-100 p-4 dark:border-gray-800">
+          <div>
+            <p className="text-sm font-medium text-gray-800 dark:text-gray-200">访客自定义模型 API</p>
+            <p className="text-xs text-gray-400">关闭后访客不能在侧边栏填写自己的模型 API（enable_custom_api）。</p>
+          </div>
+          <label className="flex cursor-pointer items-center">
+            <input
+              type="checkbox"
+              checked={settings.enable_custom_api !== '0'}
+              onChange={(e) => setForm((f) => ({ ...f, enable_custom_api: e.target.checked ? '1' : '0' }))}
+              className="h-4 w-4 accent-gray-900"
+            />
+          </label>
+        </div>
+        <div className="rounded-xl border border-gray-100 p-4 dark:border-gray-800">
+          <p className="text-sm font-medium text-gray-800 dark:text-gray-200">默认落地页（按域名）</p>
+          <p className="mb-2 mt-0.5 text-xs text-gray-400">访客访问首页时自动跳转到该路径（如 /ai）。国内站点与 Vercel 海外站点可分别设置（default_route / default_route_vercel）。留空则不跳转。</p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">国内主站</label>
+              <input
+                value={settings.default_route || ''}
+                onChange={(e) => setForm((f) => ({ ...f, default_route: e.target.value }))}
+                placeholder="/ai"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">Vercel 海外站点</label>
+              <input
+                value={settings.default_route_vercel || ''}
+                onChange={(e) => setForm((f) => ({ ...f, default_route_vercel: e.target.value }))}
+                placeholder="/"
+                className={inputCls}
+              />
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* 全部键值 */}

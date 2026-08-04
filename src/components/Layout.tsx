@@ -1,4 +1,4 @@
-import { Outlet, useLocation } from 'react-router-dom'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { Header } from './Header'
 import { Sidebar } from './Sidebar'
@@ -9,7 +9,18 @@ import { AI_CHAT_MARKER } from '../lib/types'
 export function Layout() {
   const { settings } = useSite()
   const location = useLocation()
+  const navigate = useNavigate()
   const [isAIChat, setIsAIChat] = useState(false)
+
+  // 默认落地页：识别域名（国内 / Vercel 海外）后重定向，便于分站合规
+  useEffect(() => {
+    const host = window.location.hostname
+    const isVercel = host.includes('vercel.app')
+    const route = (isVercel ? settings.default_route_vercel : settings.default_route) || ''
+    if (route && route !== '/' && location.pathname === '/') {
+      navigate(route, { replace: true })
+    }
+  }, [settings.default_route, settings.default_route_vercel, location.pathname, navigate])
 
   // 路由切换时回到顶部
   useEffect(() => {
