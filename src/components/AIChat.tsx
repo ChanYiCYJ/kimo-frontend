@@ -379,7 +379,7 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
           <div className="flex items-center gap-3">
             {config.avatar
               ? <img src={config.avatar} alt={config.botName} className="h-11 w-11 rounded-full object-cover" />
-              : <span className="grid h-11 w-11 place-content-center rounded-full bg-gray-900 text-sm font-bold text-white dark:bg-gray-200 dark:text-gray-900">{(config.botName || 'AI').slice(0, 2)}</span>}
+              : <span className="grid h-11 w-11 place-content-center rounded-full bg-gray-100 text-sm font-bold text-gray-500 dark:bg-gray-800 dark:text-gray-300">{(config.botName || 'AI').slice(0, 2)}</span>}
             <div>
               <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{config.botName || 'AI 助手'}</h3>
               <p className="text-xs text-gray-400">开始使用前，请阅读并同意以下须知</p>
@@ -459,7 +459,7 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
             {bots && bots.length > 1 ? (
               <div className="relative min-w-0">
                 <button onClick={() => setBotMenuOpen(v => !v)} className="flex max-w-[170px] items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
-                  {config.avatar ? <img src={config.avatar} alt="" className="h-5 w-5 shrink-0 rounded-full object-cover" /> : <span className="grid h-5 w-5 shrink-0 place-content-center rounded-full bg-gray-900 text-[9px] font-bold text-white dark:bg-gray-200 dark:text-gray-900">{(config.botName || 'AI').slice(0, 2)}</span>}
+                  {config.avatar ? <img src={config.avatar} alt="" className="h-5 w-5 shrink-0 rounded-full object-cover" /> : <span className="grid h-5 w-5 shrink-0 place-content-center rounded-full bg-gray-100 text-[9px] font-bold text-gray-500 dark:bg-gray-800 dark:text-gray-300">{(config.botName || 'AI').slice(0, 2)}</span>}
                   <span className="min-w-0 truncate">{config.botName || 'AI'}</span>
                   <svg className="h-3.5 w-3.5 shrink-0 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
                 </button>
@@ -481,7 +481,7 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
               </div>
             ) : (
               <div className="flex min-w-0 items-center gap-2">
-                {config.avatar ? <img src={config.avatar} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" /> : <span className="grid h-7 w-7 shrink-0 place-content-center rounded-full bg-gray-900 text-xs font-bold text-white dark:bg-gray-200 dark:text-gray-900">{(config.botName || 'AI').slice(0, 2)}</span>}
+                {config.avatar ? <img src={config.avatar} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" /> : <span className="grid h-7 w-7 shrink-0 place-content-center rounded-full bg-gray-100 text-xs font-bold text-gray-500 dark:bg-gray-800 dark:text-gray-300">{(config.botName || 'AI').slice(0, 2)}</span>}
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">{config.botName || 'AI 助手'}</span>
@@ -509,7 +509,7 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>
               <span className="hidden text-sm sm:block">返回</span>
             </Link>
-            {config.avatar ? <img src={config.avatar} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" /> : <span className="grid h-7 w-7 shrink-0 place-content-center rounded-full bg-gray-900 text-xs font-bold text-white dark:bg-gray-200 dark:text-gray-900">{(config.botName || 'AI').slice(0, 2)}</span>}
+            {config.avatar ? <img src={config.avatar} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" /> : <span className="grid h-7 w-7 shrink-0 place-content-center rounded-full bg-gray-100 text-xs font-bold text-gray-500 dark:bg-gray-800 dark:text-gray-300">{(config.botName || 'AI').slice(0, 2)}</span>}
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">{config.botName || 'AI 助手'}</span>
@@ -556,7 +556,7 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
                       ? <img src={config.avatar} alt="" className="mt-0.5 h-8 w-8 shrink-0 rounded-full object-cover" />
                       : <span className="mt-0.5 grid h-8 w-8 shrink-0 place-content-center rounded-full bg-gray-200 text-xs font-bold text-gray-500 dark:bg-gray-800">AI</span>
                   )}
-                  <div className={`min-w-0 ${m.role === 'user' ? 'max-w-[85%] rounded-2xl bg-gray-900 px-4 py-2.5 text-sm leading-relaxed text-white sm:max-w-[70%] dark:bg-gray-200 dark:text-gray-900' : 'flex-1 text-[15px] leading-relaxed text-gray-800 dark:text-gray-100'}`}>
+                  <div className={`min-w-0 ${m.role === 'user' ? 'max-w-[85%] rounded-2xl border border-gray-200 bg-gray-100 px-4 py-2.5 text-sm leading-relaxed text-gray-800 sm:max-w-[70%] dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100' : 'flex-1 text-[15px] leading-relaxed text-gray-800 dark:text-gray-100'}`}>
                     {m.role === 'assistant'
                       ? <div className="chat-md"><ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown></div>
                       : <span className="whitespace-pre-wrap">{m.content}</span>}
@@ -685,7 +685,7 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
       </div>
       <div className="flex-1 overflow-y-auto px-2.5 pb-3">
         {sessions.map(s => (
-          <div key={s.id} onClick={() => selectSession(s.id)} className={`group mb-1 flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2.5 text-sm transition ${s.id === activeId ? 'bg-gray-900 text-white shadow-sm dark:bg-gray-200 dark:text-gray-900' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-900'}`}>
+          <div key={s.id} onClick={() => selectSession(s.id)} className={`group mb-1 flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2.5 text-sm transition ${s.id === activeId ? 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-900'}`}>
             <svg className="h-4 w-4 shrink-0 opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" /></svg>
             {s.id === editingSessionId ? (
               <input

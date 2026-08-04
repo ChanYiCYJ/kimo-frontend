@@ -22,7 +22,7 @@ export function Layout() {
       const map = JSON.parse(settings.route_map || '{}') as Record<string, string>
       const key = Object.keys(map).find((k) => host === k || host.endsWith('.' + k))
       if (key && map[key]) route = map[key]
-    } catch { /* 忽略非法 JSON */ }
+    } catch (e) { console.warn('[route_map] JSON 解析失败，请检查后台设置的 route_map：', e) }
     // 2) 回退：默认落地页
     if (!route) route = settings.default_route || ''
     if (route && route !== '/') {
