@@ -54,6 +54,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
   })
   const [speakingIdx, setSpeakingIdx] = useState(-1)
   const [stick, setStick] = useState(true)
+  const [fullscreen, setFullscreen] = useState(false)
   const [ttsOn, setTtsOn] = useState(!!config.autoTTS)
   const [consented, setConsented] = useState(() => {
     try { return localStorage.getItem(STORAGE_PREFIX + 'consent_' + pageId) === '1' } catch { return false }
@@ -198,7 +199,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
   }
 
   return (
-    <div ref={containerRef} className="flex flex-col bg-white dark:bg-gray-900 sm:rounded-2xl sm:border sm:border-gray-200 sm:dark:border-gray-700 max-sm:-mx-4 max-sm:-mt-10" style={{ height: '100dvh', maxHeight: 'calc(100dvh - 4rem)' }}>
+    <div ref={containerRef} className={`flex flex-col bg-white dark:bg-gray-900 ${fullscreen ? 'fixed inset-0 z-50 rounded-none border-0 max-sm:m-0' : 'sm:rounded-2xl sm:border sm:border-gray-200 sm:dark:border-gray-700 max-sm:-mx-4 max-sm:-mt-10'}`} style={{ height: '100dvh', maxHeight: fullscreen ? '100dvh' : 'calc(100dvh - 4rem)' }}>
       {/* 顶栏 */}
       <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-3 py-2.5 dark:border-gray-700 sm:px-4 sm:py-3 sm:rounded-t-2xl">
         <div className="flex items-center gap-2 sm:gap-3">
@@ -227,6 +228,10 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
           )}
           <button onClick={() => { setMessages([]); try { localStorage.removeItem(STORAGE_PREFIX + 'history_' + pageId) } catch {} }}
             className="rounded-lg px-1.5 py-1 text-xs text-gray-400 transition hover:text-red-500 sm:px-2">清除</button>
+          <button onClick={() => setFullscreen(!fullscreen)}
+            className="rounded-lg px-1.5 py-1 text-xs text-gray-400 transition hover:text-gray-600 sm:px-2" title={fullscreen ? '退出全屏' : '全屏显示'}>
+            {fullscreen ? '⤢' : '⛶'}
+          </button>
           {messages.length > 0 && (
             <button onClick={exportChat}
               className="rounded-lg px-1.5 py-1 text-xs text-gray-400 transition hover:text-gray-600 sm:px-2" title="导出对话">导出</button>
