@@ -21,7 +21,10 @@ export function Layout() {
     let active = true
     const m = location.pathname.match(/^\/page\/(.+)$/)
     if (!m) { setIsAIChat(false); return }
-    pageApi.getByName(m[1]).then((p) => {
+    // pathname 是未解码的，需解码才能与页面 name 匹配（useParams 会自动解码）
+    let pageName = m[1]
+    try { pageName = decodeURIComponent(pageName) } catch { /* keep raw */ }
+    pageApi.getByName(pageName).then((p) => {
       if (!active) return
       setIsAIChat(p.type === 'html' && (p.content || '').startsWith(AI_CHAT_MARKER))
     }).catch(() => { if (active) setIsAIChat(false) })
@@ -39,14 +42,14 @@ export function Layout() {
     }
   }, [settings.title, settings.avatar])
 
-  // AI 对话页：沉浸式全宽，无侧边栏
+  // AI 对话页：ChatGPT 风格沉浸式全屏，无侧边栏/页脚
   if (isAIChat) {
     return (
-      <div className="flex min-h-screen flex-col">
+      <div className="flex h-dvh flex-col overflow-hidden">
         <div className="bg-fixed-cover" style={settings.background ? { backgroundImage: `url(${resolveAsset(settings.background)})` } : undefined} />
         <div className="bg-blur-overlay" />
         <Header />
-        <main className="mx-auto w-full max-w-4xl flex-1 px-0">
+        <main className="min-h-0 flex-1">
           <Outlet />
         </main>
       </div>

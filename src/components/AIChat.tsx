@@ -88,19 +88,27 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
   const timerRef = useRef<ReturnType<typeof setInterval>>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
 
   const active = sessions.find(s => s.id === activeId) || sessions[0]
   const messages = active?.messages || []
 
-  const saveSessions = useCallback((next: Session[]) => {
-    setSessions(next)
+  const persistSessions = useCallback((next: Session[]) => {
     try { localStorage.setItem(SESSION_STORAGE(pageId), JSON.stringify(next)) } catch {}
   }, [pageId])
 
+  const saveSessions = useCallback((next: Session[]) => {
+    setSessions(next)
+    persistSessions(next)
+  }, [persistSessions])
+
+  // 更新当前会话消息：用函数式 setState 避免异步流式回调里的旧闭包导致消息丢失
   const updateActive = useCallback((mut: (msgs: Message[]) => Message[]) => {
-    saveSessions(sessions.map(s => s.id === activeId ? { ...s, messages: mut(s.messages) } : s))
-  }, [sessions, activeId, saveSessions])
+    setSessions(prev => {
+      const next = prev.map(s => s.id === activeId ? { ...s, messages: mut(s.messages) } : s)
+      persistSessions(next)
+      return next
+    })
+  }, [activeId, persistSessions])
 
   const newSession = useCallback(() => {
     const s: Session = { id: uid(), title: '新对话', messages: [], createdAt: Date.now() }
@@ -203,13 +211,20 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
     setCooldown(config.cooldown || 60)
     try { localStorage.setItem(STORAGE_PREFIX + 'cooldown_' + pageId, String(Date.now() + (config.cooldown || 60) * 1000)) } catch {}
     const ctrl = new AbortController(); abortRef.current = ctrl; let reply = ''
+    // 流式：始终只保留一条正在增长的 assistant 消息（替换上一条）
+    const upsertAssistant = (content: string) => updateActive(prev => {
+      const last = prev[prev.length - 1]
+      return last && last.role === 'assistant'
+        ? [...prev.slice(0, -1), { role: 'assistant' as const, content }]
+        : [...prev, { role: 'assistant' as const, content }]
+    })
     try {
-      reply = await streamChat(config, recent, full => updateActive(prev => [...prev, { role: 'assistant' as const, content: full }]), ctrl.signal, summary, kbOn ? kbData : '', memory)
+      reply = await streamChat(config, recent, upsertAssistant, ctrl.signal, summary, kbOn ? kbData : '', memory)
     } catch (e: unknown) {
       if ((e as Error).name === 'AbortError') return
       reply = `错误：${e instanceof Error ? e.message : '请求失败'}`
     } finally { if (abortRef.current === ctrl) abortRef.current = null; setLoading(false) }
-    updateActive(prev => [...prev, { role: 'assistant' as const, content: reply }])
+    upsertAssistant(reply)
     if (!reply.startsWith('错误')) learn(t, reply)
     if (ttsOn) setTimeout(() => speak(reply.replace(/[*_`#~>\[\]\(\)]/g, '').slice(0, 600)), 500)
   }
@@ -253,56 +268,68 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
     return <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 p-8 text-center text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-800/50">AI 对话未配置。请在后台编辑此页面。</div>
   }
 
+  const iconBtn = 'grid h-9 w-9 shrink-0 place-items-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800'
+
   const chatBody = (
-    <div className="flex h-full flex-col bg-white dark:bg-gray-900">
-      {/* 顶栏：极简 */}
-      <div className="flex shrink-0 items-center gap-3 border-b border-gray-100 px-3 py-2.5 dark:border-gray-700 sm:px-4 sm:py-3">
-        <button onClick={() => setSidebarOpen(true)} className="rounded-lg p-1.5 text-gray-500 transition hover:bg-gray-100 sm:hidden" title="会话列表">
+    <div className="flex h-full min-h-0 flex-col bg-white dark:bg-gray-900">
+      {/* 顶栏：ChatGPT 风格极简 */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-gray-100 px-3 py-2.5 dark:border-gray-700 sm:px-4">
+        <button onClick={() => setSidebarOpen(true)} className={`${iconBtn} sm:hidden`} title="会话列表" aria-label="会话列表">
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
         </button>
-        <button onClick={() => setCollapsed(!collapsed)} className="hidden rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 lg:block" title={collapsed ? '展开侧边栏' : '收起侧边栏'}>
+        <button onClick={() => setCollapsed(!collapsed)} className={`${iconBtn} hidden lg:grid`} title={collapsed ? '展开侧边栏' : '收起侧边栏'} aria-label="切换侧边栏">
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
         </button>
-        {config.avatar ? <img src={config.avatar} alt={config.botName} className="h-7 w-7 rounded-full object-cover sm:h-8 sm:w-8" /> : <span className="grid h-7 w-7 place-content-center rounded-full bg-gray-900 text-[10px] font-bold text-white sm:h-8 sm:w-8 sm:text-xs dark:bg-gray-200 dark:text-gray-900">{(config.botName || 'AI').slice(0, 2)}</span>}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className="truncate text-sm font-medium text-gray-800 dark:text-gray-200">{config.botName || 'AI 助手'}</span>
-            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${loading ? 'bg-green-400 animate-pulse' : 'bg-green-500'}`} />
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+          {config.avatar ? <img src={config.avatar} alt={config.botName} className="h-8 w-8 shrink-0 rounded-full object-cover" /> : <span className="grid h-8 w-8 shrink-0 place-content-center rounded-full bg-gray-900 text-xs font-bold text-white dark:bg-gray-200 dark:text-gray-900">{(config.botName || 'AI').slice(0, 2)}</span>}
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">{config.botName || 'AI 助手'}</span>
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${loading ? 'animate-pulse bg-green-400' : 'bg-green-500'}`} />
+            </div>
+            <p className="truncate text-[11px] text-gray-400">{loading ? '回复中...' : active?.title || '新对话'}</p>
           </div>
-          <p className="text-[11px] text-gray-400">{loading ? '回复中...' : active?.title || '新对话'}</p>
         </div>
-        <button onClick={() => setFullscreen(!fullscreen)} className="rounded-lg p-1.5 text-gray-400 transition hover:text-gray-600" title={fullscreen ? '退出全屏' : '全屏'}>
-          {fullscreen ? '⤢' : '⛶'}
+        <button onClick={() => setFullscreen(!fullscreen)} className={iconBtn} title={fullscreen ? '退出全屏' : '全屏'} aria-label="全屏">
+          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            {fullscreen
+              ? <path strokeLinecap="round" strokeLinejoin="round" d="M9 9V4.5M9 9H4.5M15 9h4.5M15 9V4.5M9 15v4.5M9 15H4.5M15 15h4.5M15 15v4.5" />
+              : <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9M3.75 20.25h4.5m-4.5 0v-4.5m0 4.5L9 15m11.25 3.75h-4.5m4.5 0v-4.5m0 4.5L15 15" />}
+          </svg>
         </button>
       </div>
 
       {/* 消息区 */}
-      <div ref={msgListRef} onScroll={onScroll} className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-2xl px-3 py-4 sm:px-4 sm:py-6">
+      <div ref={msgListRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto bg-gray-50/40 dark:bg-gray-950/40">
+        <div className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-6 sm:py-6">
           {messages.length === 0 ? (
-            <div className="flex flex-col items-center pt-16 text-center">
-              {config.avatar ? <img src={config.avatar} alt={config.botName} className="mb-3 h-14 w-14 rounded-full object-cover" /> : <span className="mb-3 grid h-14 w-14 place-content-center rounded-full bg-gray-100 text-xl font-bold text-gray-400 dark:bg-gray-800">AI</span>}
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{config.botName || 'AI 助手'}</p>
-              <p className="mt-1 text-xs text-gray-400">有什么可以帮你？</p>
-              <div className="mt-6 flex flex-wrap justify-center gap-2">
+            <div className="flex flex-col items-center pt-[12vh] text-center">
+              {config.avatar ? <img src={config.avatar} alt={config.botName} className="mb-4 h-16 w-16 rounded-full object-cover" /> : <span className="mb-4 grid h-16 w-16 place-content-center rounded-full bg-gray-100 text-2xl font-bold text-gray-400 dark:bg-gray-800">AI</span>}
+              <p className="text-base font-medium text-gray-700 dark:text-gray-300">{config.botName || 'AI 助手'}</p>
+              <p className="mt-1 text-sm text-gray-400">有什么可以帮你？</p>
+              <div className="mt-8 flex w-full max-w-md flex-wrap justify-center gap-2">
                 {['介绍一下这个网站', '帮我写一段代码', '总结我的文章', '给我一些建议'].map(s => (
-                  <button key={s} onClick={() => setInput(s)} className="rounded-full border border-gray-200 px-3 py-1.5 text-xs text-gray-500 transition hover:border-gray-400 hover:text-gray-700 dark:border-gray-700 dark:hover:border-gray-500">{s}</button>
+                  <button key={s} onClick={() => setInput(s)} className="rounded-full border border-gray-300 bg-white px-4 py-2 text-sm text-gray-600 transition hover:border-gray-500 hover:text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:text-white">{s}</button>
                 ))}
               </div>
             </div>
           ) : (
             <>
               {messages.map((m, i) => (
-                <div key={i} className={`group flex gap-2.5 py-3 ${m.role === 'user' ? 'justify-end' : ''}`}>
-                  {m.role === 'assistant' && (config.avatar ? <img src={config.avatar} className="mt-1 h-6 w-6 shrink-0 rounded-full object-cover" alt="" /> : <span className="mt-1 grid h-6 w-6 shrink-0 place-content-center rounded-full bg-gray-100 text-[10px] font-bold text-gray-500 dark:bg-gray-800">AI</span>)}
-                  <div className={`relative max-w-[85%] sm:max-w-[78%] ${m.role === 'user' ? 'rounded-2xl bg-gray-900 px-3.5 py-2 text-sm text-white sm:px-4 sm:py-2.5 dark:bg-gray-200 dark:text-gray-900' : 'flex-1 text-sm text-gray-800 dark:text-gray-200'}`}>
+                <div key={i} className={`group flex gap-3 py-4 ${m.role === 'user' ? 'justify-end' : ''} sm:py-5`}>
+                  {m.role === 'assistant' && (
+                    config.avatar
+                      ? <img src={config.avatar} alt="" className="mt-0.5 h-8 w-8 shrink-0 rounded-full object-cover" />
+                      : <span className="mt-0.5 grid h-8 w-8 shrink-0 place-content-center rounded-full bg-gray-200 text-xs font-bold text-gray-500 dark:bg-gray-800">AI</span>
+                  )}
+                  <div className={`min-w-0 ${m.role === 'user' ? 'max-w-[85%] rounded-2xl bg-gray-900 px-4 py-2.5 text-sm leading-relaxed text-white sm:max-w-[70%] dark:bg-gray-200 dark:text-gray-900' : 'flex-1 text-[15px] leading-relaxed text-gray-800 dark:text-gray-100'}`}>
                     {m.role === 'assistant'
                       ? <div className="chat-md"><ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown></div>
                       : <span className="whitespace-pre-wrap">{m.content}</span>}
                     {m.role === 'assistant' && (
-                      <div className="mt-1 flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
-                        <button onClick={() => playTTS(m.content, i)} className={`rounded-md p-1 transition ${speakingIdx === i ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600'}`}>
-                          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 4.06c0-1.336-1.616-2.005-2.56-1.06l-4.5 4.5H4.508c-1.141 0-2.318.664-2.66 1.905A9.76 9.76 0 001.5 12c0 .898.121 1.768.35 2.595.341 1.24 1.518 1.905 2.659 1.905h1.93l4.5 4.5c.945.945 2.561.276 2.561-1.06V4.06zM18.584 5.106a.75.75 0 011.06 0c3.808 3.807 3.808 9.98 0 13.788a.75.75 0 11-1.06-1.06 8.25 8.25 0 000-11.668.75.75 0 010-1.06z"/></svg>
+                      <div className={`mt-1 flex items-center gap-1 opacity-0 transition group-hover:opacity-100 ${speakingIdx === i ? 'opacity-100' : ''}`}>
+                        <button onClick={() => playTTS(m.content, i)} className={`rounded-md p-1 transition ${speakingIdx === i ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`} title="朗读">
+                          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 4.06c0-1.336-1.616-2.005-2.56-1.06l-4.5 4.5H4.508c-1.141 0-2.318.664-2.66 1.905A9.76 9.76 0 001.5 12c0 .898.121 1.768.35 2.595.341 1.24 1.518 1.905 2.659 1.905h1.93l4.5 4.5c.945.945 2.561.276 2.561-1.06V4.06zM18.584 5.106a.75.75 0 011.06 0c3.808 3.807 3.808 9.98 0 13.788a.75.75 0 11-1.06-1.06 8.25 8.25 0 000-11.668.75.75 0 010-1.06z"/></svg>
                         </button>
                       </div>
                     )}
@@ -310,56 +337,68 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
                 </div>
               ))}
               {loading && (
-                <div className="flex gap-2.5 py-3">
-                  <span className="mt-1 grid h-6 w-6 shrink-0 place-content-center rounded-full bg-gray-100 text-[10px] font-bold text-gray-500 dark:bg-gray-800">AI</span>
-                  <div className="flex items-center gap-1 rounded-xl bg-gray-100 px-3 py-2.5 dark:bg-gray-800">
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" /><span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: '0.15s' }} /><span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: '0.3s' }} />
+                <div className="flex gap-3 py-4 sm:py-5">
+                  <span className="mt-0.5 grid h-8 w-8 shrink-0 place-content-center rounded-full bg-gray-200 text-xs font-bold text-gray-500 dark:bg-gray-800">AI</span>
+                  <div className="flex items-center gap-1.5 rounded-xl bg-gray-100 px-4 py-3 dark:bg-gray-800">
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" /><span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: '0.15s' }} /><span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: '0.3s' }} />
                   </div>
                 </div>
               )}
-              <p className="pt-2 text-center text-[11px] text-gray-300 dark:text-gray-600">AI 生成内容仅供参考 · 联系：jasonchan0654@gmail.com</p>
+              <p className="pt-2 text-center text-[11px] text-gray-400/70 dark:text-gray-500/70">AI 生成内容仅供参考 · 联系：jasonchan0654@gmail.com</p>
             </>
           )}
           <div ref={bottomRef} />
         </div>
       </div>
 
-      {/* 输入栏：功能整合 */}
-      <div className="shrink-0 border-t border-gray-100 p-3 dark:border-gray-700 sm:p-4">
-        <div className="mx-auto w-full max-w-2xl">
-          <div className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-white p-2 shadow-sm transition focus-within:border-gray-400 dark:border-gray-700 dark:bg-gray-800">
-            <button onClick={() => fileRef.current?.click()} className="shrink-0 rounded-lg p-2 text-gray-400 transition hover:text-gray-600" title="上传 Markdown 文件">
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" /></svg>
+      {/* 输入栏：ChatGPT 风格整合，按钮统一尺寸 */}
+      <div className="shrink-0 bg-white px-3 pb-3 pt-2 dark:bg-gray-900 sm:px-6 sm:pb-4">
+        <div className="mx-auto w-full max-w-3xl">
+          <div className="flex items-end gap-1 rounded-[24px] border border-gray-300 bg-white p-1.5 shadow-sm transition focus-within:border-gray-500 focus-within:shadow-md dark:border-gray-600 dark:bg-gray-800">
+            <button onClick={() => fileRef.current?.click()} className={`${iconBtn}`} title="上传 Markdown 文件" aria-label="上传文件">
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" /></svg>
             </button>
             <input ref={fileRef} type="file" accept=".md,.markdown,text/markdown" onChange={onUpload} className="hidden" />
             <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
               placeholder={`向 ${config.botName || 'AI'} 发送消息...`} disabled={loading}
               rows={1} style={{ resize: 'none' }}
-              className="max-h-32 min-h-[24px] flex-1 bg-transparent py-1.5 text-sm text-gray-800 outline-none disabled:opacity-50 dark:text-gray-200" />
-            <button onClick={toggleKb} className={`shrink-0 rounded-lg px-2 py-1 text-xs transition ${kbOn ? 'text-indigo-500' : 'text-gray-400 hover:text-gray-600'}`} title="知识库">{kbLoading ? '⏳' : '📚'}</button>
-            {config.autoTTS && <button onClick={() => setTtsOn(!ttsOn)} className={`shrink-0 rounded-lg px-1 py-1 text-xs transition ${ttsOn ? 'text-green-500' : 'text-gray-400 hover:text-gray-600'}`} title="自动朗读">{ttsOn ? '🔊' : '🔇'}</button>}
-            {messages.length > 0 && <button onClick={exportChat} className="shrink-0 rounded-lg px-1 py-1 text-xs text-gray-400 transition hover:text-gray-600" title="导出">⤓</button>}
+              className="max-h-40 min-h-[38px] flex-1 bg-transparent px-2 py-2.5 text-[15px] leading-relaxed text-gray-800 outline-none placeholder:text-gray-400 disabled:opacity-50 dark:text-gray-100" />
+            <button onClick={toggleKb} className={`${iconBtn} ${kbOn ? 'text-indigo-500 dark:text-indigo-400' : ''}`} title={kbOn ? '关闭知识库' : '开启知识库'} aria-label="知识库">
+              <svg className={`h-5 w-5 ${kbLoading ? 'animate-spin' : ''}`} viewBox="0 0 24 24" fill={kbOn ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>
+            </button>
+            {config.autoTTS && (
+              <button onClick={() => setTtsOn(!ttsOn)} className={`${iconBtn} ${ttsOn ? 'text-green-500' : ''}`} title={ttsOn ? '关闭自动朗读' : '开启自动朗读'} aria-label="自动朗读">
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill={ttsOn ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.6"><path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" /></svg>
+              </button>
+            )}
+            {messages.length > 0 && (
+              <button onClick={exportChat} className={iconBtn} title="导出对话" aria-label="导出">
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+              </button>
+            )}
             <button onClick={send} disabled={loading || !input.trim() || cooldown > 0}
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gray-900 text-white transition hover:bg-gray-700 disabled:opacity-40 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300">
-              {cooldown > 0 ? <span className="text-[10px]">{cooldown}</span> : <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M3.478 2.404a.75.75 0 00-.926.941l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.404z" /></svg>}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gray-900 text-white transition hover:bg-gray-700 disabled:opacity-40 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300">
+              {cooldown > 0
+                ? <span className="text-xs font-medium">{cooldown}</span>
+                : <svg className="h-4 w-4 translate-x-px" viewBox="0 0 24 24" fill="currentColor"><path d="M3.478 2.404a.75.75 0 00-.926.941l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.404z" /></svg>}
             </button>
           </div>
-          <p className="mt-1.5 text-center text-[10px] text-gray-300 dark:text-gray-600">Shift+Enter 换行 · AI 生成内容仅供参考</p>
+          <p className="mt-1.5 text-center text-[10px] text-gray-400/70 dark:text-gray-500/70">Shift+Enter 换行 · AI 生成内容仅供参考</p>
         </div>
       </div>
     </div>
   )
 
   const sidebar = (
-    <div className="flex h-full w-60 flex-col bg-gray-50 dark:bg-gray-950">
+    <div className="flex h-full w-64 flex-col bg-gray-50 dark:bg-gray-950">
       <div className="p-3">
-        <button onClick={newSession} className="flex w-full items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
+        <button onClick={newSession} className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>新建会话
         </button>
       </div>
       <div className="flex-1 overflow-y-auto px-2 pb-3">
         {sessions.map(s => (
-          <div key={s.id} onClick={() => selectSession(s.id)} className={`group mb-1 flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-sm transition ${s.id === activeId ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-800 dark:text-gray-100' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-900'}`}>
+          <div key={s.id} onClick={() => selectSession(s.id)} className={`group mb-1 flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition ${s.id === activeId ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-800 dark:text-gray-100' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-900'}`}>
             <svg className="h-3.5 w-3.5 shrink-0 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" /></svg>
             <span className="min-w-0 flex-1 truncate">{s.title}</span>
             <button onClick={e => deleteSession(e, s.id)} className="hidden shrink-0 text-gray-300 transition hover:text-red-500 group-hover:block">×</button>
@@ -369,26 +408,29 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
     </div>
   )
 
+  // 桌面端侧边栏（可折叠）+ 移动端抽屉
+  const desktopSidebar = (
+    <div className={`hidden shrink-0 ${collapsed ? 'lg:hidden' : 'lg:block'} border-r border-gray-200 dark:border-gray-800`}>
+      {sidebar}
+    </div>
+  )
+
+  const mobileSidebar = sidebarOpen && (
+    <div className="fixed inset-0 z-50 lg:hidden">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
+      <div className="absolute inset-y-0 left-0 w-64 shadow-2xl">{sidebar}</div>
+    </div>
+  )
+
   const layout = (
-    <div className="flex h-full overflow-hidden bg-white dark:bg-gray-900">
-      {/* 桌面端侧边栏 */}
-      <div className={`hidden ${collapsed ? 'lg:hidden' : 'lg:block'} border-r border-gray-100 dark:border-gray-800`}>{sidebar}</div>
-      <div className="flex-1">{chatBody}</div>
-      {/* 移动端侧边栏 */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-black/30" onClick={() => setSidebarOpen(false)} />
-          <div className="absolute inset-y-0 left-0">{sidebar}</div>
-        </div>
-      )}
+    <div className="flex h-full min-h-0 overflow-hidden bg-white dark:bg-gray-900">
+      {desktopSidebar}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">{chatBody}</div>
+      {mobileSidebar}
     </div>
   )
 
-  const wrapper = (
-    <div ref={containerRef} className="flex h-full min-h-0 flex-col overflow-hidden bg-white dark:bg-gray-900 sm:rounded-2xl sm:border sm:border-gray-200 sm:dark:border-gray-700" style={{ height: '100dvh', maxHeight: fullscreen ? '100dvh' : 'calc(100dvh - 5rem)' }}>
-      {layout}
-    </div>
-  )
-
-  return fullscreen ? createPortal(<div className="fixed inset-0 z-[100] bg-white dark:bg-gray-900">{layout}</div>, document.body) : wrapper
+  return fullscreen
+    ? createPortal(<div className="fixed inset-0 z-[100] bg-white dark:bg-gray-900">{layout}</div>, document.body)
+    : layout
 }

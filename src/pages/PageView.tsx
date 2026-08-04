@@ -129,7 +129,7 @@ export function PageView() {
   // AI 对话页：ChatGPT 风格全宽沉浸式，无标题、无 fade-up transform
   if (isAIChat) {
     return (
-      <div className="flex min-h-[calc(100dvh-4rem)] flex-col">
+      <div className="flex h-full min-h-0 flex-col">
         {renderContent()}
       </div>
     )
