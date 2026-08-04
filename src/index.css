@@ -304,6 +304,67 @@ body {
   color: #e2e8f0;
 }
 
+/* ===== AI 对话消息内 Markdown（紧凑版） ===== */
+.chat-md {
+  font-size: 13px;
+  line-height: 1.7;
+  word-wrap: break-word;
+}
+.chat-md > *:first-child { margin-top: 0; }
+.chat-md > *:last-child { margin-bottom: 0; }
+.chat-md p { margin: 0.5em 0; }
+.chat-md h1, .chat-md h2, .chat-md h3, .chat-md h4 {
+  font-weight: 600;
+  margin: 0.8em 0 0.4em;
+  color: #111827;
+}
+.chat-md h1 { font-size: 1.25em; }
+.chat-md h2 { font-size: 1.15em; }
+.chat-md h3 { font-size: 1.05em; }
+.chat-md ul, .chat-md ol { margin: 0.4em 0; padding-left: 1.4em; }
+.chat-md li { margin: 0.2em 0; }
+.chat-md a { color: #2563eb; text-decoration: none; border-bottom: 1px solid rgba(37,99,235,0.25); }
+.chat-md strong { font-weight: 700; color: #111827; }
+.chat-md code {
+  background: #f3f4f6;
+  color: #be185d;
+  padding: 0.1em 0.35em;
+  border-radius: 0.3rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+.chat-md pre {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 0.8em 1em;
+  border-radius: 0.75rem;
+  overflow-x: auto;
+  margin: 0.6em 0;
+  font-size: 0.85em;
+  line-height: 1.6;
+}
+.chat-md pre code { background: transparent; color: inherit; padding: 0; border-radius: 0; }
+.chat-md blockquote {
+  margin: 0.6em 0;
+  padding: 0.4em 0.8em;
+  border-left: 3px solid #d1d5db;
+  background: rgba(243,244,246,0.6);
+  border-radius: 0 0.5rem 0.5rem 0;
+  color: #4b5563;
+}
+.chat-md table { border-collapse: collapse; margin: 0.6em 0; font-size: 0.9em; width: 100%; }
+.chat-md th, .chat-md td { border: 1px solid #e5e7eb; padding: 0.4em 0.7em; text-align: left; }
+.chat-md th { background: #f9fafb; font-weight: 600; }
+.chat-md hr { border: 0; border-top: 1px solid #e5e7eb; margin: 1em 0; }
+
+.dark .chat-md h1, .dark .chat-md h2, .dark .chat-md h3, .dark .chat-md h4 { color: #f3f4f6; }
+.dark .chat-md strong { color: #f3f4f6; }
+.dark .chat-md code { background: #1f2937; color: #f472b6; }
+.dark .chat-md th, .dark .chat-md td { border-color: #374151; }
+.dark .chat-md th { background: #1f2937; }
+.dark .chat-md blockquote { border-left-color: #4b5563; background: rgba(31,41,55,0.5); color: #9ca3af; }
+.dark .chat-md hr { border-top-color: #374151; }
+
 /* ===== 动画 ===== */
 @keyframes fadeUp {
   from {

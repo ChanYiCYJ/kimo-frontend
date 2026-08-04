@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { articleApi, categoryApi, pageApi, tagApi } from '../lib/api'
 import type { AIChatConfig } from '../lib/types'
 
@@ -10,8 +12,9 @@ interface Message {
 
 const STORAGE_PREFIX = 'kimo_chat_'
 
-async function streamChat(cfg: AIChatConfig, msgs: Message[], onChunk: (t: string) => void, signal: AbortSignal, summary = '', knowledge = '') {
+async function streamChat(cfg: AIChatConfig, msgs: Message[], onChunk: (t: string) => void, signal: AbortSignal, summary = '', knowledge = '', memory = '') {
   const sys = (cfg.systemPrompt || '')
+    + (memory ? `\n\n以下是过往对话中学习到的用户偏好与经验，请据此优化你的回答：\n${memory}` : '')
     + (summary ? `\n\n对话上下文摘要：\n${summary}` : '')
     + (knowledge ? `\n\n以下是本站点知识库内容，请优先基于它回答问题：\n${knowledge}` : '')
   const res = await fetch(cfg.endpoint.replace(/\/+$/, '') + '/chat/completions', {
@@ -62,6 +65,9 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
   const [kbOn, setKbOn] = useState(false)
   const [kbLoading, setKbLoading] = useState(false)
   const [kbData, setKbData] = useState('')
+  const [memory, setMemory] = useState(() => {
+    try { return localStorage.getItem(STORAGE_PREFIX + 'memory_' + pageId) || '' } catch { return '' }
+  })
   const [ttsOn, setTtsOn] = useState(!!config.autoTTS)
   const [consented, setConsented] = useState(() => {
     try { return localStorage.getItem(STORAGE_PREFIX + 'consent_' + pageId) === '1' } catch { return false }
@@ -168,6 +174,17 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
     })
   }, [kbData, loadKnowledge])
 
+  // 学习：将最近一轮问答摘要存入记忆，供后续迭代优化
+  const learn = useCallback((q: string, a: string) => {
+    const insight = `用户问：${q.slice(0, 50)} → AI 答：${a.slice(0, 80)}${a.length > 80 ? '…' : ''}`
+    const lines = memory.split('\n').filter(Boolean)
+    lines.push(`- ${insight}`)
+    if (lines.length > 12) lines.shift()
+    const next = lines.join('\n')
+    setMemory(next)
+    try { localStorage.setItem(STORAGE_PREFIX + 'memory_' + pageId, next) } catch {}
+  }, [memory, pageId])
+
   const send = async () => {
     const t = input.trim(); if (!t || loading || cooldown > 0) return
     // 消息数限制检查
@@ -191,12 +208,14 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
     try { localStorage.setItem(STORAGE_PREFIX + 'cooldown_' + pageId, String(Date.now() + (config.cooldown || 60) * 1000)) } catch {}
     const ctrl = new AbortController(); abortRef.current = ctrl; let reply = ''
     try {
-      reply = await streamChat(config, recent, full => setMessages([...allMsgs, { role: 'assistant' as const, content: full }]), ctrl.signal, summary, kbOn ? kbData : '')
+      reply = await streamChat(config, recent, full => setMessages([...allMsgs, { role: 'assistant' as const, content: full }]), ctrl.signal, summary, kbOn ? kbData : '', memory)
     } catch (e: unknown) {
       if ((e as Error).name === 'AbortError') return
       reply = `错误：${e instanceof Error ? e.message : '请求失败'}`
     } finally { if (abortRef.current === ctrl) abortRef.current = null; setLoading(false) }
     const fin: Message[] = [...allMsgs, { role: 'assistant' as const, content: reply }]; setMessages(fin); save(fin)
+    // 学习本轮问答，迭代优化提示词
+    if (!reply.startsWith('错误')) learn(t, reply)
     // 自动朗读
     if (ttsOn) { setTimeout(() => speak(reply.replace(/[*_`#~>\[\]\(\)]/g, '').slice(0, 600)), 500) }
   }
@@ -301,6 +320,14 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
             )}
             <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{config.botName || 'AI 助手'}</p>
             <p className="mt-0.5 text-xs text-gray-400 sm:mt-1">有什么可以帮你？</p>
+            <div className="mt-6 flex flex-wrap justify-center gap-2 px-4">
+              {['介绍一下这个网站', '帮我写一段代码', '总结我的文章', '给我一些建议'].map(s => (
+                <button key={s} onClick={() => setInput(s)}
+                  className="rounded-full border border-gray-200 px-3 py-1.5 text-xs text-gray-500 transition hover:border-gray-400 hover:text-gray-700 dark:border-gray-700 dark:hover:border-gray-500">
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {messages.map((m, i) => (
@@ -311,7 +338,11 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
                 : <span className="grid h-6 w-6 shrink-0 place-content-center rounded-full bg-gray-100 text-[10px] font-bold text-gray-500 dark:bg-gray-800">AI</span>
             )}
             <div className="group relative max-w-[82%] sm:max-w-[78%]">
-              <div className={`rounded-2xl px-3 py-2 text-[13px] leading-relaxed whitespace-pre-wrap sm:px-4 sm:py-2.5 sm:text-sm ${m.role === 'user' ? 'bg-gray-900 text-white dark:bg-gray-200 dark:text-gray-900' : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'}`}>{m.content}</div>
+              <div className={`rounded-2xl px-3 py-2.5 text-[13px] leading-relaxed sm:px-4 sm:py-3 sm:text-sm ${m.role === 'user' ? 'bg-gray-900 text-white dark:bg-gray-200 dark:text-gray-900' : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'}`}>
+                {m.role === 'assistant'
+                  ? <div className="chat-md"><ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown></div>
+                  : <span className="whitespace-pre-wrap">{m.content}</span>}
+              </div>
               {m.role === 'assistant' && (
                 <button onClick={() => playTTS(m.content, i)}
                   className={`absolute -bottom-1 -right-1 rounded-full p-1.5 transition shadow-sm ${speakingIdx === i ? 'bg-blue-500 text-white' : 'bg-white text-gray-400 hover:text-gray-600 dark:bg-gray-700 dark:hover:text-gray-300'}`}>
@@ -324,6 +355,18 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
             </div>
           </div>
         ))}
+        {loading && (
+          <div className="flex items-end gap-2">
+            <span className="grid h-6 w-6 shrink-0 place-content-center rounded-full bg-gray-100 text-[10px] font-bold text-gray-500 dark:bg-gray-800">AI</span>
+            <div className="rounded-2xl bg-gray-100 px-4 py-3 dark:bg-gray-800">
+              <span className="inline-flex gap-1">
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: '0.15s' }} />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: '0.3s' }} />
+              </span>
+            </div>
+          </div>
+        )}
         <div ref={bottomRef} />
         {messages.length > 0 && (
           <p className="text-center text-[11px] text-gray-300 dark:text-gray-600 pt-1">
