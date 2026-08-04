@@ -124,20 +124,23 @@ export function PageView() {
     }
   }
 
+  const isAIChat = page.type === 'html' && page.content?.startsWith(AI_CHAT_MARKER)
+
   return (
     <div className="fade-up">
-      {/* 头部：标题 + 分隔 — 与文章页统一 */}
-      <div className="mx-auto max-w-3xl px-4 sm:px-0">
-        <h1 className="mb-4 mt-6 text-center text-3xl font-semibold leading-snug tracking-tight text-gray-900 sm:text-4xl">
-          {page.name}
-        </h1>
-        <div className="mt-6 border-t border-gray-200" />
-      </div>
+      {/* AI 对话页不显示标题，直接全屏 */}
+      {!isAIChat && (
+        <div className="mx-auto max-w-3xl px-4 sm:px-0">
+          <h1 className="mb-4 mt-6 text-center text-3xl font-semibold leading-snug tracking-tight text-gray-900 sm:text-4xl">
+            {page.name}
+          </h1>
+          <div className="mt-6 border-t border-gray-200" />
+        </div>
+      )}
 
-      {/* 正文 */}
-      <div className="mx-auto mt-8 max-w-3xl px-4 sm:px-0">
+      <div className={`mx-auto max-w-3xl px-4 sm:px-0 ${isAIChat ? 'mt-0 max-w-none px-0 sm:px-0' : 'mt-8'}`}>
         <div className="flex justify-center">
-          <div className="w-full max-w-3xl">{renderContent()}</div>
+          <div className={`${isAIChat ? 'w-full max-w-none' : 'w-full max-w-3xl'}`}>{renderContent()}</div>
         </div>
       </div>
     </div>
