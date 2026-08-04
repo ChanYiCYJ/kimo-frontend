@@ -59,6 +59,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
     try { return localStorage.getItem(STORAGE_PREFIX + 'consent_' + pageId) === '1' } catch { return false }
   })
   const bottomRef = useRef<HTMLDivElement>(null)
+  const msgListRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval>>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -68,7 +69,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
   useEffect(() => {
     const el = inputRef.current; if (!el) return
     const onFocus = () => {
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 300)
+      if (isNearBottom()) setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 300)
     }
     el.addEventListener('focus', onFocus)
     return () => el.removeEventListener('focus', onFocus)
@@ -82,7 +83,14 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
     try { localStorage.setItem(STORAGE_PREFIX + 'history_' + pageId, JSON.stringify(msgs)) } catch {}
   }, [pageId])
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  const isNearBottom = () => {
+    const el = msgListRef.current; if (!el) return true
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  }
+
+  useEffect(() => {
+    if (isNearBottom()) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
   useEffect(() => {
     if (cooldown <= 0) {
@@ -208,7 +216,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
       </div>
 
       {/* 消息列表 */}
-      <div className="flex-1 space-y-3 overflow-y-auto px-3 py-2 sm:space-y-4 sm:px-4 sm:py-3">
+      <div ref={msgListRef} className="flex-1 space-y-3 overflow-y-auto px-3 py-2 sm:space-y-4 sm:px-4 sm:py-3">
         {messages.length === 0 && (
           <div className="flex flex-col items-center py-12 sm:py-16">
             {config.avatar ? (
