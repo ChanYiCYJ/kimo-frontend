@@ -37,6 +37,7 @@ export function PageEditor() {
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiMaxMsg, setAiMaxMsg] = useState('')
   const [aiCooldown, setAiCooldown] = useState('')
+  const [aiAutoTTS, setAiAutoTTS] = useState(false)
   const [showKey, setShowKey] = useState(false)
 
   useEffect(() => {
@@ -59,6 +60,7 @@ export function PageEditor() {
               setAiPrompt(cfg.systemPrompt || '')
               setAiMaxMsg(cfg.maxMessages ? String(cfg.maxMessages) : '')
               setAiCooldown(cfg.cooldown ? String(cfg.cooldown) : '')
+              setAiAutoTTS(!!cfg.autoTTS)
             } catch {}
           } else {
             setType(p.type as PageDisplayType)
@@ -147,6 +149,7 @@ export function PageEditor() {
           systemPrompt: aiPrompt.trim(),
           maxMessages: aiMaxMsg ? Number(aiMaxMsg) : undefined,
           cooldown: aiCooldown ? Number(aiCooldown) : undefined,
+          autoTTS: aiAutoTTS || undefined,
         } as AIChatConfig)
       : (content || null)
     const payload = { name: name.trim(), type: saveType, content: saveContent, status: hidden ? 1 : 0 }
@@ -255,6 +258,12 @@ export function PageEditor() {
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-500">发送冷却（秒）</label>
               <input value={aiCooldown} onChange={e => setAiCooldown(e.target.value.replace(/\D/g,''))} placeholder="60" className={inputCls} />
+            </div>
+            <div className="flex items-end pb-2">
+              <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-500 transition hover:bg-gray-50">
+                <input type="checkbox" checked={aiAutoTTS} onChange={e => setAiAutoTTS(e.target.checked)} className="h-4 w-4 accent-gray-900" />
+                自动朗读
+              </label>
             </div>
           </div>
 

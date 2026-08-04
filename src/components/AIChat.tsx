@@ -8,8 +8,8 @@ interface Message {
 
 const STORAGE_PREFIX = 'kimo_chat_'
 
-async function streamChat(cfg: AIChatConfig, msgs: Message[], onChunk: (t: string) => void, signal: AbortSignal, search = false) {
-  const sys = (cfg.systemPrompt || '') + (search ? '\n你已开启联网搜索模式，可以获取实时信息。' : '')
+async function streamChat(cfg: AIChatConfig, msgs: Message[], onChunk: (t: string) => void, signal: AbortSignal, search = false, summary = '') {
+  const sys = (cfg.systemPrompt || '') + (search ? '\n你已开启联网搜索模式，可以获取实时信息。' : '') + (summary ? `\n\n对话知识库摘要：\n${summary}` : '')
   const res = await fetch(cfg.endpoint.replace(/\/+$/, '') + '/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
@@ -101,16 +101,25 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
       return
     }
     const user: Message = { role: 'user' as const, content: t }
-    const next: Message[] = [...messages, user]; setMessages(next); setInput(''); setLoading(true); save(next)
+    const allMsgs = [...messages, user]
+    // 知识库摘要：超过6条时提取前部对话作为上下文
+    let summary = ''
+    const recent = allMsgs.length > 6 ? allMsgs.slice(-6) : allMsgs
+    if (allMsgs.length > 6) {
+      summary = allMsgs.slice(0, allMsgs.length - 6).map((m, i) => `${m.role === 'user' ? '问' : '答'}${i+1}: ${m.content.slice(0, 60)}`).join('; ')
+    }
+    setMessages(allMsgs); setInput(''); setLoading(true); save(allMsgs)
     setCooldown(config.cooldown || 60)
     const ctrl = new AbortController(); abortRef.current = ctrl; let reply = ''
     try {
-      reply = await streamChat(config, next, full => setMessages([...next, { role: 'assistant' as const, content: full }]), ctrl.signal, webSearch)
+      reply = await streamChat(config, recent, full => setMessages([...allMsgs, { role: 'assistant' as const, content: full }]), ctrl.signal, webSearch, summary)
     } catch (e: unknown) {
       if ((e as Error).name === 'AbortError') return
       reply = `错误：${e instanceof Error ? e.message : '请求失败'}`
     } finally { if (abortRef.current === ctrl) abortRef.current = null; setLoading(false) }
-    const fin: Message[] = [...next, { role: 'assistant' as const, content: reply }]; setMessages(fin); save(fin)
+    const fin: Message[] = [...allMsgs, { role: 'assistant' as const, content: reply }]; setMessages(fin); save(fin)
+    // 自动朗读
+    if (config.autoTTS) { setTimeout(() => speak(reply.replace(/[*_`#~>\[\]\(\)]/g, '').slice(0, 600)), 500) }
   }
 
   if (!consented) {
@@ -203,7 +212,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
               <div className={`rounded-2xl px-3 py-2 text-[13px] leading-relaxed whitespace-pre-wrap sm:px-4 sm:py-2.5 sm:text-sm ${m.role === 'user' ? 'bg-gray-900 text-white dark:bg-gray-200 dark:text-gray-900' : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'}`}>{m.content}</div>
               {m.role === 'assistant' && (
                 <button onClick={() => playTTS(m.content, i)}
-                  className={`absolute -bottom-1 -right-1 rounded-full p-1 transition sm:opacity-0 sm:group-hover:opacity-100 ${speakingIdx === i ? 'bg-blue-500 text-white opacity-100' : 'bg-white text-gray-400 shadow-sm hover:text-gray-600 dark:bg-gray-700'}`}>
+                  className={`absolute -bottom-1 -right-1 rounded-full p-1.5 transition shadow-sm ${speakingIdx === i ? 'bg-blue-500 text-white' : 'bg-white text-gray-400 hover:text-gray-600 dark:bg-gray-700 dark:hover:text-gray-300'}`}>
                   <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M13.5 4.06c0-1.336-1.616-2.005-2.56-1.06l-4.5 4.5H4.508c-1.141 0-2.318.664-2.66 1.905A9.76 9.76 0 001.5 12c0 .898.121 1.768.35 2.595.341 1.24 1.518 1.905 2.659 1.905h1.93l4.5 4.5c.945.945 2.561.276 2.561-1.06V4.06zM18.584 5.106a.75.75 0 011.06 0c3.808 3.807 3.808 9.98 0 13.788a.75.75 0 11-1.06-1.06 8.25 8.25 0 000-11.668.75.75 0 010-1.06z"/>
                     <path d="M15.932 7.757a.75.75 0 011.061 0 6 6 0 010 8.486.75.75 0 01-1.06-1.061 4.5 4.5 0 000-6.364.75.75 0 010-1.06z"/>
