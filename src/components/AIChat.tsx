@@ -81,7 +81,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
     const t = input.trim(); if (!t || loading || cooldown > 0) return
     const user: Message = { role: 'user' as const, content: t }
     const next: Message[] = [...messages, user]; setMessages(next); setInput(''); setLoading(true); save(next)
-    setCooldown(20)
+    setCooldown(60)
     const ctrl = new AbortController(); abortRef.current = ctrl; let reply = ''
     try {
       reply = await streamChat(config, next, full => setMessages([...next, { role: 'assistant' as const, content: full }]), ctrl.signal)
@@ -94,7 +94,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
 
   if (!consented) {
     return (
-      <div className="mx-auto max-w-lg rounded-2xl border border-gray-200 bg-white p-4 sm:p-6 dark:border-gray-700 dark:bg-gray-900">
+      <div className="mx-auto max-w-lg rounded-2xl border border-gray-200 bg-white p-4 sm:p-6 dark:border-gray-700 dark:bg-gray-900 max-sm:mx-2">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">知情同意声明</h3>
         <div className="mt-4 space-y-2 text-sm leading-relaxed text-gray-600 dark:text-gray-400">
           <p>在开始对话前，请了解：</p>
@@ -118,9 +118,9 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
   }
 
   return (
-    <div className="flex flex-col bg-white dark:bg-gray-900 max-sm:fixed max-sm:inset-0 max-sm:z-30 sm:overflow-hidden sm:rounded-2xl sm:border sm:border-gray-200 sm:dark:border-gray-700" style={{ height: 'auto', minHeight: 'min(480px, 100dvh)' }}>
+    <div className="flex flex-col bg-white dark:bg-gray-900 sm:rounded-2xl sm:border sm:border-gray-200 sm:dark:border-gray-700 max-sm:-mx-4 max-sm:-mt-10" style={{ height: 'auto', minHeight: 'min(500px, 100dvh)', maxHeight: 'calc(100dvh - 8rem)' }}>
       {/* 顶栏 */}
-      <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-3 py-2.5 dark:border-gray-700 sm:px-4 sm:py-3">
+      <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-3 py-2.5 dark:border-gray-700 sm:px-4 sm:py-3 sm:rounded-t-2xl">
         <div className="flex items-center gap-2 sm:gap-3">
           {config.avatar ? (
             <img src={config.avatar} alt={config.botName} className="h-7 w-7 rounded-full object-cover ring-1 ring-gray-200 sm:h-8 sm:w-8 dark:ring-gray-700" />
