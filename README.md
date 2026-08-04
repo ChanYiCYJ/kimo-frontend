@@ -58,32 +58,40 @@ server: {
 
 > 💡 后端未启动时，前端会自动回退到**演示数据**（`src/lib/mock.ts`），便于本地预览 UI。
 
-## ☁️ 部署到 Vercel
+## ☁️ 一键部署到 Vercel
 
-项目根目录已包含 `vercel.json`，会自动：
+本项目**不内置任何后端地址**，通过 `vercel.ts` 在构建时读取 `API_BACKEND` 环境变量，动态生成 `/api` 与 `/static` 的反代规则（服务端转发，后端无需开启 CORS），其余路由回退到 `index.html`（SPA 客户端路由）。
 
-- 构建命令 `npm run build`，产物输出到 `dist/`（Vercel 自动识别 Vite）
-- 将 `/api/*` 代理到后端 `https://api.yogofor.top/api/*`
-- 将 `/static/*`（上传图片）代理到后端 `https://api.yogofor.top/static/*`
-- 其余路由回退到 `index.html`（SPA 客户端路由）
+> 点击下方按钮即可把本仓库 **克隆到你的账号** 并引导填写 `API_BACKEND`：
 
-无需额外环境变量（`VITE_API_BASE` 保持默认 `/api/v1`，同源代理免去 CORS）。
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FChanYiCYJ%2Fkimo-frontend&env=API_BACKEND&envDescription=%E5%90%8E%E7%AB%AF%E5%9C%B0%E5%9D%80%EF%BC%88%E4%B8%8D%E5%90%AB%E5%B0%BE%E9%83%A8%E6%96%9C%E6%9D%A0%EF%BC%8C%E5%A6%82%20https%3A%2F%2Fapi.example.com%EF%BC%89&project-name=kimo-frontend&repository-name=kimo-frontend)
 
-### 方式一：GitHub 集成（推荐）
+### 环境变量
 
-1. 把代码推送到 GitHub 仓库（本项目为 `kimo-frontend`）
-2. 在 [Vercel](https://vercel.com) → **Add New → Project** → 导入该仓库
-3. Vercel 自动识别 Vite，直接 **Deploy**
+| 变量 | 必填 | 说明 | 示例 |
+| --- | --- | --- | --- |
+| `API_BACKEND` | ✅ | 后端 FastAPI 地址（**不带尾部斜杠**），用于反代 `/api`、`/static` | `https://api.example.com` |
+| `VITE_USE_MOCK` | 可选 | 置 `1` 强制使用演示数据（不联网） | `1` |
+
+> 未设置 `API_BACKEND` 也能构建成功，但站点无法联网（仅渲染静态页面），构建日志会给出提醒。
+
+### 方式一：Deploy 按钮 / GitHub 集成
+
+1. 点击上面的 **Deploy with Vercel** 按钮（或到 Vercel **Add New → Project** 导入本仓库）
+2. 在配置向导中填写 `API_BACKEND`（指向你自己的后端）
+3. 点击 **Deploy**，完成后即可访问 `https://<project>.vercel.app`
 
 ### 方式二：Vercel CLI
 
 ```bash
 npm i -g vercel
 vercel login
+vercel link
+vercel env add API_BACKEND production https://your-api.example.com
 vercel --prod
 ```
 
-> ⚠️ 部署时如果后端域名变更，只需修改 `vercel.json` 中的 `destination` 地址后重新部署。
+> 💡 前端请求仍走相对路径 `/api/v1`（`VITE_API_BASE` 保持默认），由 Vercel 反代到 `API_BACKEND`，因此同源、无跨域问题。
 
 ## � 前后端同步热更新
 
