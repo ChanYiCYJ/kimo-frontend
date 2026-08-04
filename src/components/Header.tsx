@@ -43,26 +43,27 @@ export function Header() {
         {/* 右侧：搜索 + 导航（原项目：bg-white border rounded-3xl 搜索框） */}
         <nav className="hidden items-center gap-4 text-sm text-gray-500 md:flex">
           <form onSubmit={submitSearch}>
-            <div className="flex items-center overflow-hidden rounded-3xl border border-gray-300 bg-white transition focus-within:border-gray-400">
-              <svg className="ml-3 h-4 w-4 shrink-0 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
-                <path
-                  fillRule="evenodd"
-                  d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z"
-                  clipRule="evenodd"
-                />
-              </svg>
+            <div className="flex items-center rounded-3xl border border-gray-300 bg-white py-1 pl-4 pr-1 transition focus-within:border-gray-400">
               <input
                 type="search"
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
                 placeholder="搜索文章..."
-                className="w-32 bg-transparent px-2.5 py-2 text-sm text-gray-700 outline-none placeholder:text-gray-400 lg:w-40"
+                className="w-28 bg-transparent py-1 text-sm text-gray-700 outline-none placeholder:text-gray-400 lg:w-40"
               />
               <button
                 type="submit"
-                className="bg-gray-900 px-4 py-2 text-xs font-medium text-white transition hover:bg-gray-700"
+                aria-label="搜索"
+                title="搜索"
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
               >
-                搜索
+                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path
+                    fillRule="evenodd"
+                    d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z"
+                    clipRule="evenodd"
+                  />
+                </svg>
               </button>
             </div>
           </form>
@@ -118,19 +119,26 @@ export function Header() {
       {mobileOpen && (
         <div className="border-t border-gray-100 bg-white px-4 py-4 md:hidden">
           <form onSubmit={submitSearch} className="mb-3">
-            <div className="flex items-center overflow-hidden rounded-3xl border border-gray-300 bg-white">
+            <div className="flex items-center rounded-3xl border border-gray-300 bg-white py-1 pl-4 pr-1">
               <input
                 type="search"
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
                 placeholder="搜索文章..."
-                className="flex-1 bg-transparent px-4 py-2 text-sm outline-none placeholder:text-gray-400"
+                className="flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-gray-400"
               />
               <button
                 type="submit"
-                className="bg-gray-900 px-4 py-2 text-xs font-medium text-white"
+                aria-label="搜索"
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
               >
-                搜索
+                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path
+                    fillRule="evenodd"
+                    d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z"
+                    clipRule="evenodd"
+                  />
+                </svg>
               </button>
             </div>
           </form>
