@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { pageApi } from '../../lib/api'
-import type { PageDisplayType, PageType } from '../../lib/types'
+import type { PageDisplayType, PageType, AIChatConfig } from '../../lib/types'
 import { AI_CHAT_MARKER } from '../../lib/types'
 import { MdEditor } from '../../components/MdEditor'
 import { PageSpinner } from '../../components/Spinner'
@@ -27,16 +27,30 @@ export function PageEditor() {
   const [loading, setLoading] = useState(isEdit)
   const [saving, setSaving] = useState(false)
 
+  // AI 对话配置
+  const [aiEndpoint, setAiEndpoint] = useState('')
+  const [aiKey, setAiKey] = useState('')
+  const [aiModel, setAiModel] = useState('')
+  const [aiBotName, setAiBotName] = useState('')
+  const [aiPrompt, setAiPrompt] = useState('')
+
   useEffect(() => {
     if (isEdit) {
       pageApi
         .get(Number(id))
         .then((p) => {
           setName(p.name)
-          // ai-chat 解码
-          if (p.type === 'html' && p.content === AI_CHAT_MARKER) {
+          if (p.type === 'html' && p.content?.startsWith(AI_CHAT_MARKER)) {
             setType('ai-chat')
             setContent('')
+            try {
+              const cfg: AIChatConfig = JSON.parse(p.content.slice(AI_CHAT_MARKER.length))
+              setAiEndpoint(cfg.endpoint || '')
+              setAiKey(cfg.apiKey || '')
+              setAiModel(cfg.model || '')
+              setAiBotName(cfg.botName || '')
+              setAiPrompt(cfg.systemPrompt || '')
+            } catch {}
           } else {
             setType(p.type as PageDisplayType)
             setContent(p.content ?? '')
@@ -112,15 +126,18 @@ export function PageEditor() {
       }
     }
     setSaving(true)
-    // ai-chat 编码：用 html 类型 + 标记位存储，兼容后端 type 校验
+    // ai-chat 编码：用 html 类型 + JSON 配置存储，兼容后端 type 校验
     const saveType: PageType = type === 'ai-chat' ? 'html' : type
-    const saveContent = type === 'ai-chat' ? AI_CHAT_MARKER : (content || null)
-    const payload = {
-      name: name.trim(),
-      type: saveType,
-      content: saveContent,
-      status: 0,
-    }
+    const saveContent = type === 'ai-chat'
+      ? AI_CHAT_MARKER + JSON.stringify({
+          endpoint: aiEndpoint.trim(),
+          apiKey: aiKey.trim(),
+          model: aiModel.trim(),
+          botName: aiBotName.trim(),
+          systemPrompt: aiPrompt.trim(),
+        } as AIChatConfig)
+      : (content || null)
+    const payload = { name: name.trim(), type: saveType, content: saveContent, status: 0 }
     try {
       if (isEdit) {
         await pageApi.update(Number(id), payload)
@@ -192,11 +209,44 @@ export function PageEditor() {
         </div>
       </div>
 
-      {/* 内容 */}
-      <div>
-        <label className="mb-1.5 block text-sm font-medium text-gray-600">内容</label>
-        {renderContentEditor()}
-      </div>
+      {/* 内容 / AI配置 */}
+      {type === 'ai-chat' ? (
+        <div className="card space-y-4 p-5">
+          <h3 className="text-sm font-semibold text-gray-800">AI 对话配置</h3>
+          <p className="text-xs text-gray-400">密钥仅存储在页面数据中，不会被前端明文暴露给第三方。</p>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">机器人名称</label>
+              <input value={aiBotName} onChange={e => setAiBotName(e.target.value)} placeholder="如：小K" className={inputCls} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">模型</label>
+              <input value={aiModel} onChange={e => setAiModel(e.target.value)} placeholder="如：gpt-4o-mini" className={inputCls} />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500">API 接口地址</label>
+            <input value={aiEndpoint} onChange={e => setAiEndpoint(e.target.value)} placeholder="https://api.openai.com/v1" className={inputCls} />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500">API 密钥</label>
+            <input value={aiKey} onChange={e => setAiKey(e.target.value)} placeholder="sk-..." type="password" className={inputCls} />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500">系统提示词 <span className="text-gray-400">（定义机器人角色和行为）</span></label>
+            <textarea value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} rows={3} placeholder="你是一个友好的助手..." className={`${inputCls} resize-none`} />
+          </div>
+        </div>
+      ) : (
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-gray-600">内容</label>
+          {renderContentEditor()}
+        </div>
+      )}
     </div>
   )
 }

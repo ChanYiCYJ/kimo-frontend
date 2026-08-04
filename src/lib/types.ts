@@ -81,7 +81,14 @@ export interface CategoryPayload {
 export type PageType = 'markdown' | 'html' | 'list' | 'link'
 export type PageDisplayType = PageType | 'ai-chat'
 
-// ai-chat 兼容编码：前端用 html 类型存储，content 标记 __KIMO_AI_CHAT__
+// ai-chat 兼容编码：前端用 html 类型存储，content 为 JSON 配置
+export interface AIChatConfig {
+  endpoint: string
+  apiKey: string
+  model: string
+  botName: string
+  systemPrompt: string
+}
 export const AI_CHAT_MARKER = '__KIMO_AI_CHAT__'
 
 export interface Page {

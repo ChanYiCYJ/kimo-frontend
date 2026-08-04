@@ -1,100 +1,122 @@
-import { useState, useRef, useEffect } from 'react'
-import { aiChat, getAIConfig } from '../lib/ai'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import type { AIChatConfig } from '../lib/types'
 
 interface Message {
   role: 'user' | 'assistant'
   content: string
 }
 
-export function AIChat() {
+const STORAGE_PREFIX = 'kimo_chat_'
+
+async function streamChat(cfg: AIChatConfig, msgs: Message[], onChunk: (t: string) => void, signal: AbortSignal) {
+  const res = await fetch(cfg.endpoint.replace(/\/+$/, '') + '/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
+    body: JSON.stringify({
+      model: cfg.model,
+      messages: [{ role: 'system', content: cfg.systemPrompt }, ...msgs.map(m => ({ role: m.role, content: m.content }))],
+      temperature: 0.7, stream: true,
+    }),
+    signal,
+  })
+  if (!res.ok) { const t = await res.text().catch(() => ''); throw new Error(`AI 请求失败 (${res.status})${t ? ': ' + t.slice(0,100) : ''}`) }
+  const reader = res.body?.getReader(); if (!reader) throw new Error('不支持流式')
+  const dec = new TextDecoder(); let full = ''
+  while (true) {
+    const { done, value } = await reader.read(); if (done) break
+    for (const line of dec.decode(value, { stream: true }).split('\n').filter(l => l.startsWith('data: '))) {
+      const d = line.slice(6); if (d === '[DONE]') continue
+      try { const j = JSON.parse(d); const t = j.choices?.[0]?.delta?.content; if (t) { full += t; onChunk(full) } } catch {}
+    }
+  }
+  return full
+}
+
+export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: number }) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [configured, setConfigured] = useState(true)
+  const [consented, setConsented] = useState(() => {
+    try { return localStorage.getItem(STORAGE_PREFIX + 'consent_' + pageId) === '1' } catch { return false }
+  })
   const bottomRef = useRef<HTMLDivElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
-    const cfg = getAIConfig()
-    setConfigured(cfg.enabled && !!cfg.endpoint && !!cfg.apiKey && !!cfg.model)
-  }, [])
+    try { const r = localStorage.getItem(STORAGE_PREFIX + 'history_' + pageId); if (r) setMessages(JSON.parse(r)) } catch {}
+  }, [pageId])
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  const save = useCallback((msgs: Message[]) => {
+    try { localStorage.setItem(STORAGE_PREFIX + 'history_' + pageId, JSON.stringify(msgs)) } catch {}
+  }, [pageId])
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
   const send = async () => {
-    const text = input.trim()
-    if (!text || loading) return
-    const userMsg: Message = { role: 'user', content: text }
-    setMessages((prev) => [...prev, userMsg])
-    setInput('')
-    setLoading(true)
+    const t = input.trim(); if (!t || loading) return
+    const user: Message = { role: 'user' as const, content: t }
+    const next: Message[] = [...messages, user]; setMessages(next); setInput(''); setLoading(true); save(next)
+    const ctrl = new AbortController(); abortRef.current = ctrl; let reply = ''
     try {
-      const reply = await aiChat(text, '你是友好的AI助手，简洁回答，用中文。')
-      setMessages((prev) => [...prev, { role: 'assistant', content: reply }])
-    } catch (e) {
-      setMessages((prev) => [...prev, { role: 'assistant', content: `错误：${e instanceof Error ? e.message : '请求失败'}` }])
-    } finally {
-      setLoading(false)
-    }
+      reply = await streamChat(config, next, full => setMessages([...next, { role: 'assistant' as const, content: full }]), ctrl.signal)
+    } catch (e: unknown) {
+      if ((e as Error).name === 'AbortError') return
+      reply = `错误：${e instanceof Error ? e.message : '请求失败'}`
+    } finally { if (abortRef.current === ctrl) abortRef.current = null; setLoading(false) }
+    const fin: Message[] = [...next, { role: 'assistant' as const, content: reply }]; setMessages(fin); save(fin)
   }
 
-  if (!configured) {
+  if (!consented) {
     return (
-      <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 p-8 text-center text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-800/50">
-        AI 对话未配置。请在后台「站点设置 → AI 润色」中配置接口。
+      <div className="mx-auto max-w-lg rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">知情同意声明</h3>
+        <div className="mt-4 space-y-2 text-sm leading-relaxed text-gray-600 dark:text-gray-400">
+          <p>在开始对话前，请了解：</p>
+          <ul className="ml-4 list-disc space-y-1">
+            <li>对话记录保存在您的浏览器本地，不会上传服务器。</li>
+            <li>AI 回复由配置的第三方 API 生成，请自行评估内容准确性。</li>
+            <li>请勿输入密码、身份证号等敏感个人信息。</li>
+            <li>您可随时清除对话记录。</li>
+          </ul>
+        </div>
+        <button onClick={() => { setConsented(true); try { localStorage.setItem(STORAGE_PREFIX + 'consent_' + pageId, '1') } catch {} }}
+          className="mt-6 w-full rounded-xl bg-gray-900 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-700 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300">
+          我已了解，开始对话
+        </button>
       </div>
     )
   }
 
+  if (!config.endpoint || !config.apiKey || !config.model) {
+    return <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 p-8 text-center text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-800/50">AI 对话未配置。请在后台编辑此页面。</div>
+  }
+
   return (
-    <div className="flex flex-col rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900" style={{ minHeight: 420 }}>
-      {/* 消息列表 */}
+    <div className="flex flex-col rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900" style={{ minHeight: 480 }}>
+      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
+        <div className="flex items-center gap-2">
+          <span className="grid h-7 w-7 place-content-center rounded-full bg-gray-900 text-xs font-bold text-white dark:bg-gray-200 dark:text-gray-900">AI</span>
+          <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{config.botName || 'AI 助手'}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => { setMessages([]); try { localStorage.removeItem(STORAGE_PREFIX + 'history_' + pageId) } catch {} }} className="rounded-lg px-2 py-1 text-xs text-gray-400 transition hover:text-red-500">清除记录</button>
+          <button onClick={() => abortRef.current?.abort()} disabled={!loading} className="rounded-lg px-2 py-1 text-xs text-gray-400 transition hover:text-gray-600 disabled:opacity-30">停止</button>
+        </div>
+      </div>
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
-        {messages.length === 0 && (
-          <p className="py-12 text-center text-sm text-gray-400">发送消息开始对话</p>
-        )}
+        {messages.length === 0 && <p className="py-12 text-center text-sm text-gray-400">你好，我是{config.botName || 'AI 助手'}，有什么可以帮你？</p>}
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div
-              className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                m.role === 'user'
-                  ? 'bg-gray-900 text-white dark:bg-gray-200 dark:text-gray-900'
-                  : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
-              }`}
-            >
-              {m.content}
-            </div>
+            <div className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${m.role === 'user' ? 'bg-gray-900 text-white dark:bg-gray-200 dark:text-gray-900' : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'}`}>{m.content}</div>
           </div>
         ))}
-        {loading && (
-          <div className="flex justify-start">
-            <div className="rounded-2xl bg-gray-100 px-4 py-2.5 text-sm text-gray-400 dark:bg-gray-800">
-              AI 思考中...
-            </div>
-          </div>
-        )}
         <div ref={bottomRef} />
       </div>
-
-      {/* 输入框 */}
       <div className="border-t border-gray-100 p-3 dark:border-gray-700">
         <div className="flex gap-2">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && send()}
-            placeholder="输入消息..."
-            disabled={loading}
-            className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none transition focus:border-gray-400 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-          />
-          <button
-            onClick={send}
-            disabled={loading || !input.trim()}
-            className="rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-gray-700 disabled:opacity-50 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
-          >
-            发送
-          </button>
+          <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()} placeholder={`向 ${config.botName || 'AI 助手'} 发送消息...`} disabled={loading}
+            className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none transition focus:border-gray-400 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" />
+          <button onClick={send} disabled={loading || !input.trim()} className="rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-gray-700 disabled:opacity-50 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300">发送</button>
         </div>
       </div>
     </div>
