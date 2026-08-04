@@ -8,13 +8,16 @@ interface Message {
 
 const STORAGE_PREFIX = 'kimo_chat_'
 
-async function streamChat(cfg: AIChatConfig, msgs: Message[], onChunk: (t: string) => void, signal: AbortSignal) {
+async function streamChat(cfg: AIChatConfig, msgs: Message[], onChunk: (t: string) => void, signal: AbortSignal, search = false) {
+  const sys = search
+    ? (cfg.systemPrompt || '') + '\n你已开启联网搜索模式，可以获取实时信息。'
+    : cfg.systemPrompt
   const res = await fetch(cfg.endpoint.replace(/\/+$/, '') + '/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
     body: JSON.stringify({
       model: cfg.model,
-      messages: [{ role: 'system', content: cfg.systemPrompt }, ...msgs.map(m => ({ role: m.role, content: m.content }))],
+      messages: [{ role: 'system', content: sys }, ...msgs.map(m => ({ role: m.role, content: m.content }))],
       temperature: 0.7, stream: true,
     }),
     signal,
@@ -46,12 +49,25 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
   const [loading, setLoading] = useState(false)
   const [cooldown, setCooldown] = useState(0)
   const [speakingIdx, setSpeakingIdx] = useState(-1)
+  const [webSearch, setWebSearch] = useState(false)
   const [consented, setConsented] = useState(() => {
     try { return localStorage.getItem(STORAGE_PREFIX + 'consent_' + pageId) === '1' } catch { return false }
   })
   const bottomRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval>>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // 修复手机键盘弹起时页面跳动
+  useEffect(() => {
+    const el = inputRef.current; if (!el) return
+    const onFocus = () => {
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 300)
+    }
+    el.addEventListener('focus', onFocus)
+    return () => el.removeEventListener('focus', onFocus)
+  }, [])
 
   useEffect(() => {
     try { const r = localStorage.getItem(STORAGE_PREFIX + 'history_' + pageId); if (r) setMessages(JSON.parse(r)) } catch {}
@@ -84,7 +100,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
     setCooldown(60)
     const ctrl = new AbortController(); abortRef.current = ctrl; let reply = ''
     try {
-      reply = await streamChat(config, next, full => setMessages([...next, { role: 'assistant' as const, content: full }]), ctrl.signal)
+      reply = await streamChat(config, next, full => setMessages([...next, { role: 'assistant' as const, content: full }]), ctrl.signal, webSearch)
     } catch (e: unknown) {
       if ((e as Error).name === 'AbortError') return
       reply = `错误：${e instanceof Error ? e.message : '请求失败'}`
@@ -101,6 +117,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
           <ul className="ml-4 list-disc space-y-1">
             <li>对话记录保存在您的浏览器本地，不会上传服务器。</li>
             <li>AI 回复由配置的第三方 API 生成，请自行评估内容准确性。</li>
+            <li>由于 Token 额度限制，单次回复可能有时长限制，敬请见谅。</li>
             <li>请勿输入密码、身份证号等敏感个人信息。</li>
             <li>您可随时清除对话记录。</li>
           </ul>
@@ -118,7 +135,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
   }
 
   return (
-    <div className="flex flex-col bg-white dark:bg-gray-900 sm:rounded-2xl sm:border sm:border-gray-200 sm:dark:border-gray-700 max-sm:-mx-4 max-sm:-mt-10" style={{ height: 'auto', minHeight: 'min(500px, 100dvh)', maxHeight: 'calc(100dvh - 8rem)' }}>
+    <div ref={containerRef} className="flex flex-col bg-white dark:bg-gray-900 sm:rounded-2xl sm:border sm:border-gray-200 sm:dark:border-gray-700 max-sm:-mx-4 max-sm:-mt-10" style={{ height: '100dvh', maxHeight: 'calc(100dvh - 4rem)' }}>
       {/* 顶栏 */}
       <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-3 py-2.5 dark:border-gray-700 sm:px-4 sm:py-3 sm:rounded-t-2xl">
         <div className="flex items-center gap-2 sm:gap-3">
@@ -135,6 +152,11 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
           </div>
         </div>
         <div className="flex items-center gap-0.5 sm:gap-1">
+          <button onClick={() => setWebSearch(!webSearch)}
+            className={`rounded-lg px-1.5 py-1 text-xs transition sm:px-2 ${webSearch ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600'}`}
+            title="联网搜索">
+            🌐
+          </button>
           <button onClick={() => { setMessages([]); try { localStorage.removeItem(STORAGE_PREFIX + 'history_' + pageId) } catch {} }}
             className="rounded-lg px-1.5 py-1 text-xs text-gray-400 transition hover:text-red-500 sm:px-2">清除</button>
           <button onClick={() => abortRef.current?.abort()} disabled={!loading}
@@ -182,7 +204,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
       {/* 输入框 */}
       <div className="shrink-0 border-t border-gray-100 p-2.5 dark:border-gray-700 sm:p-3">
         <div className="flex gap-2">
-          <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
+          <input ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
             placeholder={`向 ${config.botName || 'AI'} 发消息...`} disabled={loading}
             className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-gray-400 disabled:opacity-50 sm:px-4 sm:py-2.5 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" />
           <button onClick={send} disabled={loading || !input.trim() || cooldown > 0}
