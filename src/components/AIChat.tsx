@@ -8,8 +8,8 @@ interface Message {
 
 const STORAGE_PREFIX = 'kimo_chat_'
 
-async function streamChat(cfg: AIChatConfig, msgs: Message[], onChunk: (t: string) => void, signal: AbortSignal, search = false, summary = '') {
-  const sys = (cfg.systemPrompt || '') + (search ? '\n你已开启联网搜索模式，可以获取实时信息。' : '') + (summary ? `\n\n对话知识库摘要：\n${summary}` : '')
+async function streamChat(cfg: AIChatConfig, msgs: Message[], onChunk: (t: string) => void, signal: AbortSignal, summary = '') {
+  const sys = (cfg.systemPrompt || '') + (summary ? `\n\n对话知识库摘要：\n${summary}` : '')
   const res = await fetch(cfg.endpoint.replace(/\/+$/, '') + '/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
@@ -53,7 +53,6 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
     return 0
   })
   const [speakingIdx, setSpeakingIdx] = useState(-1)
-  const [webSearch, setWebSearch] = useState(false)
   const [ttsOn, setTtsOn] = useState(!!config.autoTTS)
   const [consented, setConsented] = useState(() => {
     try { return localStorage.getItem(STORAGE_PREFIX + 'consent_' + pageId) === '1' } catch { return false }
@@ -132,7 +131,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
     try { localStorage.setItem(STORAGE_PREFIX + 'cooldown_' + pageId, String(Date.now() + (config.cooldown || 60) * 1000)) } catch {}
     const ctrl = new AbortController(); abortRef.current = ctrl; let reply = ''
     try {
-      reply = await streamChat(config, recent, full => setMessages([...allMsgs, { role: 'assistant' as const, content: full }]), ctrl.signal, webSearch, summary)
+      reply = await streamChat(config, recent, full => setMessages([...allMsgs, { role: 'assistant' as const, content: full }]), ctrl.signal, summary)
     } catch (e: unknown) {
       if ((e as Error).name === 'AbortError') return
       reply = `错误：${e instanceof Error ? e.message : '请求失败'}`
@@ -206,11 +205,6 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
           </div>
         </div>
         <div className="flex items-center gap-0.5 sm:gap-1">
-          <button onClick={() => setWebSearch(!webSearch)}
-            className={`rounded-lg px-1.5 py-1 text-xs transition sm:px-2 ${webSearch ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600'}`}
-            title="联网搜索">
-            🌐
-          </button>
           {config.autoTTS && (
             <button onClick={() => setTtsOn(!ttsOn)}
               className={`rounded-lg px-1.5 py-1 text-xs transition sm:px-2 ${ttsOn ? 'bg-green-50 text-green-600 dark:bg-green-900/30 dark:text-green-400' : 'text-gray-400 hover:text-gray-600'}`}
