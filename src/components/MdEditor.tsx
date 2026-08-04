@@ -1,42 +1,15 @@
-import MDEditor, { commands, type ICommand } from '@uiw/react-md-editor'
+import { Component, useRef, type ReactNode } from 'react'
+import { Editor, useEditor } from '@lobehub/editor/react'
+import {
+  ReactBlockPlugin,
+  ReactCodeblockPlugin,
+  ReactHRPlugin,
+  ReactImagePlugin,
+  ReactLinkPlugin,
+  ReactListPlugin,
+  ReactTablePlugin,
+} from '@lobehub/editor'
 import { resolveAsset, uploadApi } from '../lib/api'
-import { useToast } from '../lib/toast'
-
-/**
- * 上传图片工具命令：上传到后端 /upload/image 后插入 Markdown
- */
-function createUploadCommand(onError?: (msg: string) => void): ICommand {
-  return {
-    name: 'upload-image',
-    keyCommand: 'upload-image',
-    buttonProps: { 'aria-label': '上传图片', title: '上传图片' },
-    icon: (
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A1.5 1.5 0 0021.75 19.5V4.5A1.5 1.5 0 0020.25 3H3.75A1.5 1.5 0 002.25 4.5v15A1.5 1.5 0 003.75 21zM15.75 8.25a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"
-        />
-      </svg>
-    ),
-    execute: (_state, api) => {
-      const input = document.createElement('input')
-      input.type = 'file'
-      input.accept = 'image/*'
-      input.onchange = async () => {
-        const file = input.files?.[0]
-        if (!file) return
-        try {
-          const res = await uploadApi.image(file)
-          api.replaceSelection(`\n![${file.name}](${resolveAsset(res.url)})\n`)
-        } catch (e) {
-          onError?.(e instanceof Error ? e.message : '图片上传失败')
-        }
-      }
-      input.click()
-    },
-  }
-}
 
 interface MdEditorProps {
   value: string
@@ -45,19 +18,82 @@ interface MdEditorProps {
   placeholder?: string
 }
 
+/** 编辑器崩溃时的兜底：降级为纯文本 textarea，避免整页空白 */
+class EditorBoundary extends Component<
+  { children: ReactNode; onFallback: (v: string) => void; fallbackValue: string; height: number },
+  { failed: boolean }
+> {
+  state = { failed: false }
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+  render() {
+    if (this.state.failed) {
+      return (
+        <textarea
+          defaultValue={this.props.fallbackValue}
+          onChange={(e) => this.props.onFallback(e.target.value)}
+          className="h-full w-full resize-none p-4 font-mono text-sm outline-none"
+          placeholder="编辑器加载失败，可在此直接输入 Markdown"
+        />
+      )
+    }
+    return this.props.children as ReactNode
+  }
+}
+
+/**
+ * Markdown 编辑器（lobe-editor：基于 Lexical 的块级编辑器）
+ * - 初始内容通过 content 传入（type="markdown"）
+ * - 图片上传对接后端 /upload/image
+ * - onChange 实时输出 Markdown 文本
+ */
+/** 空文档（JSON 空段落），规避 lobe-editor 对空 markdown 的报错 */
+const EMPTY_DOC = {
+  root: { type: 'root', children: [{ type: 'paragraph', children: [] }] },
+}
+
 export function MdEditor({ value, onChange, height = 520, placeholder = '在这里输入 Markdown 内容...' }: MdEditorProps) {
-  const { error } = useToast()
+  const editor = useEditor()
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
+  const lastMdRef = useRef<string>('')
+
   return (
-    <div data-color-mode="light" className="w-full overflow-hidden rounded-2xl">
-      <MDEditor
-        value={value}
-        onChange={(v) => onChange(v ?? '')}
-        height={height}
-        preview="live"
-        visibleDragbar
-        commands={[...commands.getCommands(), createUploadCommand((msg) => error(msg))]}
-        textareaProps={{ placeholder }}
-      />
+    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white" style={{ height }}>
+      <EditorBoundary fallbackValue={value} height={height} onFallback={onChange}>
+        <Editor
+          editor={editor}
+          // 空内容用 JSON 空段落初始化（type 仅挂载时生效，输出仍统一为 markdown）
+          type={value ? 'markdown' : 'json'}
+          content={value ? value : EMPTY_DOC}
+          placeholder={placeholder}
+          style={{ height: '100%' }}
+          onChange={(e) => {
+            const md = e.getDocument('markdown')
+            const next = typeof md === 'string' ? md : ''
+            // 去重：内容未变化时避免无谓重渲染
+            if (next !== lastMdRef.current) {
+              lastMdRef.current = next
+              onChangeRef.current(next)
+            }
+          }}
+          plugins={[
+            ReactBlockPlugin,
+            ReactListPlugin,
+            ReactLinkPlugin,
+            ReactTablePlugin,
+            ReactHRPlugin,
+            ReactCodeblockPlugin,
+            Editor.withProps(ReactImagePlugin, {
+              handleUpload: async (file: File) => {
+                const res = await uploadApi.image(file)
+                return { url: resolveAsset(res.url) }
+              },
+            }),
+          ]}
+        />
+      </EditorBoundary>
     </div>
   )
 }

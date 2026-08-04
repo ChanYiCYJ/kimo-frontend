@@ -290,25 +290,3 @@ body {
   background-clip: content-box;
 }
 
-/* ===== Markdown 编辑器微调 ===== */
-.w-md-editor-toolbar {
-  border-radius: 0.9rem 0.9rem 0 0 !important;
-  border-color: #e5e7eb !important;
-}
-.w-md-editor {
-  border-radius: 0.9rem !important;
-  box-shadow: none !important;
-  border: 1px solid #e5e7eb !important;
-  font-family: 'Noto Serif SC', serif !important;
-}
-.w-md-editor-text-pre,
-.w-md-editor-text-input {
-  font-family: 'Noto Serif SC', serif !important;
-  font-size: 16px !important;
-  line-height: 1.9 !important;
-}
-.w-md-editor-text-pre .token,
-.w-md-editor-text-input {
-  color: #374151 !important;
-}
-

@@ -275,12 +275,12 @@ export const settingApi = {
           method: 'PUT',
           body: JSON.stringify({ value }),
         }),
-      async () => ({ key, value }),
+      () => mockApi.setSetting(key, value),
     ),
   remove: (key: string) =>
     call<unknown>(
       () => request(`/settings/${encodeURIComponent(key)}`, { method: 'DELETE' }),
-      async () => undefined,
+      () => mockApi.removeSetting(key),
     ),
 }
 

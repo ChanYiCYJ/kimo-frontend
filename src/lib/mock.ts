@@ -165,13 +165,36 @@ export const mockPages: Page[] = [
   { id: 3, name: 'GitHub', type: 'link', status: 0, content: 'https://github.com' },
 ]
 
-export let mockSettings: SiteSettings = {
+const DEFAULT_SETTINGS: SiteSettings = {
   title: 'Kimo',
   ltitle: '记录技术、生活与思考',
   avatar: '/favicon.svg',
   background: 'https://api.1314.cool/bingimg',
   footer: '© Kimo · Powered by FastAPI + React',
 }
+
+// 演示模式的站点设置持久化到 localStorage，避免整页刷新后丢失
+const SETTINGS_KEY = 'kimo_mock_settings'
+
+function loadMockSettings(): SiteSettings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY)
+    if (raw) return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as SiteSettings) }
+  } catch {
+    /* 忽略 */
+  }
+  return { ...DEFAULT_SETTINGS }
+}
+
+function saveMockSettings(s: SiteSettings): void {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s))
+  } catch {
+    /* 忽略 */
+  }
+}
+
+export let mockSettings: SiteSettings = loadMockSettings()
 
 export const mockAdmin: User = {
   id: 1,
@@ -254,6 +277,7 @@ export const mockApi = {
   async setSetting(key: string, value: string): Promise<{ key: string; value: string }> {
     await wait(150)
     mockSettings = { ...mockSettings, [key]: value }
+    saveMockSettings(mockSettings)
     return { key, value }
   },
   async removeSetting(key: string): Promise<void> {
@@ -261,6 +285,7 @@ export const mockApi = {
     const next = { ...mockSettings }
     delete next[key]
     mockSettings = next
+    saveMockSettings(mockSettings)
   },
   async login(_userInfo: string, _password: string): Promise<{ access_token: string; token_type: string; user: User }> {
     await wait(500)
