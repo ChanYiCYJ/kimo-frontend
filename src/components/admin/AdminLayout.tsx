@@ -102,10 +102,10 @@ export function AdminLayout() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col lg:flex-row bg-white">
+    <div className="flex min-h-screen flex-col lg:flex-row bg-white dark:bg-gray-950">
 
       {/* ===== 手机顶栏 ===== */}
-      <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-gray-200/70 bg-white/80 px-4 backdrop-blur lg:hidden">
+      <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-gray-200/70 bg-white/80 px-4 backdrop-blur dark:border-gray-800 dark:bg-gray-950/80 lg:hidden">
         <button
           onClick={() => setSidebarOpen(true)}
           className="rounded-lg p-1.5 text-gray-600 transition hover:bg-gray-100"
@@ -131,7 +131,7 @@ export function AdminLayout() {
 
       {/* ===== 侧边导航 ===== */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-gray-200/70 bg-white/90 backdrop-blur transition-transform duration-300 lg:relative lg:z-0 lg:w-20 lg:translate-x-0 lg:border-r ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-gray-200/70 bg-white/90 backdrop-blur transition-transform duration-300 dark:border-gray-800 dark:bg-gray-950/90 lg:relative lg:z-0 lg:w-20 lg:translate-x-0 lg:border-r ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -214,7 +214,7 @@ export function AdminLayout() {
       {/* ===== 主内容区 ===== */}
       <div className="flex flex-1 flex-col lg:pl-0">
         {/* 桌面顶栏 */}
-        <header className="hidden h-14 items-center justify-between border-b border-gray-200/70 bg-white/80 px-6 backdrop-blur lg:flex">
+        <header className="hidden h-14 items-center justify-between border-b border-gray-200/70 bg-white/80 px-6 backdrop-blur dark:border-gray-800 dark:bg-gray-950/80 lg:flex">
           <h1 className="text-lg font-semibold text-gray-900">{title}</h1>
           <div className="flex items-center gap-3">
             <div className="text-right text-xs">

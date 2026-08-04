@@ -47,7 +47,7 @@ export function Layout() {
       </main>
 
       {/* 页脚 */}
-      <footer className="border-t border-gray-200/70 bg-white/60 py-10 backdrop-blur">
+      <footer className="border-t border-gray-200/70 bg-white/60 py-10 backdrop-blur dark:border-gray-800 dark:bg-gray-950/60">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <div className="flex flex-col items-center justify-between gap-6 sm:flex-row sm:items-start">
             <div className="text-center sm:text-left">
