@@ -30,6 +30,7 @@ const DEFAULT_SETTINGS: SiteSettings = {
   enable_custom_api: '1',
   default_route: '',
   default_route_vercel: '',
+  route_map: '',
 }
 
 const SiteContext = createContext<SiteContextValue>({

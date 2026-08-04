@@ -421,6 +421,15 @@ export function Settings() {
               />
             </div>
           </div>
+          <label className="mb-1 mt-2 block text-xs text-gray-500">域名 → 落地页映射（JSON，优先于上面两个默认值）</label>
+          <textarea
+            value={settings.route_map || ''}
+            onChange={(e) => setForm((f) => ({ ...f, route_map: e.target.value }))}
+            rows={3}
+            placeholder={'{\n  "yogofor.top": "/",\n  "v2.yogofor.top": "/ai"\n}'}
+            className={`${inputCls} resize-none font-mono text-xs`}
+          />
+          <p className="text-xs text-gray-400">键为域名（支持子域名后缀匹配），值为落地路径。例如国内主站 yogofor.top 落首页，海外站 v2.yogofor.top 落 /ai。</p>
         </div>
       </section>
 

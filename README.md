@@ -23,6 +23,19 @@
 | 图片上传 | - | 编辑器内上传 + 封面/头像上传 |
 | 代码体积 | - | 后台页面按需加载（Route-level code splitting） |
 
+## 🤖 AI 对话中心（/ai）
+
+内置一套完整的 **ChatGPT 风格 AI 对话应用**，管理员可在后台「AI 管理」创建/编辑多个 AI 助手，访客可随时切换：
+
+- **会话管理**：多会话、自动标题、手动重命名、删除、导出/导入全部（JSON）
+- **Coser 角色扮演**：为 AI 配置人设（角色提示词）+ 站点内容（选文章/分类）+ 自定义设定（本机笔记，可导入 Markdown），可导出设定
+- **网络搜索**：优先走站点后端 `/api/search`（可绕过地域限制），回退维基百科（zh→en）；默认关闭，可在用户设置中开启
+- **自定义模型 API**：非管理员可填自己的接口/Key/模型（存本机，不传服务器），自动解除次数/冷却限制，并支持自定义提示词
+- **水印**：AI 生成内容带多重水印（含模型名 + API 状态），防止被冒用
+- **写文章**：后台开关 `enable_ai_articles` 开启后，可直接在对话中撰写并发布文章
+- **适用范围**：每个助手可设「仅管理员可用」；主页「AI」菜单可用 `show_ai` 关闭；访客自定义 API 可用 `enable_custom_api` 开关
+- **用户设置**：侧边栏「用户设置」面板整合 自动朗读/网络搜索、导出导入、模型 API、使用文档、GitHub 开源链接
+
 ## 🚀 快速开始
 
 ```bash
@@ -55,6 +68,24 @@ server: {
 | --- | --- | --- |
 | `VITE_API_BASE` | API 基础路径 | `/api/v1` |
 | `VITE_USE_MOCK` | 强制使用演示数据（`1`） | 关闭 |
+| `VITE_MEDIA_BASE` | 静态资源/图片源（跨源部署时拼前缀） | 关闭 |
+
+## 🗺 路由
+
+| 路径 | 说明 |
+| --- | --- |
+| `/` | 首页（文章列表、分页、分类筛选、搜索） |
+| `/article/:id` | 文章详情 |
+| `/page/:name` | 自定义页面（markdown / list / link） |
+| `/ai`、`/ai/:botId` | **AI 对话中心**（多助手切换） |
+| `/login` | 登录 / 注册 |
+| `/dashboard` | 管理后台（需管理员 role=0） |
+| `/dashboard/articles*` | 文章管理 / 新建 / 编辑 |
+| `/dashboard/pages*` | 页面管理 / 新建 / 编辑 |
+| `/dashboard/ai` | **AI 助手管理**（统一管理所有助手） |
+| `/dashboard/categories` | 分类标签 |
+| `/dashboard/settings` | 站点设置（含 AI 改写、功能开关、默认落地页） |
+| `/dashboard/users` | 用户管理 |
 
 > 💡 后端未启动时，前端会自动回退到**演示数据**（`src/lib/mock.ts`），便于本地预览 UI。
 
@@ -92,6 +123,26 @@ vercel --prod
 ```
 
 > 💡 前端请求仍走相对路径 `/api/v1`（`VITE_API_BASE` 保持默认），由 Vercel 反代到 `API_BACKEND`，因此同源、无跨域问题。
+
+## 🌍 域名与合规（国内外分站）
+
+若国内主站与海外镜像同时存在（例如国内 `yogofor.top` + Vercel `v2.yogofor.top`），可在后台「站点设置 → 功能开关 → 默认落地页」配置：
+
+- **域名 → 落地页映射**（`route_map`，JSON，优先）：
+  ```json
+  {
+    "yogofor.top": "/",
+    "v2.yogofor.top": "/ai"
+  }
+  ```
+- **默认落地页**：`default_route`（国内）/ `default_route_vercel`（Vercel 海外，hostname 含 `vercel.app` 时生效）
+- 访客打开首页时会按域名自动重定向到对应页面，便于分站差异化与合规
+
+> 合规提示：AI 生成内容带水印，请勿冒充人工原创用于需要真实性的场合；请遵守部署所在地法律与所用模型服务条款。
+
+## ⚠️ 网络搜索说明
+
+AI 的网络搜索默认**关闭**，在用户设置中开启。搜索优先调用站点后端 `/api/search`（若后端实现了搜索代理，可绕过 CORS 与地域限制）；否则回退到维基百科（zh→en）。由于维基百科在中国大陆不可直接访问，若你的主站在国内，建议在后端实现 `/api/search` 代理，或将主站放在海外/Vercel。
 
 ## � 前后端同步热更新
 
@@ -152,24 +203,31 @@ src/
 │   ├── api.ts                # API 客户端（统一响应解包、JWT、演示回退）
 │   ├── types.ts              # 与后端 schema 对应的类型
 │   ├── mock.ts               # 演示数据
-│   ├── auth.tsx              # 登录态 Context
-│   ├── site.tsx              # 站点设置 Context
-│   ├── toast.tsx             # Toast 通知
-│   └── format.ts             # 日期 / 阅读时间工具
+│   ├── auth.tsx / site.tsx / theme.tsx / toast.tsx / format.ts
+│   ├── ai.ts                 # 后台「AI 改写」调用（复用 AI 管理模型）
+│   ├── search.ts             # 网络搜索（后端 /api/search → 维基百科回退）
+│   ├── kb.ts                 # Coser 知识库（站点内容选择 + 本机笔记 + 导出）
+│   └── localCfg.ts           # 访客自定义模型 API（本机存储）
 ├── components/
-│   ├── Layout.tsx            # 前台布局（背景 + 头部 + 侧栏 + 页脚）
+│   ├── Layout.tsx            # 前台布局（含域名重定向 / AI 沉浸式分支）
 │   ├── Header.tsx / Sidebar.tsx / PostCard.tsx / Pagination.tsx
 │   ├── Markdown.tsx / MdEditor.tsx / Modal.tsx / Spinner.tsx / ui.tsx
+│   ├── AIChat.tsx            # AI 对话核心（会话/Coser/搜索/水印/限制）
+│   ├── KbModal.tsx           # Coser 角色扮演设定弹窗
+│   ├── LocalApiModal.tsx     # 自定义模型 API 弹窗
+│   ├── UserSettingsPanel.tsx # 用户设置面板（侧滑）
+│   ├── UsageDocModal.tsx     # 使用文档
+│   ├── ArticleComposerModal.tsx # 对话内写文章
+│   ├── BotEditorModal.tsx    # AI 助手编辑弹窗
 │   └── admin/AdminLayout.tsx # 后台布局（左侧图标导航）
 └── pages/
-    ├── Home.tsx / Article.tsx / PageView.tsx / Login.tsx / NotFound.tsx
+    ├── Home.tsx / Article.tsx / PageView.tsx / AICenter.tsx / Login.tsx / NotFound.tsx
     └── admin/
         ├── DashboardHome.tsx   # 统计概览 + 快捷入口
-        ├── ManageArticles.tsx  # 文章管理（列表 / 删除）
-        ├── ArticleEditor.tsx   # 文章写作（Markdown 编辑器）
-        ├── ManagePages.tsx     # 页面管理
-        ├── PageEditor.tsx      # 页面编辑（markdown / html / list / link）
-        └── Settings.tsx        # 站点设置
+        ├── ManageArticles.tsx / ArticleEditor.tsx   # 文章管理/写作
+        ├── ManagePages.tsx / PageEditor.tsx         # 页面管理/编辑
+        ├── AIManage.tsx        # AI 助手统一管理
+        └── Settings.tsx        # 站点设置（AI 改写 / 功能开关 / 落地页）
 ```
 
 ## 🗺 路由

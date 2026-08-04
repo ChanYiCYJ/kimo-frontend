@@ -528,8 +528,8 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
       {/* 消息区（铺满的多重水印暗纹网格，不随消息滚动） */}
       <div className="relative min-h-0 flex-1">
         <div className="pointer-events-none absolute inset-0 z-0 select-none overflow-hidden">
-          <div className="grid h-full grid-cols-3 content-center gap-x-6 gap-y-10 px-4 opacity-25 sm:grid-cols-4">
-            {Array.from({ length: 18 }).map((_, i) => (
+          <div className="grid h-full grid-cols-2 content-center gap-x-14 gap-y-20 px-4 opacity-20 sm:grid-cols-3">
+            {Array.from({ length: 12 }).map((_, i) => (
               <span key={i} className="rotate-[-16deg] whitespace-nowrap text-[10px] font-medium tracking-[0.2em] text-gray-400/60 dark:text-gray-500/40">AI 生成 · {effCfg.model || 'AI'} · {hasCustom ? '自定义' : '站点'}</span>
             ))}
           </div>
