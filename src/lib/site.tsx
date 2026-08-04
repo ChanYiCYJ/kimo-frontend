@@ -54,7 +54,7 @@ export function SiteProvider({ children }: { children: ReactNode }) {
 
   // 同步文档标题
   useEffect(() => {
-    document.title = settings.title ? `${settings.title} · 个人博客` : 'Kimo · 个人博客'
+    document.title = settings.title || 'Kimo'
   }, [settings.title])
 
   const value = useMemo(() => ({ settings, loaded, refresh }), [settings, loaded, refresh])

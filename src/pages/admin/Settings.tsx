@@ -10,7 +10,7 @@ import { getAIConfig, saveAIConfig, type AIConfig } from '../../lib/ai'
 
 const KNOWN_KEYS: Array<{ key: string; label: string; placeholder: string; type?: 'text' | 'textarea' }> = [
   { key: 'title', label: '站点标题', placeholder: 'Kimo' },
-  { key: 'ltitle', label: '副标题', placeholder: '简洁优雅的个人博客' },
+  { key: 'ltitle', label: '副标题', placeholder: '记录技术与生活' },
   { key: 'avatar', label: '头像 URL', placeholder: '/favicon.svg' },
   { key: 'background', label: '背景图 URL', placeholder: 'https://api.1314.cool/bingimg' },
   { key: 'footer', label: '页脚文字', placeholder: '© Kimo', type: 'textarea' },
