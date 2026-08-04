@@ -89,6 +89,7 @@ export interface AIChatConfig {
   botName: string
   avatar?: string
   systemPrompt: string
+  maxMessages?: number
 }
 
 // API Key 简单混淆（base64，防明文泄露，非真正加密）

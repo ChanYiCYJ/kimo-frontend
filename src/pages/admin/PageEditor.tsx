@@ -35,6 +35,7 @@ export function PageEditor() {
   const [aiBotName, setAiBotName] = useState('')
   const [aiAvatar, setAiAvatar] = useState('')
   const [aiPrompt, setAiPrompt] = useState('')
+  const [aiMaxMsg, setAiMaxMsg] = useState('')
   const [showKey, setShowKey] = useState(false)
 
   useEffect(() => {
@@ -55,6 +56,7 @@ export function PageEditor() {
               setAiBotName(cfg.botName || '')
               setAiAvatar(cfg.avatar || '')
               setAiPrompt(cfg.systemPrompt || '')
+              setAiMaxMsg(cfg.maxMessages ? String(cfg.maxMessages) : '')
             } catch {}
           } else {
             setType(p.type as PageDisplayType)
@@ -141,6 +143,7 @@ export function PageEditor() {
           botName: aiBotName.trim(),
           avatar: aiAvatar.trim() || undefined,
           systemPrompt: aiPrompt.trim(),
+          maxMessages: aiMaxMsg ? Number(aiMaxMsg) : undefined,
         } as AIChatConfig)
       : (content || null)
     const payload = { name: name.trim(), type: saveType, content: saveContent, status: hidden ? 1 : 0 }
@@ -227,7 +230,7 @@ export function PageEditor() {
           <h3 className="text-sm font-semibold text-gray-800">AI 对话配置</h3>
           <p className="text-xs text-gray-400">密钥经 base64 混淆存储，仅用于本页面 AI 请求。</p>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-500">机器人名称</label>
               <input value={aiBotName} onChange={e => setAiBotName(e.target.value)} placeholder="如：小K" className={inputCls} />
@@ -239,6 +242,10 @@ export function PageEditor() {
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-500">头像 URL</label>
               <input value={aiAvatar} onChange={e => setAiAvatar(e.target.value)} placeholder="https://...（可选）" className={inputCls} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">对话上限</label>
+              <input value={aiMaxMsg} onChange={e => setAiMaxMsg(e.target.value.replace(/\D/g,''))} placeholder="不限制" className={inputCls} />
             </div>
           </div>
 

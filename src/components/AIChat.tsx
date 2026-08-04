@@ -9,9 +9,7 @@ interface Message {
 const STORAGE_PREFIX = 'kimo_chat_'
 
 async function streamChat(cfg: AIChatConfig, msgs: Message[], onChunk: (t: string) => void, signal: AbortSignal, search = false) {
-  const sys = search
-    ? (cfg.systemPrompt || '') + '\n你已开启联网搜索模式，可以获取实时信息。'
-    : cfg.systemPrompt
+  const sys = (cfg.systemPrompt || '') + (search ? '\n你已开启联网搜索模式，可以获取实时信息。' : '')
   const res = await fetch(cfg.endpoint.replace(/\/+$/, '') + '/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
@@ -95,6 +93,13 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
 
   const send = async () => {
     const t = input.trim(); if (!t || loading || cooldown > 0) return
+    // 消息数限制检查
+    const max = config.maxMessages || 0
+    if (max > 0 && messages.length >= max) {
+      setMessages(prev => [...prev, { role: 'assistant' as const, content: `对话已达上限（${max} 条），请点击「清除」开始新对话。` }])
+      save([...messages, { role: 'assistant' as const, content: `对话已达上限（${max} 条），请点击「清除」开始新对话。` }])
+      return
+    }
     const user: Message = { role: 'user' as const, content: t }
     const next: Message[] = [...messages, user]; setMessages(next); setInput(''); setLoading(true); save(next)
     setCooldown(60)
@@ -118,6 +123,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
             <li>对话记录保存在您的浏览器本地，不会上传服务器。</li>
             <li>AI 回复由配置的第三方 API 生成，请自行评估内容准确性。</li>
             <li>由于 Token 额度限制，单次回复可能有时长限制，敬请见谅。</li>
+            <li><strong>禁止用于生成违法违规内容</strong>，包括但不限于暴力、色情、诈骗、侵权等。</li>
             <li>请勿输入密码、身份证号等敏感个人信息。</li>
             <li>您可随时清除对话记录。</li>
           </ul>
