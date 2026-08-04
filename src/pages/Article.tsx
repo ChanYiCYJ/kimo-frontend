@@ -76,19 +76,18 @@ export function Article() {
   const [error, setError] = useState('')
   const [activeId, setActiveId] = useState('')
 
-  const toc = useMemo(() => (article ? extractToc(displayContent) : []), [article, displayContent])
-
   // 去掉 Markdown 首行 # 标题（已通过 h1 单独渲染，避免重复）
   const displayContent = useMemo(() => {
     if (!article) return ''
     const lines = article.content.split(/\r?\n/)
     if (lines.length > 0 && /^\s*#\s/.test(lines[0])) {
       lines.shift()
-      // 去掉标题后可能紧跟的空行
       if (lines.length > 0 && lines[0].trim() === '') lines.shift()
     }
     return lines.join('\n')
   }, [article])
+
+  const toc = useMemo(() => (article ? extractToc(displayContent) : []), [article, displayContent])
 
   useEffect(() => {
     let active = true
