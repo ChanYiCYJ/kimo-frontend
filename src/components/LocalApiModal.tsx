@@ -14,7 +14,7 @@ const inputCls =
   'w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800'
 
 export function LocalApiModal({ open, onClose, pageId, botName, onSaved }: LocalApiModalProps) {
-  const [cfg, setCfg] = useState<LocalAIConfig>({ endpoint: '', apiKey: '', model: '' })
+  const [cfg, setCfg] = useState<LocalAIConfig>({ endpoint: '', apiKey: '', model: '', prompt: '' })
   const [showKey, setShowKey] = useState(false)
 
   useEffect(() => {
@@ -24,14 +24,14 @@ export function LocalApiModal({ open, onClose, pageId, botName, onSaved }: Local
   }, [open, pageId])
 
   const save = () => {
-    saveLocalCfg(pageId, { endpoint: cfg.endpoint.trim(), apiKey: cfg.apiKey.trim(), model: cfg.model.trim() })
+    saveLocalCfg(pageId, { endpoint: cfg.endpoint.trim(), apiKey: cfg.apiKey.trim(), model: cfg.model.trim(), prompt: cfg.prompt })
     onSaved()
     onClose()
   }
 
   const clear = () => {
     clearLocalCfg(pageId)
-    setCfg({ endpoint: '', apiKey: '', model: '' })
+    setCfg({ endpoint: '', apiKey: '', model: '', prompt: '' })
     onSaved()
     onClose()
   }
@@ -51,8 +51,14 @@ export function LocalApiModal({ open, onClose, pageId, botName, onSaved }: Local
 
         <div className="space-y-3 p-4">
           <p className="rounded-xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
-            🔒 <span className="font-medium">密钥声明：</span>你填写的 API Key <b>仅保存在本机浏览器</b>（localStorage），不会上传到服务器，仅用于在你自己的浏览器里调用对应模型接口。请勿在公共电脑上保存敏感密钥。
+            🔒 <span className="font-medium">安全与使用规则：</span>
           </p>
+          <ul className="ml-5 list-disc space-y-1 rounded-xl bg-gray-50 p-3 text-xs leading-relaxed text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+            <li>API Key 与提示词<b>仅保存在本机浏览器</b>（localStorage），不会上传服务器，请勿在公共电脑保存。</li>
+            <li>接口需为 <b>OpenAI 兼容格式</b>（/v1/chat/completions），留空则使用站点默认配置。</li>
+            <li>使用自定义 API 后，将<b>自动解除</b>默认的次数与冷却限制；请遵守所用服务的使用条款与当地法律。</li>
+            <li>自定义提示词会覆盖默认人设，仅影响当前机器人、当前浏览器。</li>
+          </ul>
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">接口地址（留空使用默认）</label>
             <input value={cfg.endpoint} onChange={(e) => setCfg({ ...cfg, endpoint: e.target.value })} placeholder="https://api.openai.com/v1" className={inputCls} />
@@ -73,6 +79,10 @@ export function LocalApiModal({ open, onClose, pageId, botName, onSaved }: Local
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">模型（留空使用默认）</label>
             <input value={cfg.model} onChange={(e) => setCfg({ ...cfg, model: e.target.value })} placeholder="gpt-4o-mini" className={inputCls} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">自定义提示词（覆盖默认人设，可选）</label>
+            <textarea value={cfg.prompt || ''} onChange={(e) => setCfg({ ...cfg, prompt: e.target.value })} rows={4} placeholder="你是一个……（留空则使用默认人设）" className={`${inputCls} resize-none`} />
           </div>
         </div>
 

@@ -10,6 +10,8 @@ import { getKbSelections, getKbNotes, assembleKnowledge } from '../lib/kb'
 import { getLocalCfg } from '../lib/localCfg'
 import { KbModal } from './KbModal'
 import { LocalApiModal } from './LocalApiModal'
+import { UsageDocModal } from './UsageDocModal'
+import { ArticleComposerModal } from './ArticleComposerModal'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -38,6 +40,7 @@ interface AIChatProps {
   onSwitchBot?: (id: number) => void
   canManage?: boolean
   onManage?: () => void
+  enableArticles?: boolean
 }
 
 const STORAGE_PREFIX = 'kimo_chat_'
@@ -83,7 +86,7 @@ const SESSION_STORAGE = (pageId: number) => STORAGE_PREFIX + 'sessions_' + pageI
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7) }
 
-export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, onManage }: AIChatProps) {
+export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, onManage, enableArticles }: AIChatProps) {
   const { settings } = useSite()
   const { theme, toggle: toggleTheme } = useTheme()
   const [sessions, setSessions] = useState<Session[]>(() => {
@@ -103,6 +106,8 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
   const [collapsed, setCollapsed] = useState(false)
   const [localCfg, setLocalCfg] = useState(() => getLocalCfg(pageId))
   const [apiModalOpen, setApiModalOpen] = useState(false)
+  const [docOpen, setDocOpen] = useState(false)
+  const [articleOpen, setArticleOpen] = useState(false)
   const [kbOn, setKbOn] = useState(false)
   const [kbText, setKbText] = useState('')
   const [kbOpen, setKbOpen] = useState(false)
@@ -127,12 +132,13 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
   const active = sessions.find(s => s.id === activeId) || sessions[0]
   const messages = active?.messages || []
 
-  // 有效配置：本地自定义 API 优先于机器人默认配置（非管理员各自本地设置）
+  // 有效配置：本地自定义 API/提示词 优先于机器人默认配置（非管理员各自本地设置）
   const effCfg: AIChatConfig = {
     ...config,
     endpoint: localCfg.endpoint || config.endpoint,
     apiKey: localCfg.apiKey || config.apiKey,
     model: localCfg.model || config.model,
+    systemPrompt: localCfg.prompt || config.systemPrompt,
   }
   const hasCustom = !!(localCfg.endpoint || localCfg.apiKey || localCfg.model)
 
@@ -505,7 +511,7 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
       {/* 消息区（带 AI 生成水印暗纹，防止被冒用） */}
       <div ref={msgListRef} onScroll={onScroll} className="relative min-h-0 flex-1 overflow-y-auto bg-gray-50/40 dark:bg-gray-950/40">
         <div className="pointer-events-none sticky bottom-1 z-0 flex justify-center select-none">
-          <span className="rotate-[-6deg] whitespace-nowrap text-xs font-medium tracking-[0.25em] text-gray-400/25 dark:text-gray-500/20">AI 生成内容 · {settings.title || 'Kimo'}</span>
+          <span className="rotate-[-6deg] whitespace-nowrap text-xs font-medium tracking-[0.2em] text-gray-400/25 dark:text-gray-500/20">AI 生成 · {effCfg.model || 'AI'} · {hasCustom ? '自定义 API' : '站点 API'}</span>
         </div>
         <div className="relative z-10 mx-auto w-full max-w-3xl px-3 py-4 sm:px-6 sm:py-6">
           {messages.length === 0 ? (
@@ -586,6 +592,12 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
                     <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>
                     Coser 角色设定 {kbOn && <span className="ml-auto text-xs text-gray-400">✓</span>}
                   </button>
+                  {enableArticles && (
+                    <button onClick={() => { setArticleOpen(true); setMenuOpen(false) }} className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-gray-600 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800">
+                      <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" /></svg>
+                      写文章
+                    </button>
+                  )}
                   {messages.length > 0 && (
                     <button onClick={() => { exportChat(); setMenuOpen(false) }} className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-gray-600 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800">
                       <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
@@ -599,7 +611,7 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
             <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
               placeholder={`向 ${config.botName || 'AI'} 发送消息...`} disabled={loading}
               rows={1} style={{ resize: 'none' }}
-              className="max-h-40 min-h-[38px] flex-1 self-center bg-transparent px-1.5 py-2 text-sm leading-6 text-gray-800 outline-none placeholder:text-gray-400 disabled:opacity-50 sm:text-[15px] dark:text-gray-100" />
+              className="no-scrollbar max-h-40 min-h-[38px] flex-1 self-center bg-transparent px-1.5 py-2 text-sm leading-6 text-gray-800 outline-none placeholder:text-gray-400 disabled:opacity-50 sm:text-[15px] dark:text-gray-100" />
             {config.autoTTS && (
               <button onClick={() => setTtsOn(!ttsOn)} className={`${iconBtn} ${ttsOn ? 'text-gray-700 dark:text-gray-200' : ''}`} title={ttsOn ? '关闭自动朗读' : '开启自动朗读'} aria-label="自动朗读">
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill={ttsOn ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.6"><path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" /></svg>
@@ -620,12 +632,7 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
 
   const sidebar = (
     <div className="flex h-full w-64 flex-col bg-gray-50 dark:bg-gray-950">
-      {/* 侧边栏小标题栏文字（不显示模型，站点名在底部） */}
-      <div className="flex items-center gap-2 px-4 pb-2 pt-3.5">
-        <span className="grid h-6 w-6 shrink-0 place-content-center rounded-full bg-gray-900 text-[10px] font-bold text-white dark:bg-gray-200 dark:text-gray-900">AI</span>
-        <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">AI 对话</p>
-      </div>
-      <div className="px-3 pb-2">
+      <div className="p-3">
         <button onClick={newSession} className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>新建会话
         </button>
@@ -675,7 +682,17 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
             {hasCustom ? '自定义 API 已启用' : '模型 API 设置'}
           </button>
         )}
-        <p className="mt-2 truncate px-1 text-[11px] font-medium text-gray-400 dark:text-gray-500">{settings.title || 'Kimo'}</p>
+        <div className="mb-1.5 mt-2 grid grid-cols-2 gap-1.5">
+          <button onClick={() => setDocOpen(true)} className="flex items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
+            使用文档
+          </button>
+          <a href="https://github.com/ChanYiCYJ/kimo-frontend" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58 0-.29-.01-1.04-.02-2.05-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.21.08 1.85 1.24 1.85 1.24 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.34-5.47-5.95 0-1.31.47-2.39 1.24-3.23-.13-.3-.54-1.53.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 016 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.65.25 2.88.12 3.18.77.84 1.24 1.92 1.24 3.23 0 4.62-2.8 5.64-5.48 5.94.43.37.81 1.1.81 2.22 0 1.6-.01 2.89-.01 3.28 0 .32.21.7.83.58A12.01 12.01 0 0024 12.5C24 5.87 18.63.5 12 .5z" /></svg>
+            GitHub
+          </a>
+        </div>
+        <p className="px-1 text-[11px] font-medium text-gray-400 dark:text-gray-500">{settings.title || 'Kimo'}</p>
         <p className="px-1 pb-1 text-[10px] leading-relaxed text-gray-300 dark:text-gray-600">AI 生成内容仅供参考</p>
       </div>
     </div>
@@ -707,6 +724,8 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
     <>
       <KbModal open={kbOpen} onClose={() => setKbOpen(false)} pageId={pageId} kbOn={kbOn} onToggleKb={toggleKb} onApplied={refreshKb} systemPrompt={config.systemPrompt} promptPreview={kbOn ? kbText : ''} />
       <LocalApiModal open={apiModalOpen} onClose={() => setApiModalOpen(false)} pageId={pageId} botName={config.botName || 'AI'} onSaved={() => setLocalCfg(getLocalCfg(pageId))} />
+      <UsageDocModal open={docOpen} onClose={() => setDocOpen(false)} hasCustom={hasCustom} canManage={!!canManage} />
+      <ArticleComposerModal open={articleOpen} onClose={() => setArticleOpen(false)} />
       {layout}
     </>
   )

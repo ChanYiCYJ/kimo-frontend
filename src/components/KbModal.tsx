@@ -20,7 +20,7 @@ interface KbModalProps {
 const iconBtn = 'grid h-9 w-9 place-items-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800'
 
 export function KbModal({ open, onClose, pageId, kbOn, onToggleKb, onApplied, systemPrompt, promptPreview }: KbModalProps) {
-  const [tab, setTab] = useState<'role' | 'site' | 'notes'>('site')
+  const [tab, setTab] = useState<'role' | 'site' | 'notes'>('role')
   const [sel, setSel] = useState<KbSelections>(() => getKbSelections(pageId))
   const [notes, setNotes] = useState<KbNote[]>(() => getKbNotes())
   const [allArticles, setAllArticles] = useState<{ id: number; title: string; category_name?: string | null }[]>([])
@@ -79,8 +79,24 @@ export function KbModal({ open, onClose, pageId, kbOn, onToggleKb, onApplied, sy
 
   const startEdit = (n: KbNote) => { setEditingId(n.id); setNoteTitle(n.title); setNoteContent(n.content) }
 
-  const exportKb = async () => {    const text = await assembleKnowledge(sel, notes)
-    downloadText(`kimo-knowledge-${new Date().toISOString().slice(0, 10)}.md`, text || '(知识库为空)')
+  const exportKb = async () => {
+    const kb = await assembleKnowledge(sel, notes)
+    const text = [
+      '# Coser 角色扮演设定',
+      '',
+      `> 导出时间：${new Date().toLocaleString()}`,
+      '',
+      '## 一、角色提示词',
+      systemPrompt || '（未设置）',
+      '',
+      '## 二、启用状态',
+      kbOn ? '已启用角色资料' : '未启用（角色资料未生效）',
+      '',
+      '## 三、附加资料（站点内容 + 自定义设定）',
+      kb || '（未选择任何内容）',
+      '',
+    ].join('\n')
+    downloadText(`kimo-coser-${new Date().toISOString().slice(0, 10)}.md`, text)
   }
 
   const preview = useMemo(() => {

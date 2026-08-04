@@ -26,6 +26,7 @@ const DEFAULT_SETTINGS: SiteSettings = {
   show_dashboard: '1',
   show_pages: '1',
   show_ai: '1',
+  enable_ai_articles: '0',
 }
 
 const SiteContext = createContext<SiteContextValue>({

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { resolveAsset, settingApi, uploadApi } from '../../lib/api'
-import type { SiteSettings } from '../../lib/types'
+import { pageApi, resolveAsset, settingApi, uploadApi } from '../../lib/api'
+import { AI_CHAT_MARKER, type AIChatConfig, type SiteSettings } from '../../lib/types'
 import { PageSpinner } from '../../components/Spinner'
 import { ConfirmDialog } from '../../components/Modal'
 import { EmptyState } from '../../components/ui'
@@ -27,6 +27,29 @@ export function Settings() {
   const [uploading, setUploading] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const [ai, setAi] = useState<AIConfig>(getAIConfig())
+  const [aiBots, setAiBots] = useState<{ id: number; name: string; botName: string }[]>([])
+  const [polishBot, setPolishBot] = useState<string>(() => {
+    try { return localStorage.getItem('kimo_ai_polish_bot') || '' } catch { return '' }
+  })
+
+  // 加载 AI 管理中的助手，供「AI 改写」选择
+  useEffect(() => {
+    pageApi.list()
+      .then((pages) => {
+        const bots = pages
+          .filter((p) => p.type === 'html' && p.content?.startsWith(AI_CHAT_MARKER))
+          .map((p) => {
+            try {
+              const cfg = JSON.parse((p.content || '').slice(AI_CHAT_MARKER.length)) as AIChatConfig
+              return { id: p.id, name: p.name, botName: cfg.botName || '' }
+            } catch {
+              return { id: p.id, name: p.name, botName: '' }
+            }
+          })
+        setAiBots(bots)
+      })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (loaded) setForm(settings)
@@ -246,10 +269,10 @@ export function Settings() {
         </div>
       </section>
 
-      {/* AI 润色设置（本地存储，不写入站点键值） */}
+      {/* AI 改写设置：默认使用「AI 管理」中的助手（本地存储，不写入站点键值） */}
       <section className="card space-y-4 p-6">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-gray-800">AI 润色</h2>
+          <h2 className="text-base font-semibold text-gray-800">AI 改写</h2>
           <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-600">
             <input
               type="checkbox"
@@ -261,12 +284,34 @@ export function Settings() {
           </label>
         </div>
         <p className="text-xs leading-relaxed text-gray-400">
-          在文章编辑器的工具栏中使用「AI 润色」按钮。支持任意 OpenAI 兼容接口（DeepSeek、Moonshot、OpenAI 等）。
-          配置仅保存在浏览器本地，不会上传到服务器。
+          在文章编辑器的工具栏中使用「AI 改写」按钮。默认使用「AI 管理」中创建的 AI 助手；请先到「AI 管理」创建助手，
+          并在此选择用于改写文章的那个助手。也可手动指定 OpenAI 兼容接口作为回退。
         </p>
 
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-600">接口地址（Base URL）</label>
+          <label className="mb-1.5 block text-sm font-medium text-gray-600">选择用于改写的 AI 助手</label>
+          <select
+            value={polishBot}
+            onChange={(e) => {
+              setPolishBot(e.target.value)
+              try { localStorage.setItem('kimo_ai_polish_bot', e.target.value) } catch { /* 忽略 */ }
+            }}
+            className={inputCls}
+          >
+            <option value="">自动（使用第一个 AI 助手）</option>
+            {aiBots.map((b) => (
+              <option key={b.id} value={b.id}>{b.botName || b.name}</option>
+            ))}
+          </select>
+          {aiBots.length === 0 && (
+            <p className="mt-1 text-xs text-gray-400">尚未配置 AI 助手，请先到「AI 管理」创建。</p>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-dashed border-gray-200 p-3 dark:border-gray-700">
+          <p className="mb-2 text-xs font-medium text-gray-400">回退配置（仅当未选择助手或助手不可用时生效）</p>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-600">接口地址（Base URL）</label>
           <input
             value={ai.endpoint}
             onChange={(e) => setAi((a) => ({ ...a, endpoint: e.target.value }))}
@@ -293,6 +338,7 @@ export function Settings() {
             className={inputCls}
           />
         </div>
+        </div>
 
         <div className="flex justify-end">
           <button
@@ -302,8 +348,41 @@ export function Settings() {
             }}
             className="rounded-xl bg-gray-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 active:scale-[0.98]"
           >
-            保存 AI 配置
+            保存 AI 改写配置
           </button>
+        </div>
+      </section>
+
+      {/* 功能开关 */}
+      <section className="card space-y-4 p-6">
+        <h2 className="text-base font-semibold text-gray-800">功能开关</h2>
+        <div className="flex items-center justify-between rounded-xl border border-gray-100 p-4 dark:border-gray-800">
+          <div>
+            <p className="text-sm font-medium text-gray-800 dark:text-gray-200">AI 对话中「写文章」</p>
+            <p className="text-xs text-gray-400">开启后，在 /ai 的「＋」菜单会出现「写文章」，可直接调用后端 API 创建文章（需登录有权限的账号）。</p>
+          </div>
+          <label className="flex cursor-pointer items-center">
+            <input
+              type="checkbox"
+              checked={settings.enable_ai_articles === '1'}
+              onChange={(e) => setForm((f) => ({ ...f, enable_ai_articles: e.target.checked ? '1' : '0' }))}
+              className="h-4 w-4 accent-gray-900"
+            />
+          </label>
+        </div>
+        <div className="flex items-center justify-between rounded-xl border border-gray-100 p-4 dark:border-gray-800">
+          <div>
+            <p className="text-sm font-medium text-gray-800 dark:text-gray-200">主页「AI」菜单</p>
+            <p className="text-xs text-gray-400">关闭后首页导航不再显示「AI」入口（show_ai）。</p>
+          </div>
+          <label className="flex cursor-pointer items-center">
+            <input
+              type="checkbox"
+              checked={settings.show_ai !== '0'}
+              onChange={(e) => setForm((f) => ({ ...f, show_ai: e.target.checked ? '1' : '0' }))}
+              className="h-4 w-4 accent-gray-900"
+            />
+          </label>
         </div>
       </section>
 

@@ -12,6 +12,15 @@ html {
   scroll-behavior: smooth;
 }
 
+/* 隐藏滚动条（聊天输入框等） */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 body {
   font-family: 'Noto Serif SC', 'SimSun', '宋体', serif;
   -webkit-font-smoothing: antialiased;

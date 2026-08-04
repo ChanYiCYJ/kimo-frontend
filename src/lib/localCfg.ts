@@ -7,6 +7,8 @@ export interface LocalAIConfig {
   endpoint: string
   apiKey: string
   model: string
+  /** 本地自定义提示词（覆盖默认人设，可选） */
+  prompt?: string
 }
 
 const PREFIX = 'kimo_ai_local_'
@@ -19,10 +21,11 @@ export function getLocalCfg(pageId: number): LocalAIConfig {
         endpoint: typeof r.endpoint === 'string' ? r.endpoint : '',
         apiKey: typeof r.apiKey === 'string' ? r.apiKey : '',
         model: typeof r.model === 'string' ? r.model : '',
+        prompt: typeof r.prompt === 'string' ? r.prompt : '',
       }
     }
   } catch { /* 忽略 */ }
-  return { endpoint: '', apiKey: '', model: '' }
+  return { endpoint: '', apiKey: '', model: '', prompt: '' }
 }
 
 export function saveLocalCfg(pageId: number, c: LocalAIConfig): void {

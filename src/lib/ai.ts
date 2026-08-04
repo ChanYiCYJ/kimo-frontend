@@ -10,13 +10,35 @@ export interface AIConfig {
 }
 
 const AI_CONFIG_KEY = 'kimo_ai_config'
-/** AICenter 加载时写入的第一个 AI 机器人配置（后台润色等直接复用） */
+/** AICenter 加载时写入的首个 AI 机器人配置（后台润色等直接复用） */
 const BOT_CONFIG_KEY = 'kimo_ai_bot_config'
+/** 所有 AI 机器人注册表（后台「AI 改写」选择用） */
+const BOTS_KEY = 'kimo_ai_bots'
+/** 后台「AI 改写」选中的机器人 id */
+const POLISH_BOT_KEY = 'kimo_ai_polish_bot'
+
+interface BotRef {
+  id: number
+  endpoint: string
+  apiKey: string
+  model: string
+}
 
 const DEFAULTS: AIConfig = { endpoint: '', apiKey: '', model: '', enabled: false }
 
 export function getAIConfig(): AIConfig {
-  // 优先：AI 管理中心自动写入的机器人配置
+  // 优先：管理员在「AI 改写」中选择的 AI 助手（来自 AI 管理注册表）
+  try {
+    const bots = JSON.parse(localStorage.getItem(BOTS_KEY) || '[]') as BotRef[]
+    if (bots.length) {
+      const selected = localStorage.getItem(POLISH_BOT_KEY)
+      const pick = bots.find((b) => String(b.id) === selected) || bots[0]
+      if (pick && pick.endpoint && pick.apiKey && pick.model) {
+        return { ...DEFAULTS, enabled: true, endpoint: pick.endpoint, apiKey: pick.apiKey, model: pick.model }
+      }
+    }
+  } catch { /* 忽略 */ }
+  // 回退：AI 管理中心自动写入的首个机器人配置
   try {
     const botRaw = localStorage.getItem(BOT_CONFIG_KEY)
     if (botRaw) {

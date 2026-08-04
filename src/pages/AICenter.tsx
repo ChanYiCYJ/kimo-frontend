@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { pageApi } from '../lib/api'
 import { AI_CHAT_MARKER, decodeKey, type AIChatConfig } from '../lib/types'
 import { useAuth } from '../lib/auth'
+import { useSite } from '../lib/site'
 import { AIChat, type BotItem } from '../components/AIChat'
 
 /** 解析 AI 页面 → BotItem */
@@ -21,6 +22,7 @@ export function AICenter() {
   const { botId } = useParams<{ botId: string }>()
   const navigate = useNavigate()
   const { isAdmin } = useAuth()
+  const { settings } = useSite()
   const [bots, setBots] = useState<BotItem[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -29,17 +31,21 @@ export function AICenter() {
       const pages = await pageApi.list()
       const items = pages.map(parseBot).filter((b): b is BotItem => !!b)
       setBots(items)
-      // 把第一个机器人配置写入共享缓存，供后台 AI 润色等直接复用
-      if (items.length) {
-        try {
-          localStorage.setItem('kimo_ai_bot_config', JSON.stringify({
-            endpoint: items[0].config.endpoint,
-            apiKey: items[0].config.apiKey,
-            model: items[0].config.model,
-            enabled: true,
-          }))
-        } catch { /* 忽略 */ }
-      }
+      // 写入 AI 机器人注册表（后台「AI 改写」选择）与首个配置缓存
+      try {
+        localStorage.setItem('kimo_ai_bots', JSON.stringify(items.map((b) => ({
+          id: b.id,
+          endpoint: b.config.endpoint,
+          apiKey: b.config.apiKey,
+          model: b.config.model,
+        }))))
+        localStorage.setItem('kimo_ai_bot_config', JSON.stringify({
+          endpoint: items[0]?.config.endpoint,
+          apiKey: items[0]?.config.apiKey,
+          model: items[0]?.config.model,
+          enabled: true,
+        }))
+      } catch { /* 忽略 */ }
     } catch {
       setBots([])
     } finally {
@@ -81,6 +87,7 @@ export function AICenter() {
           onSwitchBot={switchBot}
           canManage={isAdmin}
           onManage={() => navigate('/dashboard/ai')}
+          enableArticles={settings.enable_ai_articles === '1'}
         />
       ) : (
         <div className="flex h-full flex-col items-center justify-center gap-4 bg-white p-8 text-center dark:bg-gray-900">
