@@ -153,7 +153,7 @@ export function Settings() {
           </div>
         ))}
 
-        {/* 开放注册开关（allow_register：'1'=开放，'0'=关闭） */}
+        {/* 开放注册开关 */}
         <div className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50/60 px-4 py-3">
           <div>
             <p className="text-sm font-medium text-gray-700">开放注册</p>
@@ -176,6 +176,57 @@ export function Settings() {
               }`}
             />
           </button>
+        </div>
+
+        {/* 菜单显示开关 */}
+        <div className="space-y-3">
+          <p className="text-sm font-medium text-gray-700">菜单栏显示</p>
+          <div className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50/60 px-4 py-3">
+            <div>
+              <p className="text-sm text-gray-700">后台入口</p>
+              <p className="text-xs text-gray-400">在顶部菜单栏显示「管理后台」链接</p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={form.show_dashboard !== '0'}
+              onClick={() =>
+                setForm((f) => ({ ...f, show_dashboard: f.show_dashboard === '0' ? '1' : '0' }))
+              }
+              className={`relative h-6 w-11 shrink-0 rounded-full transition ${
+                form.show_dashboard !== '0' ? 'bg-gray-900' : 'bg-gray-300'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                  form.show_dashboard !== '0' ? 'left-[22px]' : 'left-0.5'
+                }`}
+              />
+            </button>
+          </div>
+          <div className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50/60 px-4 py-3">
+            <div>
+              <p className="text-sm text-gray-700">自定义页面</p>
+              <p className="text-xs text-gray-400">在顶部菜单栏显示自定义页面链接</p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={form.show_pages !== '0'}
+              onClick={() =>
+                setForm((f) => ({ ...f, show_pages: f.show_pages === '0' ? '1' : '0' }))
+              }
+              className={`relative h-6 w-11 shrink-0 rounded-full transition ${
+                form.show_pages !== '0' ? 'bg-gray-900' : 'bg-gray-300'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                  form.show_pages !== '0' ? 'left-[22px]' : 'left-0.5'
+                }`}
+              />
+            </button>
+          </div>
         </div>
 
         <div className="flex justify-end">

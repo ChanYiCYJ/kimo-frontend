@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { articleApi, categoryApi, pageApi, tagApi } from '../lib/api'
-import type { Category, Page, Tag } from '../lib/types'
+import { articleApi, categoryApi, tagApi } from '../lib/api'
+import type { Category, Tag } from '../lib/types'
 import { Skeleton } from './ui'
 
 export function Sidebar() {
   const [categories, setCategories] = useState<Category[]>([])
   const [tags, setTags] = useState<Tag[]>([])
-  const [pages, setPages] = useState<Page[]>([])
   const [articleTotal, setArticleTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [params] = useSearchParams()
@@ -15,12 +14,11 @@ export function Sidebar() {
 
   useEffect(() => {
     let active = true
-    Promise.allSettled([articleApi.list(1), categoryApi.list(), tagApi.list(), pageApi.list()]).then((res) => {
+    Promise.allSettled([articleApi.list(1), categoryApi.list(), tagApi.list()]).then((res) => {
       if (!active) return
       if (res[0].status === 'fulfilled') setArticleTotal(res[0].value.total)
       if (res[1].status === 'fulfilled') setCategories(res[1].value)
       if (res[2].status === 'fulfilled') setTags(res[2].value)
-      if (res[3].status === 'fulfilled') setPages(res[3].value)
       setLoading(false)
     })
     return () => {
@@ -108,41 +106,6 @@ export function Sidebar() {
                 #{t.tag_name}
               </button>
             ))}
-          </div>
-        </section>
-      )}
-
-      {/* 页面 */}
-      {pages.length > 0 && (
-        <section className="card p-3.5">
-          <h3 className="mb-2.5 border-l-2 border-gray-900 pl-2.5 text-xs font-semibold uppercase tracking-wider text-gray-500">Pages</h3>
-          <div className="space-y-2">
-            {pages.map((p) => {
-              const inner = (
-                <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-800">{p.name}</span>
-              )
-              return p.type === 'link' ? (
-                <a
-                  key={p.id}
-                  href={p.content || '#'}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="group flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5 transition hover:border-gray-300 hover:bg-gray-50"
-                >
-                  {inner}
-                  <span className="shrink-0 text-gray-300 transition group-hover:translate-x-0.5">→</span>
-                </a>
-              ) : (
-                <Link
-                  key={p.id}
-                  to={`/page/${p.name}`}
-                  className="group flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5 transition hover:border-gray-300 hover:bg-gray-50"
-                >
-                  {inner}
-                  <span className="shrink-0 text-gray-300 transition group-hover:translate-x-0.5">→</span>
-                </Link>
-              )
-            })}
           </div>
         </section>
       )}

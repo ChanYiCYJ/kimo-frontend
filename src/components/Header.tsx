@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { useSite } from '../lib/site'
 import { useAuth } from '../lib/auth'
-import { resolveAsset } from '../lib/api'
+import { pageApi, resolveAsset } from '../lib/api'
+import type { Page } from '../lib/types'
 
 export function Header() {
   const { settings } = useSite()
@@ -10,6 +11,11 @@ export function Header() {
   const navigate = useNavigate()
   const [keyword, setKeyword] = useState('')
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [pages, setPages] = useState<Page[]>([])
+
+  useEffect(() => {
+    pageApi.list().then(setPages).catch(() => {})
+  }, [])
 
   const submitSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -78,9 +84,28 @@ export function Header() {
             首页
           </NavLink>
 
+          {pages.filter(p => p.type !== 'link' && settings.show_pages !== '0').map((p) => (
+            <NavLink
+              key={p.id}
+              to={`/page/${p.name}`}
+              className={({ isActive }) =>
+                `transition ${isActive ? 'font-medium text-gray-900' : 'hover:text-gray-900'}`
+              }
+            >
+              {p.name}
+            </NavLink>
+          ))}
+
           {isAdmin ? (
             <Link
               to="/dashboard"
+              className="flex items-center gap-1 rounded-full border border-gray-200 px-4 py-1.5 font-medium text-gray-700 transition hover:bg-gray-100 hover:text-gray-900"
+            >
+              管理后台
+            </Link>
+          ) : settings.show_dashboard !== '0' ? (
+            <Link
+              to="/login"
               className="flex items-center gap-1 rounded-full border border-gray-200 px-4 py-1.5 font-medium text-gray-700 transition hover:bg-gray-100 hover:text-gray-900"
             >
               管理后台
@@ -146,8 +171,22 @@ export function Header() {
             <NavLink to="/" end onClick={() => setMobileOpen(false)} className="rounded-lg px-3 py-2 text-gray-700 hover:bg-gray-100">
               首页
             </NavLink>
+            {pages.filter(p => p.type !== 'link' && settings.show_pages !== '0').map((p) => (
+              <NavLink
+                key={p.id}
+                to={`/page/${p.name}`}
+                onClick={() => setMobileOpen(false)}
+                className="rounded-lg px-3 py-2 text-gray-700 hover:bg-gray-100"
+              >
+                {p.name}
+              </NavLink>
+            ))}
             {isAdmin ? (
               <Link to="/dashboard" onClick={() => setMobileOpen(false)} className="rounded-lg px-3 py-2 text-gray-900 hover:bg-gray-100">
+                管理后台
+              </Link>
+            ) : settings.show_dashboard !== '0' ? (
+              <Link to="/login" onClick={() => setMobileOpen(false)} className="rounded-lg px-3 py-2 text-gray-900 hover:bg-gray-100">
                 管理后台
               </Link>
             ) : (
