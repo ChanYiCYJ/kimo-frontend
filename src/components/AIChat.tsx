@@ -53,6 +53,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
     return 0
   })
   const [speakingIdx, setSpeakingIdx] = useState(-1)
+  const [stick, setStick] = useState(true)
   const [ttsOn, setTtsOn] = useState(!!config.autoTTS)
   const [consented, setConsented] = useState(() => {
     try { return localStorage.getItem(STORAGE_PREFIX + 'consent_' + pageId) === '1' } catch { return false }
@@ -68,7 +69,8 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
   useEffect(() => {
     const el = inputRef.current; if (!el) return
     const onFocus = () => {
-      if (isNearBottom()) setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 300)
+      setStick(true)
+      setTimeout(autoScroll, 300)
     }
     el.addEventListener('focus', onFocus)
     return () => el.removeEventListener('focus', onFocus)
@@ -84,12 +86,22 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
 
   const isNearBottom = () => {
     const el = msgListRef.current; if (!el) return true
-    return el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 120
   }
 
+  // 仅当用户位于底部时才自动跟随，避免阅读中被拽走
+  const autoScroll = useCallback(() => {
+    if (isNearBottom()) bottomRef.current?.scrollIntoView({ behavior: 'auto' })
+  }, [])
+
+  // 用户手动上滑时停止跟随
+  const onScroll = useCallback(() => {
+    if (!isNearBottom()) setStick(false)
+  }, [])
+
   useEffect(() => {
-    if (isNearBottom()) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    if (stick) autoScroll()
+  }, [messages, stick, autoScroll])
 
   useEffect(() => {
     if (cooldown <= 0) {
@@ -127,6 +139,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
       summary = allMsgs.slice(0, allMsgs.length - 6).map((m, i) => `${m.role === 'user' ? '问' : '答'}${i+1}: ${m.content.slice(0, 60)}`).join('; ')
     }
     setMessages(allMsgs); setInput(''); setLoading(true); save(allMsgs)
+    setStick(true)
     setCooldown(config.cooldown || 60)
     try { localStorage.setItem(STORAGE_PREFIX + 'cooldown_' + pageId, String(Date.now() + (config.cooldown || 60) * 1000)) } catch {}
     const ctrl = new AbortController(); abortRef.current = ctrl; let reply = ''
@@ -222,7 +235,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
       </div>
 
       {/* 消息列表 */}
-      <div ref={msgListRef} className="flex-1 space-y-3 overflow-y-auto px-3 py-2 sm:space-y-4 sm:px-4 sm:py-3">
+      <div ref={msgListRef} onScroll={onScroll} className="flex-1 space-y-3 overflow-y-auto px-3 py-2 sm:space-y-4 sm:px-4 sm:py-3">
         {messages.length === 0 && (
           <div className="flex flex-col items-center py-12 sm:py-16">
             {config.avatar ? (

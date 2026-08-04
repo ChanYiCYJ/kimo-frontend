@@ -129,19 +129,19 @@ export function ManageArticles() {
                 <Link
                   to={`/article/${a.id}`}
                   target="_blank"
-                  className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 transition hover:bg-gray-100 sm:px-3"
+                  className="rounded-lg px-3 py-2 text-xs font-medium text-gray-500 transition hover:bg-gray-100 active:bg-gray-100 sm:px-3 sm:py-1.5"
                 >
                   查看
                 </Link>
                 <Link
                   to={`/dashboard/articles/${a.id}/edit`}
-                  className="rounded-lg px-2 py-1.5 text-xs font-medium text-blue-600 transition hover:bg-blue-50 sm:px-3"
+                  className="rounded-lg px-3 py-2 text-xs font-medium text-blue-600 transition hover:bg-blue-50 active:bg-blue-50 sm:px-3 sm:py-1.5"
                 >
                   编辑
                 </Link>
                 <button
                   onClick={() => setDeleting(a)}
-                  className="rounded-lg px-2 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50 sm:px-3"
+                  className="rounded-lg px-3 py-2 text-xs font-medium text-red-600 transition hover:bg-red-50 active:bg-red-50 sm:px-3 sm:py-1.5"
                 >
                   删除
                 </button>
