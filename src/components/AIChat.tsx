@@ -68,7 +68,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
 
   if (!consented) {
     return (
-      <div className="mx-auto max-w-lg rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
+      <div className="mx-auto max-w-lg rounded-2xl border border-gray-200 bg-white p-4 sm:p-6 dark:border-gray-700 dark:bg-gray-900">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">知情同意声明</h3>
         <div className="mt-4 space-y-2 text-sm leading-relaxed text-gray-600 dark:text-gray-400">
           <p>在开始对话前，请了解：</p>
@@ -92,14 +92,14 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
   }
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900" style={{ minHeight: 'min(480px, 80dvh)' }}>
-      {/* 顶栏 — 机器人信息 */}
-      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
-        <div className="flex items-center gap-3">
+    <div className="flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900" style={{ minHeight: 'min(360px, 55dvh)' }}>
+      {/* 顶栏 */}
+      <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2.5 dark:border-gray-700 sm:px-4 sm:py-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           {config.avatar ? (
-            <img src={config.avatar} alt={config.botName} className="h-8 w-8 rounded-full object-cover ring-1 ring-gray-200 dark:ring-gray-700" />
+            <img src={config.avatar} alt={config.botName} className="h-7 w-7 rounded-full object-cover ring-1 ring-gray-200 sm:h-8 sm:w-8 dark:ring-gray-700" />
           ) : (
-            <span className="grid h-8 w-8 place-content-center rounded-full bg-gray-900 text-xs font-bold text-white dark:bg-gray-200 dark:text-gray-900">
+            <span className="grid h-7 w-7 place-content-center rounded-full bg-gray-900 text-[10px] font-bold text-white sm:h-8 sm:w-8 sm:text-xs dark:bg-gray-200 dark:text-gray-900">
               {(config.botName || 'AI').slice(0, 2)}
             </span>
           )}
@@ -108,23 +108,25 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
             <p className="text-[11px] text-gray-400">{config.model || 'AI'}</p>
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5 sm:gap-1">
           <button onClick={() => { setMessages([]); try { localStorage.removeItem(STORAGE_PREFIX + 'history_' + pageId) } catch {} }}
-            className="rounded-lg px-2 py-1 text-xs text-gray-400 transition hover:text-red-500">清除</button>
+            className="rounded-lg px-1.5 py-1 text-xs text-gray-400 transition hover:text-red-500 sm:px-2">清除</button>
           <button onClick={() => abortRef.current?.abort()} disabled={!loading}
-            className="rounded-lg px-2 py-1 text-xs text-gray-400 transition hover:text-gray-600 disabled:opacity-30">停止</button>
+            className="rounded-lg px-1.5 py-1 text-xs text-gray-400 transition hover:text-gray-600 disabled:opacity-30 sm:px-2">停止</button>
         </div>
       </div>
-      <div className="flex-1 space-y-4 overflow-y-auto p-4">
+
+      {/* 消息列表 */}
+      <div className="flex-1 space-y-3 overflow-y-auto p-3 sm:space-y-4 sm:p-4">
         {messages.length === 0 && (
-          <div className="flex flex-col items-center py-12">
+          <div className="flex flex-col items-center py-8 sm:py-12">
             {config.avatar ? (
-              <img src={config.avatar} alt={config.botName} className="mb-3 h-16 w-16 rounded-full object-cover ring-2 ring-gray-100 dark:ring-gray-700" />
+              <img src={config.avatar} alt={config.botName} className="mb-3 h-12 w-12 rounded-full object-cover ring-2 ring-gray-100 sm:h-16 sm:w-16 dark:ring-gray-700" />
             ) : (
-              <span className="mb-3 grid h-16 w-16 place-content-center rounded-full bg-gray-100 text-2xl font-bold text-gray-400 dark:bg-gray-800">AI</span>
+              <span className="mb-3 grid h-12 w-12 place-content-center rounded-full bg-gray-100 text-xl font-bold text-gray-400 sm:h-16 sm:w-16 sm:text-2xl dark:bg-gray-800">AI</span>
             )}
             <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{config.botName || 'AI 助手'}</p>
-            <p className="mt-1 text-xs text-gray-400">有什么可以帮你？</p>
+            <p className="mt-0.5 text-xs text-gray-400 sm:mt-1">有什么可以帮你？</p>
           </div>
         )}
         {messages.map((m, i) => (
@@ -134,16 +136,17 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
                 ? <img src={config.avatar} className="h-6 w-6 shrink-0 rounded-full object-cover ring-1 ring-gray-200 dark:ring-gray-700" alt="" />
                 : <span className="grid h-6 w-6 shrink-0 place-content-center rounded-full bg-gray-100 text-[10px] font-bold text-gray-500 dark:bg-gray-800">AI</span>
             )}
-            <div className={`max-w-[78%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${m.role === 'user' ? 'bg-gray-900 text-white dark:bg-gray-200 dark:text-gray-900' : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'}`}>{m.content}</div>
+            <div className={`max-w-[82%] rounded-2xl px-3 py-2 text-[13px] leading-relaxed whitespace-pre-wrap sm:max-w-[78%] sm:px-4 sm:py-2.5 sm:text-sm ${m.role === 'user' ? 'bg-gray-900 text-white dark:bg-gray-200 dark:text-gray-900' : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'}`}>{m.content}</div>
           </div>
         ))}
         <div ref={bottomRef} />
       </div>
-      <div className="border-t border-gray-100 p-3 dark:border-gray-700">
+      {/* 输入框 */}
+      <div className="border-t border-gray-100 p-2.5 dark:border-gray-700 sm:p-3">
         <div className="flex gap-2">
-          <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()} placeholder={`向 ${config.botName || 'AI 助手'} 发送消息...`} disabled={loading}
-            className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none transition focus:border-gray-400 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" />
-          <button onClick={send} disabled={loading || !input.trim()} className="rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-gray-700 disabled:opacity-50 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300">发送</button>
+          <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()} placeholder={`向 ${config.botName || 'AI'} 发消息...`} disabled={loading}
+            className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-gray-400 disabled:opacity-50 sm:px-4 sm:py-2.5 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" />
+          <button onClick={send} disabled={loading || !input.trim()} className="shrink-0 rounded-xl bg-gray-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-gray-700 disabled:opacity-50 sm:px-4 sm:py-2.5 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300">发送</button>
         </div>
       </div>
     </div>
