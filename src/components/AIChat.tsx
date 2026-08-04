@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import { articleApi, categoryApi, pageApi, tagApi } from '../lib/api'
 import type { AIChatConfig } from '../lib/types'
 
 interface Message {
@@ -9,8 +10,10 @@ interface Message {
 
 const STORAGE_PREFIX = 'kimo_chat_'
 
-async function streamChat(cfg: AIChatConfig, msgs: Message[], onChunk: (t: string) => void, signal: AbortSignal, summary = '') {
-  const sys = (cfg.systemPrompt || '') + (summary ? `\n\n对话知识库摘要：\n${summary}` : '')
+async function streamChat(cfg: AIChatConfig, msgs: Message[], onChunk: (t: string) => void, signal: AbortSignal, summary = '', knowledge = '') {
+  const sys = (cfg.systemPrompt || '')
+    + (summary ? `\n\n对话上下文摘要：\n${summary}` : '')
+    + (knowledge ? `\n\n以下是本站点知识库内容，请优先基于它回答问题：\n${knowledge}` : '')
   const res = await fetch(cfg.endpoint.replace(/\/+$/, '') + '/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
@@ -56,6 +59,9 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
   const [speakingIdx, setSpeakingIdx] = useState(-1)
   const [stick, setStick] = useState(true)
   const [fullscreen, setFullscreen] = useState(false)
+  const [kbOn, setKbOn] = useState(false)
+  const [kbLoading, setKbLoading] = useState(false)
+  const [kbData, setKbData] = useState('')
   const [ttsOn, setTtsOn] = useState(!!config.autoTTS)
   const [consented, setConsented] = useState(() => {
     try { return localStorage.getItem(STORAGE_PREFIX + 'consent_' + pageId) === '1' } catch { return false }
@@ -123,6 +129,45 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
     const check = setInterval(() => { if (!window.speechSynthesis.speaking) { setSpeakingIdx(-1); clearInterval(check) } }, 300)
   }, [speakingIdx])
 
+  // 抓取全站内容作为知识库
+  const loadKnowledge = useCallback(async () => {
+    setKbLoading(true)
+    try {
+      const [articles, categories, tags, pages] = await Promise.allSettled([
+        articleApi.list(1),
+        categoryApi.list(),
+        tagApi.list(),
+        pageApi.list(),
+      ])
+      const parts: string[] = []
+      if (articles.status === 'fulfilled' && articles.value.items.length) {
+        parts.push('【文章】' + articles.value.items.map(a => `《${a.title}》[${a.category_name || '未分类'}]：${a.description || ''}`).join('\n'))
+      }
+      if (categories.status === 'fulfilled' && categories.value.length) {
+        parts.push('【分类】' + categories.value.map(c => `${c.name}(/${c.slug})`).join('、'))
+      }
+      if (tags.status === 'fulfilled' && tags.value.length) {
+        parts.push('【标签】' + tags.value.map(t => `#${t.tag_name}`).join(' '))
+      }
+      if (pages.status === 'fulfilled' && pages.value.length) {
+        parts.push('【页面】' + pages.value.map(p => `${p.name}(${p.type})`).join('、'))
+      }
+      setKbData(parts.join('\n\n'))
+    } catch {
+      setKbData('')
+    } finally {
+      setKbLoading(false)
+    }
+  }, [])
+
+  const toggleKb = useCallback(() => {
+    setKbOn(prev => {
+      const next = !prev
+      if (next && !kbData) loadKnowledge()
+      return next
+    })
+  }, [kbData, loadKnowledge])
+
   const send = async () => {
     const t = input.trim(); if (!t || loading || cooldown > 0) return
     // 消息数限制检查
@@ -146,7 +191,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
     try { localStorage.setItem(STORAGE_PREFIX + 'cooldown_' + pageId, String(Date.now() + (config.cooldown || 60) * 1000)) } catch {}
     const ctrl = new AbortController(); abortRef.current = ctrl; let reply = ''
     try {
-      reply = await streamChat(config, recent, full => setMessages([...allMsgs, { role: 'assistant' as const, content: full }]), ctrl.signal, summary)
+      reply = await streamChat(config, recent, full => setMessages([...allMsgs, { role: 'assistant' as const, content: full }]), ctrl.signal, summary, kbOn ? kbData : '')
     } catch (e: unknown) {
       if ((e as Error).name === 'AbortError') return
       reply = `错误：${e instanceof Error ? e.message : '请求失败'}`
@@ -220,6 +265,11 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
           </div>
         </div>
         <div className="flex items-center gap-0.5 sm:gap-1">
+          <button onClick={toggleKb}
+            className={`rounded-lg px-1.5 py-1 text-xs transition sm:px-2 ${kbOn ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' : 'text-gray-400 hover:text-gray-600'}`}
+            title={kbOn ? '关闭知识库' : '开启知识库（基于本站内容回答）'}>
+            {kbLoading ? '⏳' : kbOn ? '📚' : '📖'}
+          </button>
           {config.autoTTS && (
             <button onClick={() => setTtsOn(!ttsOn)}
               className={`rounded-lg px-1.5 py-1 text-xs transition sm:px-2 ${ttsOn ? 'bg-green-50 text-green-600 dark:bg-green-900/30 dark:text-green-400' : 'text-gray-400 hover:text-gray-600'}`}
