@@ -212,7 +212,7 @@ export function AdminLayout() {
       </aside>
 
       {/* ===== 主内容区 ===== */}
-      <div className="flex flex-1 flex-col lg:pl-0">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:pl-0">
         {/* 桌面顶栏 */}
         <header className="hidden h-14 items-center justify-between border-b border-gray-200/70 bg-white/80 px-6 backdrop-blur dark:border-gray-800 dark:bg-gray-950/80 lg:flex">
           <h1 className="text-lg font-semibold text-gray-900">{title}</h1>
@@ -228,7 +228,7 @@ export function AdminLayout() {
         </header>
 
         {/* 内容 */}
-        <main className="flex-1 p-4 sm:p-6">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
           <Outlet />
         </main>
       </div>

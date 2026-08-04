@@ -92,7 +92,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
   }
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900" style={{ minHeight: 480 }}>
+    <div className="flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900" style={{ minHeight: 'min(480px, 80dvh)' }}>
       {/* 顶栏 — 机器人信息 */}
       <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
         <div className="flex items-center gap-3">
