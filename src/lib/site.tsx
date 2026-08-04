@@ -23,6 +23,8 @@ const DEFAULT_SETTINGS: SiteSettings = {
   background: 'https://api.1314.cool/bingimg',
   footer: '© Kimo · Powered by FastAPI + React',
   allow_register: '1',
+  show_dashboard: '1',
+  show_pages: '1',
 }
 
 const SiteContext = createContext<SiteContextValue>({
