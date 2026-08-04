@@ -31,3 +31,13 @@ export function readingTime(markdown: string): number {
   const chars = text.length
   return Math.max(1, Math.ceil(chars / 300))
 }
+
+/** 把标题文本转成稳定 id（供目录锚点跳转，需与 Markdown 渲染保持一致） */
+export function slugify(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\u4e00-\u9fa5]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64)
+}

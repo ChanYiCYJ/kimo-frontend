@@ -1,17 +1,82 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { articleApi, resolveAsset } from '../lib/api'
 import type { ArticleDetail } from '../lib/types'
 import { Markdown } from '../components/Markdown'
 import { PageSpinner } from '../components/Spinner'
-import { formatDate, readingTime } from '../lib/format'
+import { formatDate, readingTime, slugify } from '../lib/format'
 import { EmptyState } from '../components/ui'
+
+interface TocItem {
+  level: number
+  text: string
+  id: string
+}
+
+/** 从 Markdown 中提取 h2-h4 作为目录（与 Markdown 渲染的 id 保持一致） */
+function extractToc(md: string): TocItem[] {
+  const items: TocItem[] = []
+  for (const line of md.split('\n')) {
+    const m = line.match(/^(#{2,4})\s+(.+?)\s*#*\s*$/)
+    if (m) {
+      const text = m[2].replace(/[*`_]/g, '').trim()
+      if (text) items.push({ level: m[1].length, text, id: slugify(text) })
+    }
+  }
+  return items
+}
+
+/** 顶部阅读进度条 */
+function ReadingProgress() {
+  const [pct, setPct] = useState(0)
+  useEffect(() => {
+    const onScroll = () => {
+      const h = document.documentElement
+      const total = h.scrollHeight - h.clientHeight
+      setPct(total > 0 ? Math.min(100, (h.scrollTop / total) * 100) : 0)
+    }
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+  return (
+    <div className="fixed inset-x-0 top-0 z-[70] h-0.5 bg-transparent">
+      <div className="h-full bg-gray-800 transition-[width] duration-150" style={{ width: `${pct}%` }} />
+    </div>
+  )
+}
+
+/** 回到顶部按钮 */
+function BackToTop() {
+  const [show, setShow] = useState(false)
+  useEffect(() => {
+    const onScroll = () => setShow(window.scrollY > 500)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+  if (!show) return null
+  return (
+    <button
+      onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+      aria-label="回到顶部"
+      className="fixed bottom-6 right-6 z-50 grid h-11 w-11 place-items-center rounded-full border border-gray-200 bg-white/90 text-gray-500 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:text-gray-900"
+    >
+      <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+        <path fillRule="evenodd" d="M14.77 12.79a.75.75 0 01-1.06-.02L10 8.832 6.29 12.77a.75.75 0 11-1.08-1.04l4.25-4a.75.75 0 011.08 0l4.25 4a.75.75 0 01-.02 1.06z" clipRule="evenodd" />
+      </svg>
+    </button>
+  )
+}
 
 export function Article() {
   const { id } = useParams<{ id: string }>()
   const [article, setArticle] = useState<ArticleDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [activeId, setActiveId] = useState('')
+
+  const toc = useMemo(() => (article ? extractToc(article.content) : []), [article])
 
   useEffect(() => {
     let active = true
@@ -32,6 +97,28 @@ export function Article() {
       active = false
     }
   }, [id])
+
+  // 目录滚动高亮
+  useEffect(() => {
+    if (!toc.length) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) setActiveId(e.target.id)
+        }
+      },
+      { rootMargin: '-80px 0px -70% 0px' },
+    )
+    toc.forEach((t) => {
+      const el = document.getElementById(t.id)
+      if (el) observer.observe(el)
+    })
+    return () => observer.disconnect()
+  }, [toc])
+
+  const scrollToHeading = (tid: string) => {
+    document.getElementById(tid)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   if (loading) return <PageSpinner />
 
@@ -56,69 +143,120 @@ export function Article() {
 
   return (
     <div className="fade-up">
-      <article className="card mx-auto max-w-3xl p-4 sm:p-6">
-        {/* 返回 */}
-        <Link
-          to="/"
-          className="mb-4 inline-flex items-center gap-1 text-sm text-gray-400 transition hover:text-gray-600"
-        >
-          <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 010 1.06L9.332 10l3.458 3.71a.75.75 0 11-1.08 1.04l-4-4.25a.75.75 0 010-1.08l4-4.25a.75.75 0 011.08 0z" clipRule="evenodd" />
-          </svg>
-          返回列表
-        </Link>
+      <ReadingProgress />
+      <BackToTop />
 
-        {/* 封面（原项目：h-64 md:h-96 rounded-2xl） */}
-        {article.cover_image && (
-          <div className="h-64 w-full overflow-hidden rounded-2xl bg-gray-100 md:h-96">
-            <img
-              src={resolveAsset(article.cover_image)}
-              alt={article.title}
-              className="h-full w-full object-cover transition-transform duration-300"
-            />
-          </div>
-        )}
+      <div className="mx-auto grid w-full gap-8 xl:grid-cols-[minmax(0,1fr)_13rem]">
+        {/* 主内容 */}
+        <article className="card mx-auto w-full max-w-3xl p-4 sm:p-8">
+          {/* 返回 */}
+          <Link
+            to="/"
+            className="mb-4 inline-flex items-center gap-1 text-sm text-gray-400 transition hover:text-gray-600"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 010 1.06L9.332 10l3.458 3.71a.75.75 0 11-1.08 1.04l-4-4.25a.75.75 0 010-1.08l4-4.25a.75.75 0 011.08 0z" clipRule="evenodd" />
+            </svg>
+            返回列表
+          </Link>
 
-        {/* 标题（原项目：text-center text-4xl） */}
-        <h1 className="mb-4 mt-4 text-center text-4xl leading-tight text-gray-900">
-          {article.title}
-        </h1>
-
-        {/* 元信息（原项目：rounded-full border px-4 py-1） */}
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          {article.category_name && (
-            <span className="inline-block rounded-full border px-4 py-1 text-sm text-gray-700">
-              {article.category_name}
-            </span>
+          {/* 封面（原项目：h-64 md:h-96 rounded-2xl） */}
+          {article.cover_image && (
+            <div className="h-64 w-full overflow-hidden rounded-2xl bg-gray-100 md:h-96">
+              <img
+                src={resolveAsset(article.cover_image)}
+                alt={article.title}
+                className="h-full w-full object-cover transition-transform duration-300"
+              />
+            </div>
           )}
-          <span className="inline-block rounded-full border px-4 py-1 text-sm text-gray-700">
-            {formatDate(article.created)}
-          </span>
-          <span className="inline-block rounded-full border px-4 py-1 text-sm text-gray-700">
-            约 {readingTime(article.content)} 分钟
-          </span>
-        </div>
 
-        {/* 标签 */}
-        {article.tags.length > 0 && (
-          <div className="mt-3 flex flex-wrap justify-center gap-2">
-            {article.tags.map((t) => (
-              <span key={t.id} className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">
-                #{t.tag_name}
+          {/* 标题（原项目：text-center text-4xl） */}
+          <h1 className="mb-4 mt-4 text-center text-4xl leading-tight text-gray-900">
+            {article.title}
+          </h1>
+
+          {/* 元信息（原项目：rounded-full border px-4 py-1） */}
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {article.category_name && (
+              <span className="inline-block rounded-full border px-4 py-1 text-sm text-gray-700">
+                {article.category_name}
               </span>
-            ))}
+            )}
+            <span className="inline-block rounded-full border px-4 py-1 text-sm text-gray-700">
+              {formatDate(article.created)}
+            </span>
+            <span className="inline-block rounded-full border px-4 py-1 text-sm text-gray-700">
+              约 {readingTime(article.content)} 分钟
+            </span>
           </div>
+
+          <div className="mt-5 border-t border-gray-200" />
+
+          {/* 正文（原项目：flex justify-center + max-w-3xl，18px 由 .markdown-body 提供） */}
+          <div className="mt-6 flex justify-center">
+            <div className="w-full max-w-3xl">
+              <Markdown content={article.content} />
+            </div>
+          </div>
+
+          {/* 底部：标签 + 返回 */}
+          <div className="mt-8 border-t border-gray-100 pt-6">
+            {article.tags.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm text-gray-400">标签：</span>
+                {article.tags.map((t) => (
+                  <Link
+                    key={t.id}
+                    to={`/?keyword=${encodeURIComponent(t.tag_name)}`}
+                    className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 transition hover:bg-gray-200"
+                  >
+                    #{t.tag_name}
+                  </Link>
+                ))}
+              </div>
+            )}
+            <div className="mt-6 flex items-center justify-between text-sm">
+              <Link to="/" className="inline-flex items-center gap-1 text-gray-400 transition hover:text-gray-600">
+                ← 返回列表
+              </Link>
+              <button
+                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                className="text-gray-400 transition hover:text-gray-600"
+              >
+                回到顶部 ↑
+              </button>
+            </div>
+          </div>
+        </article>
+
+        {/* 目录（宽屏显示） */}
+        {toc.length > 0 && (
+          <aside className="hidden xl:block">
+            <nav className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-auto pr-2">
+              <p className="mb-3 text-sm font-semibold text-gray-500">目录</p>
+              <ul className="border-l border-gray-200">
+                {toc.map((item) => (
+                  <li key={item.id}>
+                    <button
+                      onClick={() => scrollToHeading(item.id)}
+                      className={`block w-full border-l-2 py-1 text-left transition ${
+                        item.level === 2 ? 'pl-3 text-sm' : item.level === 3 ? 'pl-7 text-xs' : 'pl-5 text-xs'
+                      } ${
+                        activeId === item.id
+                          ? 'border-gray-900 font-medium text-gray-900'
+                          : 'border-transparent text-gray-400 hover:text-gray-700'
+                      }`}
+                    >
+                      {item.text}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          </aside>
         )}
-
-        <div className="mt-5 border-t border-gray-200" />
-
-        {/* 正文（原项目：flex justify-center + max-w-3xl，18px 由 .markdown-body 提供） */}
-        <div className="mt-6 flex justify-center">
-          <div className="w-full max-w-3xl">
-            <Markdown content={article.content} />
-          </div>
-        </div>
-      </article>
+      </div>
     </div>
   )
 }

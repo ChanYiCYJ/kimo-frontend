@@ -14,8 +14,6 @@ export function Layout() {
     window.scrollTo(0, 0)
   }, [location.pathname])
 
-  const isArticle = location.pathname.startsWith('/article/')
-
   return (
     <div className="flex min-h-screen flex-col">
       {/* 背景（原项目：Bing 图 + 白色模糊遮罩） */}
@@ -31,9 +29,7 @@ export function Layout() {
 
       <Header />
 
-      <main
-        className={`mx-auto my-10 w-full flex-1 px-4 sm:px-6 ${isArticle ? 'max-w-5xl' : 'max-w-6xl'}`}
-      >
+      <main className="mx-auto my-10 w-full max-w-6xl flex-1 px-4 sm:px-6">
         {location.pathname === '/' || location.pathname.startsWith('/page/') ? (
           <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
             <div className="col-span-1 space-y-6 md:col-span-2">
