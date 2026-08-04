@@ -19,8 +19,9 @@
     "not_found_handling": "single-page-application"
   },
   "vars": {
-    // 后端地址，不带尾部斜杠；生产建议用 secret 替代明文（wrangler secret put API_BACKEND）
-    "API_BACKEND": ""
+    // 注意：不要再在这里声明 API_BACKEND 空明文。
+    // 若声明同名空变量会与 Secret 冲突（Binding name already in use），导致反代失效。
+    // 请用 Secret 配置后端地址：npx wrangler secret put API_BACKEND（或控制台「变量和 Secret」添加 Secret）
   },
   "observability": {
     "enabled": true
