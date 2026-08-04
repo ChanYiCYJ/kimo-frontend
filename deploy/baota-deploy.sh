@@ -14,6 +14,10 @@
 #   SKIP_INSTALL / SKIP_BUILD / SKIP_SYNC / SKIP_PM2  置 1 跳过对应步骤
 # 示例：
 #   APP_DIR=/www/wwwroot/kimo-frontend WEB_ROOT= bash deploy/baota-deploy.sh
+#
+# 保持前后端一致：若本次发布同时改动了后端，请先执行
+#   bash deploy/baota-deploy-api.sh   （后端：git pull→pip→aerich→pm2 restart）
+# 再执行本脚本同步前端。
 # =============================================================================
 set -euo pipefail
 
@@ -93,4 +97,5 @@ if command -v nginx >/dev/null 2>&1; then
   ok "Nginx 已 reload（如有）"
 fi
 
-printf '\n\033[1;32m热更新完成 ✅\033[0m\n'
+printf '\n\033[1;32m前端热更新完成 ✅\033[0m\n'
+printf '提示：若本次同时更新了后端，请确认已执行 bash deploy/baota-deploy-api.sh（保持前后端一致）\n'
