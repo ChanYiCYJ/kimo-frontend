@@ -34,6 +34,53 @@ body {
   background: rgba(15, 23, 42, 0.8);
 }
 
+/* ===== 暗色模式 — 全局文字色 ===== */
+.dark .text-gray-900,
+.dark .text-gray-800 { color: #f3f4f6; }
+.dark .text-gray-700,
+.dark .text-gray-600 { color: #d1d5db; }
+.dark .text-gray-500 { color: #9ca3af; }
+.dark .text-gray-400 { color: #6b7280; }
+.dark .text-gray-300 { color: #4b5563; }
+
+/* 暗色 — 背景色 */
+.dark .bg-white { background-color: #1f2937; }
+.dark .bg-gray-50 { background-color: #111827; }
+.dark .bg-gray-100 { background-color: #1f2937; }
+
+/* 暗色 — 边框 */
+.dark .border-gray-100 { border-color: #1f2937; }
+.dark .border-gray-200 { border-color: #374151; }
+.dark .border-gray-300 { border-color: #4b5563; }
+
+/* 暗色 — 输入框 / 选择框 */
+.dark input:not([type="checkbox"]):not([type="radio"]),
+.dark textarea,
+.dark select {
+  background-color: #1f2937;
+  color: #e5e7eb;
+  border-color: #374151;
+}
+.dark input::placeholder,
+.dark textarea::placeholder { color: #6b7280; }
+
+/* 暗色 — hover 背景 */
+.dark .hover\:bg-gray-50:hover { background-color: #1f2937; }
+.dark .hover\:bg-gray-100:hover { background-color: #374151; }
+
+/* 暗色 — 分隔线 */
+.dark .border-t { border-top-color: #374151; }
+.dark .border-b { border-bottom-color: #374151; }
+.dark .border-l { border-left-color: #374151; }
+.dark .border-r { border-right-color: #374151; }
+
+/* 暗色 — 文章页底部标签背景 */
+.dark .bg-gray-900 { background-color: #e5e7eb; }
+.dark .bg-gray-900.text-white { color: #111827; }
+.dark .bg-blue-50 { background-color: #1e3a5f; }
+.dark .bg-red-50 { background-color: #3b1a1a; }
+.dark .bg-green-50 { background-color: #1a3b2e; }
+
 .dark .card {
   background: rgba(31, 41, 55, 0.85);
   border-color: rgba(55, 65, 81, 0.6);
