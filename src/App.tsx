@@ -29,6 +29,9 @@ const ManagePages = lazy(() =>
 const PageEditor = lazy(() =>
   import('./pages/admin/PageEditor').then((m) => ({ default: m.PageEditor })),
 )
+const AIManage = lazy(() =>
+  import('./pages/admin/AIManage').then((m) => ({ default: m.AIManage })),
+)
 const CategoriesTags = lazy(() =>
   import('./pages/admin/CategoriesTags').then((m) => ({ default: m.CategoriesTags })),
 )
@@ -74,6 +77,7 @@ export default function App() {
                 <Route path="pages" element={lazyEl(ManagePages)} />
                 <Route path="pages/new" element={lazyEl(PageEditor)} />
                 <Route path="pages/:id/edit" element={lazyEl(PageEditor)} />
+                <Route path="ai" element={lazyEl(AIManage)} />
                 <Route path="categories" element={lazyEl(CategoriesTags)} />
                 <Route path="settings" element={lazyEl(Settings)} />
                 <Route path="users" element={lazyEl(UserManagement)} />

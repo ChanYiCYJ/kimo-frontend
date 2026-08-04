@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, Navigate, useParams } from 'react-router-dom'
 import DOMPurify from 'dompurify'
 import { pageApi } from '../lib/api'
 import type { Page, AIChatConfig } from '../lib/types'
@@ -126,13 +126,9 @@ export function PageView() {
 
   const isAIChat = page.type === 'html' && page.content?.startsWith(AI_CHAT_MARKER)
 
-  // AI 对话页：ChatGPT 风格全宽沉浸式，无标题、无 fade-up transform
+  // AI 页面：重定向到 /ai/:id，统一在 AI 中心使用对应模型
   if (isAIChat) {
-    return (
-      <div className="flex h-full min-h-0 flex-col">
-        {renderContent()}
-      </div>
-    )
+    return <Navigate to={`/ai/${page.id}`} replace />
   }
 
   return (
