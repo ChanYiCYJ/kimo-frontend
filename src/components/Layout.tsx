@@ -12,26 +12,23 @@ export function Layout() {
   const navigate = useNavigate()
   const [isAIChat, setIsAIChat] = useState(false)
 
-  // 默认落地页：按域名映射 / 默认设置重定向（国内/海外分站合规）
+  // 默认落地页：按域名映射（任意域名，不限 Vercel）→ 回退 default_route（国内/海外分站合规）
   useEffect(() => {
     const host = window.location.hostname
     if (location.pathname !== '/') return
     let route = ''
-    // 1) 域名 → 落地页映射表（优先）
+    // 1) 域名 → 落地页映射表（优先，支持任意域名与子域名后缀匹配）
     try {
       const map = JSON.parse(settings.route_map || '{}') as Record<string, string>
       const key = Object.keys(map).find((k) => host === k || host.endsWith('.' + k))
       if (key && map[key]) route = map[key]
     } catch { /* 忽略非法 JSON */ }
-    // 2) 回退：默认落地页（按是否 Vercel 海外）
-    if (!route) {
-      const isVercel = host.includes('vercel.app')
-      route = (isVercel ? settings.default_route_vercel : settings.default_route) || ''
-    }
+    // 2) 回退：默认落地页
+    if (!route) route = settings.default_route || ''
     if (route && route !== '/') {
       navigate(route, { replace: true })
     }
-  }, [settings.route_map, settings.default_route, settings.default_route_vercel, location.pathname, navigate])
+  }, [settings.route_map, settings.default_route, location.pathname, navigate])
 
   // 路由切换时回到顶部
   useEffect(() => {

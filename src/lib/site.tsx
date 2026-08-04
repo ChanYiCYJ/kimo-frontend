@@ -29,7 +29,6 @@ const DEFAULT_SETTINGS: SiteSettings = {
   enable_ai_articles: '0',
   enable_custom_api: '1',
   default_route: '',
-  default_route_vercel: '',
   route_map: '',
 }
 

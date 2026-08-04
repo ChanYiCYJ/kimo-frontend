@@ -400,36 +400,25 @@ export function Settings() {
         </div>
         <div className="rounded-xl border border-gray-100 p-4 dark:border-gray-800">
           <p className="text-sm font-medium text-gray-800 dark:text-gray-200">默认落地页（按域名）</p>
-          <p className="mb-2 mt-0.5 text-xs text-gray-400">访客访问首页时自动跳转到该路径（如 /ai）。国内站点与 Vercel 海外站点可分别设置（default_route / default_route_vercel）。留空则不跳转。</p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-xs text-gray-500">国内主站</label>
-              <input
-                value={form.default_route || ''}
-                onChange={(e) => setForm((f) => ({ ...f, default_route: e.target.value }))}
-                placeholder="/ai"
-                className={inputCls}
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-gray-500">Vercel 海外站点</label>
-              <input
-                value={form.default_route_vercel || ''}
-                onChange={(e) => setForm((f) => ({ ...f, default_route_vercel: e.target.value }))}
-                placeholder="/"
-                className={inputCls}
-              />
-            </div>
+          <p className="mb-2 mt-0.5 text-xs text-gray-400">访客访问首页时自动跳转到该路径（如 /ai）。默认值 default_route 对所有域名生效；若想按不同域名跳转不同页面（任意域名都行，不局限于 Vercel），用下方域名映射 route_map。留空则不跳转。</p>
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">默认落地页（default_route）</label>
+            <input
+              value={form.default_route || ''}
+              onChange={(e) => setForm((f) => ({ ...f, default_route: e.target.value }))}
+              placeholder="/ai"
+              className={inputCls}
+            />
           </div>
-          <label className="mb-1 mt-2 block text-xs text-gray-500">域名 → 落地页映射（JSON，优先于上面两个默认值）</label>
+          <label className="mb-1 mt-3 block text-xs text-gray-500">域名 → 落地页映射（route_map，JSON，优先于默认值）</label>
           <textarea
             value={form.route_map || ''}
             onChange={(e) => setForm((f) => ({ ...f, route_map: e.target.value }))}
             rows={3}
-            placeholder={'{\n  "localhost": "/ai",\n  "yogofor.top": "/"\n}'}
+            placeholder={'{\n  "localhost": "/ai",\n  "yogofor.top": "/",\n  "v2.yogofor.top": "/ai"\n}'}
             className={`${inputCls} resize-none font-mono text-xs`}
           />
-          <p className="text-xs text-gray-400">键为域名（支持子域名后缀匹配），值为落地路径。本地测试可用 {"{\"localhost\": \"/ai\"}"}，例如国内主站 yogofor.top 落首页、海外站 v2.yogofor.top 落 /ai。</p>
+          <p className="text-xs text-gray-400">键为域名（支持子域名后缀匹配），值为落地路径。任意域名都可配置（如国内 yogofor.top 落首页、海外 v2.yogofor.top 落 /ai），不局限于 Vercel。</p>
         </div>
       </section>
 
