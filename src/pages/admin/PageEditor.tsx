@@ -36,6 +36,7 @@ export function PageEditor() {
   const [aiAvatar, setAiAvatar] = useState('')
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiMaxMsg, setAiMaxMsg] = useState('')
+  const [aiCooldown, setAiCooldown] = useState('')
   const [showKey, setShowKey] = useState(false)
 
   useEffect(() => {
@@ -57,6 +58,7 @@ export function PageEditor() {
               setAiAvatar(cfg.avatar || '')
               setAiPrompt(cfg.systemPrompt || '')
               setAiMaxMsg(cfg.maxMessages ? String(cfg.maxMessages) : '')
+              setAiCooldown(cfg.cooldown ? String(cfg.cooldown) : '')
             } catch {}
           } else {
             setType(p.type as PageDisplayType)
@@ -144,6 +146,7 @@ export function PageEditor() {
           avatar: aiAvatar.trim() || undefined,
           systemPrompt: aiPrompt.trim(),
           maxMessages: aiMaxMsg ? Number(aiMaxMsg) : undefined,
+          cooldown: aiCooldown ? Number(aiCooldown) : undefined,
         } as AIChatConfig)
       : (content || null)
     const payload = { name: name.trim(), type: saveType, content: saveContent, status: hidden ? 1 : 0 }
@@ -230,7 +233,7 @@ export function PageEditor() {
           <h3 className="text-sm font-semibold text-gray-800">AI 对话配置</h3>
           <p className="text-xs text-gray-400">密钥经 base64 混淆存储，仅用于本页面 AI 请求。</p>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-500">机器人名称</label>
               <input value={aiBotName} onChange={e => setAiBotName(e.target.value)} placeholder="如：小K" className={inputCls} />
@@ -243,9 +246,15 @@ export function PageEditor() {
               <label className="mb-1 block text-xs font-medium text-gray-500">头像 URL</label>
               <input value={aiAvatar} onChange={e => setAiAvatar(e.target.value)} placeholder="https://...（可选）" className={inputCls} />
             </div>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">对话上限</label>
+              <label className="mb-1 block text-xs font-medium text-gray-500">对话上限（条）</label>
               <input value={aiMaxMsg} onChange={e => setAiMaxMsg(e.target.value.replace(/\D/g,''))} placeholder="不限制" className={inputCls} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">发送冷却（秒）</label>
+              <input value={aiCooldown} onChange={e => setAiCooldown(e.target.value.replace(/\D/g,''))} placeholder="60" className={inputCls} />
             </div>
           </div>
 
