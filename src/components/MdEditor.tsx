@@ -64,9 +64,10 @@ export function MdEditor({ value, onChange, height = 520, placeholder = '在这�
       <EditorBoundary fallbackValue={value} height={height} onFallback={onChange}>
         <Editor
           editor={editor}
-          // 空内容用 JSON 空段落初始化（type 仅挂载时生效，输出仍统一为 markdown）
-          type={value ? 'markdown' : 'json'}
-          content={value ? value : EMPTY_DOC}
+          // 空/纯空白内容用 JSON 空段落初始化（type 仅挂载时生效，输出仍统一为 markdown）
+          // 注意：必须用 trim() 判断，否则纯空白 markdown 会解析出空根节点触发 "editor state is empty"
+          type={value.trim() ? 'markdown' : 'json'}
+          content={value.trim() ? value : EMPTY_DOC}
           placeholder={placeholder}
           style={{ height: '100%' }}
           onChange={(e) => {
