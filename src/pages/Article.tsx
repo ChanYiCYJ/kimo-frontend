@@ -171,22 +171,22 @@ export function Article() {
             </div>
           )}
 
-          {/* 标题（原项目：text-center text-4xl） */}
-          <h1 className="mb-4 mt-4 text-center text-4xl leading-tight text-gray-900">
+          {/* 标题（原项目：text-center text-4xl，Shiro 式收紧字距） */}
+          <h1 className="mb-4 mt-4 text-center text-3xl leading-snug tracking-tight text-gray-900 sm:text-4xl">
             {article.title}
           </h1>
 
           {/* 元信息（原项目：rounded-full border px-4 py-1） */}
           <div className="flex flex-wrap items-center justify-center gap-2">
             {article.category_name && (
-              <span className="inline-block rounded-full border px-4 py-1 text-sm text-gray-700">
+              <span className="inline-block rounded-full border border-gray-200 px-4 py-1 text-sm text-gray-600">
                 {article.category_name}
               </span>
             )}
-            <span className="inline-block rounded-full border px-4 py-1 text-sm text-gray-700">
+            <span className="inline-block rounded-full border border-gray-200 px-4 py-1 text-sm text-gray-600">
               {formatDate(article.created)}
             </span>
-            <span className="inline-block rounded-full border px-4 py-1 text-sm text-gray-700">
+            <span className="inline-block rounded-full border border-gray-200 px-4 py-1 text-sm text-gray-600">
               约 {readingTime(article.content)} 分钟
             </span>
           </div>

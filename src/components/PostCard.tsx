@@ -31,8 +31,10 @@ export function PostCard({ post }: { post: ArticleListItem }) {
         </div>
 
         {/* 标题 */}
-        <h2 className="text-xl font-semibold leading-snug text-gray-900 line-clamp-2">
-          <Link to={`/article/${post.id}`}>{post.title}</Link>
+        <h2 className="text-xl font-semibold leading-snug tracking-tight text-gray-900 line-clamp-2">
+          <Link to={`/article/${post.id}`} className="transition-colors group-hover:text-gray-600">
+            {post.title}
+          </Link>
         </h2>
 
         {/* 描述 */}

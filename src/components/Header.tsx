@@ -23,7 +23,7 @@ export function Header() {
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
         {/* 左侧：站点标题 + 副标题（原项目 header.html 样式） */}
         <div className="flex min-w-0 items-center gap-3">
-          <span className="hidden h-9 w-9 shrink-0 place-content-center overflow-hidden rounded-xl bg-gray-100 sm:grid">
+          <span className="hidden h-9 w-9 shrink-0 place-content-center overflow-hidden rounded-full bg-gray-100 sm:grid">
             {settings.avatar ? (
               <img src={resolveAsset(settings.avatar)} alt="logo" className="h-full w-full object-cover" />
             ) : (
@@ -31,7 +31,7 @@ export function Header() {
             )}
           </span>
           <Link to="/" className="flex min-w-0 flex-col">
-            <span className="truncate text-xl font-medium leading-tight text-gray-900">
+            <span className="truncate text-xl font-medium tracking-tight leading-tight text-gray-900">
               {settings.title || 'Kimo'}
             </span>
             {settings.ltitle && (
