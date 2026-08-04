@@ -36,11 +36,13 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [cooldown, setCooldown] = useState(0)
   const [consented, setConsented] = useState(() => {
     try { return localStorage.getItem(STORAGE_PREFIX + 'consent_' + pageId) === '1' } catch { return false }
   })
   const bottomRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const timerRef = useRef<ReturnType<typeof setInterval>>(null)
 
   useEffect(() => {
     try { const r = localStorage.getItem(STORAGE_PREFIX + 'history_' + pageId); if (r) setMessages(JSON.parse(r)) } catch {}
@@ -52,10 +54,18 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
+  // 发送冷却定时器
+  useEffect(() => {
+    if (cooldown <= 0) { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }; return }
+    timerRef.current = setInterval(() => setCooldown(c => c - 1), 1000)
+    return () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null } }
+  }, [cooldown])
+
   const send = async () => {
-    const t = input.trim(); if (!t || loading) return
+    const t = input.trim(); if (!t || loading || cooldown > 0) return
     const user: Message = { role: 'user' as const, content: t }
     const next: Message[] = [...messages, user]; setMessages(next); setInput(''); setLoading(true); save(next)
+    setCooldown(10)
     const ctrl = new AbortController(); abortRef.current = ctrl; let reply = ''
     try {
       reply = await streamChat(config, next, full => setMessages([...next, { role: 'assistant' as const, content: full }]), ctrl.signal)
@@ -92,7 +102,7 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
   }
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900" style={{ minHeight: 'min(360px, 55dvh)' }}>
+    <div className="flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900" style={{ minHeight: 'min(400px, 70dvh)' }}>
       {/* 顶栏 */}
       <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2.5 dark:border-gray-700 sm:px-4 sm:py-3">
         <div className="flex items-center gap-2 sm:gap-3">
@@ -146,7 +156,10 @@ export function AIChat({ config, pageId }: { config: AIChatConfig; pageId: numbe
         <div className="flex gap-2">
           <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()} placeholder={`向 ${config.botName || 'AI'} 发消息...`} disabled={loading}
             className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-gray-400 disabled:opacity-50 sm:px-4 sm:py-2.5 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" />
-          <button onClick={send} disabled={loading || !input.trim()} className="shrink-0 rounded-xl bg-gray-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-gray-700 disabled:opacity-50 sm:px-4 sm:py-2.5 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300">发送</button>
+          <button onClick={send} disabled={loading || !input.trim() || cooldown > 0}
+            className="shrink-0 rounded-xl bg-gray-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-gray-700 disabled:opacity-50 sm:px-4 sm:py-2.5 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300">
+            {cooldown > 0 ? `${cooldown}s` : '发送'}
+          </button>
         </div>
       </div>
     </div>
