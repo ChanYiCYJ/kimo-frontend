@@ -666,13 +666,14 @@ export function AgentPanel({
         </div>
       )}
 
-      {/* Header：知识库 / 设置（浏览与编辑器由 AI 指令或知识库入口进入） */}
-      <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-4 py-2.5 dark:border-gray-800">
+      {/* Header：知识库 / 浏览（主 tab，手机仅图标）；设置缩为小图标靠右 */}
+      <div className="flex shrink-0 items-center justify-between gap-1 border-b border-gray-100 px-3 py-2 dark:border-gray-800">
         <div className="flex gap-0.5 rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800">
           <button
             onClick={() => setTab("kb")}
+            title="知识库"
             className={
-              "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition " +
+              "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition sm:px-3 " +
               (tab === "kb"
                 ? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100"
                 : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300")
@@ -691,19 +692,44 @@ export function AgentPanel({
                 d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"
               />
             </svg>
-            知识库
+            <span className="hidden sm:inline">知识库</span>
           </button>
           <button
-            onClick={() => setTab("settings")}
+            onClick={() => setTab("web")}
+            title="浏览"
             className={
-              "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition " +
-              (tab === "settings"
+              "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition sm:px-3 " +
+              (tab === "web"
                 ? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100"
                 : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300")
             }
           >
             <svg
               className="h-3.5 w-3.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <path d="M2 12h20M12 2a15.3 15.3 0 014 10M12 22a15.3 15.3 0 01-4-10 15.3 15.3 0 014-10" />
+            </svg>
+            <span className="hidden sm:inline">浏览</span>
+          </button>
+        </div>
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={() => setTab("settings")}
+            title="设置"
+            className={
+              "grid h-7 w-7 place-items-center rounded-lg transition " +
+              (tab === "settings"
+                ? "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-100"
+                : "text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300")
+            }
+          >
+            <svg
+              className="h-4 w-4"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -720,23 +746,23 @@ export function AgentPanel({
                 d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
               />
             </svg>
-            设置
+          </button>
+          <button
+            onClick={onClose}
+            title="关闭"
+            className="grid h-7 w-7 place-items-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+          >
+            <svg
+              className="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
         </div>
-        <button
-          onClick={onClose}
-          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
-        >
-          <svg
-            className="h-4 w-4"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
       </div>
 
       {/* TAB 1: Browse（美化版：搜索栏 + 结果卡片 + 来源折叠 + AI 文章） */}
@@ -751,29 +777,12 @@ export function AgentPanel({
                 <p className="text-xs text-gray-400">AI 正在联网整理…</p>
               </div>
             )}
-            {/* 空态：无搜索栏，等待 AI 联网搜索生成 */}
+            {/* 空态：极简（无 logo/标题） */}
             {!webLoading && !webContent && (
-              <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
-                <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white shadow-sm ring-1 ring-gray-100 dark:bg-gray-900 dark:ring-gray-800">
-                  <svg
-                    className="h-6 w-6 text-gray-300 dark:text-gray-600"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                  >
-                    <circle cx="12" cy="12" r="10" />
-                    <path d="M2 12h20M12 2a15.3 15.3 0 014 10M12 22a15.3 15.3 0 01-4-10 15.3 15.3 0 014-10" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                    让 AI 联网搜索
-                  </p>
-                  <p className="mt-1 max-w-[220px] text-xs leading-relaxed text-gray-400">
-                    在对话中输入「搜索 关键词」，结果与综合文章将在这里自动生成
-                  </p>
-                </div>
+              <div className="flex h-full items-center justify-center px-6 text-center">
+                <p className="text-xs text-gray-300 dark:text-gray-600">
+                  在对话中搜索后，结果将显示在这里
+                </p>
               </div>
             )}
             {/* 结果态：AI 文章为主 + 紧凑来源 */}
@@ -782,25 +791,7 @@ export function AgentPanel({
                 {/* AI 综合文章（主角） */}
                 {(articleMd || articleLoading) && (
                   <article className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                    <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-2.5 dark:border-gray-800">
-                      <span className="grid h-5 w-5 place-items-center rounded-md bg-gray-900 text-white dark:bg-gray-200 dark:text-gray-900">
-                        <svg
-                          className="h-3 w-3"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"
-                          />
-                        </svg>
-                      </span>
-                      <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">
-                        综合文章
-                      </span>
+                    <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-2 dark:border-gray-800">
                       {fromCache && articleMd && (
                         <span
                           title="已加载历史记录"

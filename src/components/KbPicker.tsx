@@ -32,7 +32,7 @@ export function KbPicker({
       return [];
     }
   });
-  const [listOpen, setListOpen] = useState(true);
+  const [listOpen, setListOpen] = useState(false);
   const picked = notes.filter((n) => selected.includes(n.id));
   return createPortal(
     <div className="fixed bottom-20 left-4 right-4 z-[100] mx-auto max-w-lg overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900 sm:left-16 sm:right-auto sm:w-96">

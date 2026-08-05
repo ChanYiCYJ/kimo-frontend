@@ -86,6 +86,7 @@ async function streamChat(
   knowledge = "",
   memory = "",
   web = "",
+  webTools = true,
 ) {
   const sys =
     (knowledge
@@ -99,7 +100,7 @@ async function streamChat(
     (web
       ? `\n\n以下是来自网络的最新搜索结果，请基于它们回答（并在适当时注明来源）：\n${web}`
       : "") +
-    `\n\n工具使用说明：当用户询问实时动态、最新资讯、或不熟悉的时效性信息时，请主动联网搜索并回复 [SEARCH:关键词]（直接给出简洁关键词，不要构造或浏览搜索引擎 URL）；当用户明确给出某个网页链接并要求获取其内容时，回复 [BROWSE:url]；当需要帮你写作文档或编辑内容时，用 [EDIT:内容] 括起完整内容（必须用 ] 闭合，且编辑内容之后不要再追加其他文字）；当用户需要把内容保存到知识库（如整理要点、记笔记、沉淀知识）时，用 [KB-SAVE:标题]内容[/KB-SAVE]（新条目或按标题更新）；当需要修改已有知识库条目时，用 [KB-EDIT:标题]新内容[/KB-EDIT]（按标题匹配）；当用户需要查看、整理或应用知识库时，回复 [KB:说明]（自动打开知识库面板）。一次只回复一个工具指令。`;
+    `\n\n工具使用说明：${webTools ? "当用户询问实时动态、最新资讯、或不熟悉的时效性信息时，请主动联网搜索并回复 [SEARCH:关键词]（直接给出简洁关键词，不要构造或浏览搜索引擎 URL）；当用户明确给出某个网页链接并要求获取其内容时，回复 [BROWSE:url]；" : ""}当需要帮你写作文档或编辑内容时，用 [EDIT:内容] 括起完整内容（必须用 ] 闭合，且编辑内容之后不要再追加其他文字）；当用户需要把内容保存到知识库（如整理要点、记笔记、沉淀知识）时，用 [KB-SAVE:标题]内容[/KB-SAVE]（新条目或按标题更新）；当需要修改已有知识库条目时，用 [KB-EDIT:标题]新内容[/KB-EDIT]（按标题匹配）；当用户需要查看、整理或应用知识库时，回复 [KB:说明]（自动打开知识库面板）。重要：使用任何工具指令时，必须先输出一两句面向用户的中文说明文字（如"好的，我帮你搜索一下"），再附上工具指令，禁止只输出工具标记。一次只回复一个工具指令。`;
   const res = await fetch(
     cfg.endpoint.replace(/\/+$/, "") + "/chat/completions",
     {
@@ -762,6 +763,7 @@ export function AIChat({
         kbKnowledge || kbText,
         memory,
         web,
+        webSearchOn,
       );
     } catch (e: unknown) {
       if ((e as Error).name === "AbortError") return;
@@ -1481,7 +1483,15 @@ export function AIChat({
                       {m.role === "assistant" ? (
                         <div className="chat-md">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {stripToolCmds(m.content)}
+                            {stripToolCmds(m.content) ||
+                              (toolCalls.find((tc) => tc.msgIdx === i)
+                                ? (() => {
+                                    const tf = toolCalls.find(
+                                      (tc) => tc.msgIdx === i,
+                                    )!;
+                                    return `（${tf.type}：${tf.detail}）`;
+                                  })()
+                                : "")}
                           </ReactMarkdown>
                         </div>
                       ) : (
@@ -1517,56 +1527,20 @@ export function AIChat({
                           </span>
                         </>
                       )}
-                      {/* 工具调用小卡片：按类型区分颜色/图标 */}
+                      {/* 工具调用小卡片：简洁中性 pill（仅小圆点区分类型） */}
                       {toolCalls.filter((tc) => tc.msgIdx === i).length > 0 && (
-                        <div className="mt-2 space-y-1.5">
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
                           {toolCalls
                             .filter((tc) => tc.msgIdx === i)
                             .map((tc, j) => {
-                              const styles: Record<
-                                string,
-                                { wrap: string; icon: string; text: string }
-                              > = {
-                                保存知识库: {
-                                  wrap: "border-emerald-200 bg-emerald-50/70 dark:border-emerald-800 dark:bg-emerald-900/20",
-                                  icon: "text-emerald-500",
-                                  text: "text-emerald-700 dark:text-emerald-300",
-                                },
-                                编辑知识库: {
-                                  wrap: "border-emerald-200 bg-emerald-50/70 dark:border-emerald-800 dark:bg-emerald-900/20",
-                                  icon: "text-emerald-500",
-                                  text: "text-emerald-700 dark:text-emerald-300",
-                                },
-                                浏览网页: {
-                                  wrap: "border-sky-200 bg-sky-50/70 dark:border-sky-800 dark:bg-sky-900/20",
-                                  icon: "text-sky-500",
-                                  text: "text-sky-700 dark:text-sky-300",
-                                },
-                                网络搜索: {
-                                  wrap: "border-violet-200 bg-violet-50/70 dark:border-violet-800 dark:bg-violet-900/20",
-                                  icon: "text-violet-500",
-                                  text: "text-violet-700 dark:text-violet-300",
-                                },
-                                网络资料: {
-                                  wrap: "border-amber-200 bg-amber-50/70 dark:border-amber-800 dark:bg-amber-900/20",
-                                  icon: "text-amber-500",
-                                  text: "text-amber-700 dark:text-amber-300",
-                                },
-                                编辑文档: {
-                                  wrap: "border-orange-200 bg-orange-50/70 dark:border-orange-800 dark:bg-orange-900/20",
-                                  icon: "text-orange-500",
-                                  text: "text-orange-700 dark:text-orange-300",
-                                },
-                                打开知识库: {
-                                  wrap: "border-teal-200 bg-teal-50/70 dark:border-teal-800 dark:bg-teal-900/20",
-                                  icon: "text-teal-500",
-                                  text: "text-teal-700 dark:text-teal-300",
-                                },
-                              };
-                              const s = styles[tc.type] || {
-                                wrap: "border-gray-200 bg-gray-50/70 dark:border-gray-700 dark:bg-gray-800/40",
-                                icon: "text-gray-500",
-                                text: "text-gray-600 dark:text-gray-300",
+                              const dot: Record<string, string> = {
+                                保存知识库: "bg-emerald-500",
+                                编辑知识库: "bg-emerald-500",
+                                浏览网页: "bg-sky-500",
+                                网络搜索: "bg-violet-500",
+                                网络资料: "bg-amber-500",
+                                编辑文档: "bg-orange-500",
+                                打开知识库: "bg-teal-500",
                               };
                               return (
                                 <button
@@ -1590,24 +1564,15 @@ export function AIChat({
                                   title={
                                     tc.tab ? "点击打开 Agent 面板" : undefined
                                   }
-                                  className={`inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition hover:shadow-sm ${s.wrap} ${tc.tab ? "hover:opacity-90 active:scale-[0.98]" : "cursor-default"}`}
+                                  className={`inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-600 transition hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-gray-600 ${tc.tab ? "hover:opacity-90 active:scale-[0.98]" : "cursor-default"}`}
                                 >
-                                  <svg
-                                    className={`h-3.5 w-3.5 shrink-0 ${s.icon}`}
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                  >
-                                    <circle cx="12" cy="12" r="10" />
-                                    <path d="M12 16v-4m0-4h.01" />
-                                  </svg>
                                   <span
-                                    className={`shrink-0 font-medium ${s.text}`}
-                                  >
+                                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot[tc.type] || "bg-gray-400"}`}
+                                  />
+                                  <span className="shrink-0 font-medium">
                                     {tc.type}
                                   </span>
-                                  <span className="truncate text-gray-500 dark:text-gray-400">
+                                  <span className="truncate text-gray-400 dark:text-gray-500">
                                     {tc.detail}
                                   </span>
                                 </button>
