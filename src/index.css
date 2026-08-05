@@ -33,6 +33,12 @@ html {
   }
 }
 
+/* Agent面板从底部滑入 */
+@keyframes kslideUp {
+  from { transform: translateY(40%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
 body {
   font-family: "Noto Serif SC", "SimSun", "宋体", serif;
   -webkit-font-smoothing: antialiased;
