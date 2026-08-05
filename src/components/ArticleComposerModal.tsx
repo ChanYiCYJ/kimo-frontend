@@ -32,7 +32,7 @@ export function ArticleComposerModal({ open, onClose }: ArticleComposerModalProp
       success('文章已创建')
       onClose()
       setTitle(''); setContent('')
-      if (created?.id) navigate(`/article/${created.id}`)
+      if (created?.id) navigate(`/dashboard/articles/${created.id}/edit`)
     } catch (e) {
       error(e instanceof Error ? e.message : '创建失败，请检查后端 API 与权限')
     } finally {

@@ -22,6 +22,8 @@ interface UserSettingsPanelProps {
   onImport: () => void;
   onOpenDoc: () => void;
   onClearMemory?: () => void;
+  chatFontSize?: string;
+  onSetFontSize?: (v: string) => void;
   onCustomSaved: () => void;
   allowCustomApi?: boolean;
 }
@@ -74,6 +76,8 @@ export function UserSettingsPanel({
   onImport,
   onOpenDoc,
   onClearMemory,
+  chatFontSize,
+  onSetFontSize,
   onCustomSaved,
   allowCustomApi = true,
 }: UserSettingsPanelProps) {
@@ -144,6 +148,19 @@ export function UserSettingsPanel({
           {/* 通用 */}
           <section className="space-y-2">
             <p className="text-xs font-medium text-gray-400">通用</p>
+            <div className="flex items-center justify-between rounded-xl border border-gray-100 px-3.5 py-3 dark:border-gray-800">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">对话字体</span>
+              <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800">
+                {(['sm','base','lg'] as const).map(sz => (
+                  <button key={sz} onClick={() => { onSetFontSize?.(sz); try{localStorage.setItem('kimo_ai_fontsize',sz)}catch{} }}
+                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition ${
+                      (chatFontSize||'base')===sz ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                    }`}
+                  >{sz==='sm'?'小':sz==='lg'?'大':'中'}</button>
+                ))}
+              </div>
+            </div>
+
             <Toggle on={ttsOn} onClick={onToggleTts} label="自动朗读回复" />
             <Toggle
               on={webSearchOn}

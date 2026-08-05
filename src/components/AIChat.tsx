@@ -13,6 +13,7 @@ import { LocalApiModal } from "./LocalApiModal";
 import { UsageDocModal } from "./UsageDocModal";
 import { ArticleComposerModal } from "./ArticleComposerModal";
 import { UserSettingsPanel } from "./UserSettingsPanel";
+import { AgentPanel } from "./AgentPanel";
 
 interface Message {
   role: "user" | "assistant";
@@ -184,6 +185,7 @@ export function AIChat({
   const [docOpen, setDocOpen] = useState(false);
   const [articleOpen, setArticleOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [agentOpen, setAgentOpen] = useState(false);
   const [attachedFile, setAttachedFile] = useState("");
   const [searching, setSearching] = useState(false);
   const [kbOn, setKbOn] = useState(true); // Coser 角色资料默认开启
@@ -1182,7 +1184,7 @@ export function AIChat({
                         </span>
                       ))}
                     <div
-                      className={`min-w-0 ${m.role === "user" ? "max-w-[85%] rounded-2xl border border-gray-200 bg-gray-100 px-4 py-2.5 text-sm leading-relaxed text-gray-800 sm:max-w-[70%] dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100" : `flex-1 leading-relaxed text-gray-800 dark:text-gray-100 ${fontSizeCls}`}`}
+                      className={`min-w-0 ${m.role === "user" ? "max-w-[85%] rounded-2xl border border-gray-200 bg-gray-100 px-4 py-2.5 leading-relaxed text-gray-800 sm:max-w-[70%] ${fontSizeCls} dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100" : `flex-1 leading-relaxed text-gray-800 dark:text-gray-100 ${fontSizeCls}`}`}
                     >
                       {m.role === "assistant" ? (
                         <div className="chat-md">
@@ -1320,7 +1322,11 @@ export function AIChat({
             </div>
           )}
           <div className="flex items-center gap-0.5 rounded-[26px] border border-gray-200 bg-white p-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition focus-within:border-gray-400 focus-within:shadow-[0_0_0_3px_rgba(156,163,175,0.15)] dark:border-gray-600 dark:bg-gray-800">
-            {/* 功能菜单：上传 / 网络搜索 / Coser / 导出 合并为一个按钮（图标统一单色） */}
+                        {/* Agent 面板：网页 / Markdown / 记忆 */}
+            <button onClick={() => setAgentOpen(v => !v)} className={`${iconBtn} ${agentOpen ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300' : ''}`} title="Agent" aria-label="Agent 面板">
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.689-1.718-.293-2.3-2.379-1.068-3.611L5 14.5" /></svg>
+            </button>
+            {/* 功能菜单 */}
             <div ref={menuRef} className="relative shrink-0">
               <button
                 onClick={() => setMenuOpen((v) => !v)}
@@ -1486,21 +1492,6 @@ export function AIChat({
               style={{ resize: "none" }}
               className="no-scrollbar max-h-40 min-h-[38px] flex-1 self-center bg-transparent px-1.5 py-2 text-sm leading-6 text-gray-800 outline-none placeholder:text-gray-400 disabled:opacity-50 sm:text-[15px] dark:text-gray-100"
             />
-            <button
-              onClick={() => {
-                setChatFontSize((prev: string) => {
-                  const map: Record<string, string> = { sm: 'base', base: 'lg', lg: 'sm' };
-                  const n = map[prev] || 'base';
-                  try { localStorage.setItem('kimo_ai_fontsize', n); } catch {}
-                  return n as 'sm' | 'base' | 'lg';
-                });
-              }}
-              className={`${iconBtn} text-[10px] font-bold`}
-              title={`对话字体：${chatFontSize === 'sm' ? '小' : chatFontSize === 'lg' ? '大' : '中'}`}
-              aria-label="切换字体大小"
-            >
-              {chatFontSize === 'sm' ? 'A-' : chatFontSize === 'lg' ? 'A+' : 'A'}
-            </button>
             {config.autoTTS && (
               <button
                 onClick={toggleTts}
@@ -1724,14 +1715,33 @@ export function AIChat({
     </div>
   );
 
+const agentSidebar = agentOpen && (
+    <>
+      {/* 桌面端：右侧固定面板 */}
+      <div className="hidden shrink-0 border-l border-gray-200 lg:block dark:border-gray-700" style={{width:22+"rem"}}>
+        <AgentPanel onClose={() => setAgentOpen(false)} onInsertMessage={(t: string) => { setInput((prev: string) => prev ? prev + "\n\n" + t : t); setAgentOpen(false) }} />
+      </div>
+      {/* 移动端：全屏 overlay */}
+      <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setAgentOpen(false)} />
+        <div className="absolute inset-y-0 right-0 w-full max-w-sm shadow-2xl">
+          <AgentPanel onClose={() => setAgentOpen(false)} onInsertMessage={(t: string) => { setInput((prev: string) => prev ? prev + "\n\n" + t : t); setAgentOpen(false) }} />
+        </div>
+      </div>
+    </>
+  );
+
+
   const layout = (
     <div className="flex h-full min-h-0 overflow-hidden bg-white dark:bg-gray-900">
       {desktopSidebar}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">{chatBody}</div>
+      {agentSidebar}
       {mobileSidebar}
     </div>
   );
 
+  
   return (
     <>
       <KbModal
@@ -1779,6 +1789,8 @@ export function AIChat({
           setDocOpen(true);
         }}
         onClearMemory={clearMemory}
+        chatFontSize={chatFontSize}
+        onSetFontSize={(v) => { setChatFontSize(v as any); try{localStorage.setItem('kimo_ai_fontsize',v)}catch{} }}
         onCustomSaved={() => setLocalCfg(getLocalCfg(pageId))}
         allowCustomApi={customApiEnabled}
       />
