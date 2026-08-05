@@ -61,6 +61,8 @@ function persist(e: KbEntry[]) {
 export function AgentPanel({
   onClose,
   initUrl,
+  initTab,
+  initEditContent,
   lastAssistantContent,
   pageId,
   memory,
@@ -69,17 +71,21 @@ export function AgentPanel({
 }: {
   onClose: () => void;
   initUrl?: string;
+  initTab?: "web" | "kb" | "edit";
+  initEditContent?: string;
   lastAssistantContent?: string;
   pageId: number;
   memory?: string;
   onMemoryChange?: (m: string) => void;
   onKbChanged?: () => void;
 }) {
-  const [tab, setTab] = useState<"web" | "kb" | "edit">(initUrl ? "web" : "kb");
+  const [tab, setTab] = useState<"web" | "kb" | "edit">(
+    initTab || (initUrl ? "web" : "kb"),
+  );
   const [webUrl, setWebUrl] = useState(initUrl || "");
   const [webLoading, setWebLoading] = useState(false);
   const [webContent, setWebContent] = useState("");
-  const [mdContent, setMdContent] = useState("");
+  const [mdContent, setMdContent] = useState(initEditContent || "");
   const [dragOver, setDragOver] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -168,6 +174,15 @@ export function AgentPanel({
       setTab("edit");
     }
   }, [lastAssistantContent]);
+
+  // 响应 AI 工具调用：切换 tab / 填入编辑内容（面板已挂载时也生效）
+  useEffect(() => {
+    if (initTab) setTab(initTab);
+    if (initEditContent != null) {
+      setMdContent(initEditContent);
+      setActiveEntry(null);
+    }
+  }, [initTab, initEditContent]);
 
   // KB site load
   useEffect(() => {
@@ -501,7 +516,10 @@ export function AgentPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initUrl]);
 
-  const h = Math.max(360, window.innerHeight - 260);
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
+  const h = isMobile
+    ? Math.min(340, Math.max(180, window.innerHeight - 340))
+    : Math.max(360, window.innerHeight - 260);
   const btn =
     "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors";
 
@@ -653,17 +671,15 @@ export function AgentPanel({
           )}
           {webContent && !webLoading && (
             <div className="w-full text-left">
-              <div className="max-h-96 overflow-y-auto rounded-xl border border-gray-200 p-3 dark:border-gray-700">
-                <div className="space-y-2">
+              <div className="max-h-[60vh] overflow-y-auto p-1">
+                <div className="space-y-2.5">
                   {webContent
                     .split(/\n(?=(?:-\s|\d+[.、)]\s))/)
                     .map((item, i) => {
                       const t = item.trim();
                       if (!t) return null;
                       // 兼容多种格式：- Title (URL) / 1. **Title**\n URL\n desc
-                      const urlM = t.match(
-                        /https?:\/\/[^\s)\]】>]+/,
-                      );
+                      const urlM = t.match(/https?:\/\/[^\s)\]】>]+/);
                       const href = urlM
                         ? urlM[0].replace(/[)\]】>]+$/, "")
                         : "#";
@@ -682,35 +698,68 @@ export function AgentPanel({
                         .replace(/\*\*/g, "")
                         .replace(/\s+/g, " ")
                         .trim()
-                        .slice(0, 300);
+                        .slice(0, 220);
                       if (title || href !== "#")
                         return (
-                          <div
+                          <a
                             key={i}
-                            className="rounded-lg border border-gray-100 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-800/50"
+                            href={href}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(e) => {
+                              if (href === "#") e.preventDefault();
+                            }}
+                            className="card card-hover group block rounded-2xl p-3"
                           >
-                            <a
-                              href={href}
-                              target="_blank"
-                              rel="noreferrer"
-                              onClick={(e) => {
-                                if (href === "#") e.preventDefault();
-                              }}
-                              className="block truncate text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
-                            >
-                              {title || href}
-                            </a>
-                            {desc && (
-                              <p className="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-                                {desc}
-                              </p>
-                            )}
-                          </div>
+                            <div className="flex items-start gap-2.5">
+                              <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-gray-100 text-gray-400 transition group-hover:bg-blue-50 group-hover:text-blue-500 dark:bg-gray-800 dark:text-gray-500 dark:group-hover:bg-blue-900/30 dark:group-hover:text-blue-400">
+                                <svg
+                                  className="h-3.5 w-3.5"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M12 21a9 9 0 100-18 9 9 0 000 18zM2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"
+                                  />
+                                </svg>
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-semibold text-gray-800 group-hover:text-blue-600 dark:text-gray-100 dark:group-hover:text-blue-400">
+                                  {title || href}
+                                </p>
+                                {desc && (
+                                  <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                                    {desc}
+                                  </p>
+                                )}
+                                <p className="mt-1.5 truncate text-[10px] text-gray-400">
+                                  {href}
+                                </p>
+                              </div>
+                              <svg
+                                className="mt-1 h-3.5 w-3.5 shrink-0 text-gray-300 transition group-hover:text-blue-500 dark:text-gray-600"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6v6m-11 5L20 4"
+                                />
+                              </svg>
+                            </div>
+                          </a>
                         );
                       return (
                         <div
                           key={i}
-                          className="whitespace-pre-wrap break-words text-sm text-gray-600 dark:text-gray-300"
+                          className="card rounded-2xl whitespace-pre-wrap break-words p-3 text-sm text-gray-600 dark:text-gray-300"
                         >
                           {item}
                         </div>

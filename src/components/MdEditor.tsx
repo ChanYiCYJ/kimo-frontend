@@ -220,8 +220,8 @@ export function MdEditor({
       }
       style={{ height }}
     >
-      {/* 工具栏 */}
-      <div className="flex flex-none flex-wrap items-center gap-0.5 border-b border-gray-100 bg-gray-50/60 px-2 py-1.5">
+      {/* 工具栏（移动端单行横向滚动，桌面换行） */}
+      <div className="no-scrollbar flex flex-none items-center gap-0.5 overflow-x-auto border-b border-gray-100 bg-gray-50/60 px-2 py-1.5 sm:flex-wrap">
         <button
           onClick={() => toolbar.undo()}
           disabled={!toolbar.canUndo}
@@ -370,14 +370,14 @@ export function MdEditor({
               onClick={runPolish}
               disabled={aiState === "loading"}
               title="使用 AI 润色正文"
-              className="ml-auto flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-gray-700 transition hover:bg-gray-100 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-300 dark:hover:text-gray-100"
+              className="ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-gray-700 transition hover:bg-gray-100 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-300 dark:hover:text-gray-100"
             >
               {aiState === "loading" ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
                 <Sparkles className="h-3.5 w-3.5" />
               )}
-              AI 润色
+              <span className="hidden sm:inline">AI 润色</span>
             </button>
           </>
         )}

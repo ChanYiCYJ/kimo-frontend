@@ -72,7 +72,7 @@ async function streamChat(
     (web
       ? `\n\n以下是来自网络的最新搜索结果，请基于它们回答（并在适当时注明来源）：\n${web}`
       : "") +
-    `\n\n工具使用说明：当用户询问实时动态、最新资讯、或不熟悉的时效性信息时，请主动联网搜索并回复 [SEARCH:关键词]（直接给出简洁关键词，不要构造或浏览搜索引擎 URL）；当用户明确给出某个网页链接并要求获取其内容时，回复 [BROWSE:url]；需要编辑文档时回复 [EDIT:内容]。`;
+    `\n\n工具使用说明：当用户询问实时动态、最新资讯、或不熟悉的时效性信息时，请主动联网搜索并回复 [SEARCH:关键词]（直接给出简洁关键词，不要构造或浏览搜索引擎 URL）；当用户明确给出某个网页链接并要求获取其内容时，回复 [BROWSE:url]；当需要帮你写作文档或编辑内容时，回复 [EDIT:内容]（自动打开编辑器填入内容）；当用户需要查看、整理或应用知识库时，回复 [KB:说明]（自动打开知识库面板）。一次只回复一个工具指令。`;
   const res = await fetch(
     cfg.endpoint.replace(/\/+$/, "") + "/chat/completions",
     {
@@ -194,6 +194,10 @@ export function AIChat({
     { id: string; title: string; content: string }[]
   >([]);
   const [agentInitUrl, setAgentInitUrl] = useState<string | undefined>();
+  const [agentTab, setAgentTab] = useState<"web" | "kb" | "edit">("kb");
+  const [agentEditContent, setAgentEditContent] = useState<
+    string | undefined
+  >();
   const [agentWidth, setAgentWidth] = useState(() => {
     if (typeof window === "undefined") return 384;
     return Math.min(520, Math.max(320, Math.round(window.innerWidth * 0.3)));
@@ -587,6 +591,8 @@ export function AIChat({
           : `https://www.google.com/search?q=${encodeURIComponent(target)}`;
         setAgentInitUrl(searchUrl);
       }
+      setAgentTab("web");
+      setAgentEditContent(undefined);
       setAgentOpen(true);
     }
 
@@ -747,31 +753,51 @@ export function AIChat({
     }
     upsertAssistant(reply);
 
-    // AI→Agent 工具调用：解析 [BROWSE:url] / [EDIT:content] / [SEARCH:query]
+    // AI→Agent 工具调用：解析 [BROWSE:url] / [SEARCH:query] / [EDIT:content] / [KB:指令]
     const browseCmd = reply.match(/\[BROWSE:\s*(https?:\/\/[^\s\]]+)\s*\]/);
     const editCmd = reply.match(/\[EDIT:\s*([\s\S]*?)\s*\]/);
     const searchCmd = reply.match(/\[SEARCH:\s*([^\]]+)\s*\]/);
+    const kbCmd = reply.match(/\[(?:KB|OPEN_KB|知识库)(?::\s*([^\]]+))?\]/);
     const msgIdx = messages.length;
     if (browseCmd) {
+      setAgentTab("web");
       setAgentInitUrl(browseCmd[1]);
+      setAgentEditContent(undefined);
       setAgentOpen(true);
       setToolCalls((prev) => [
         ...prev,
         { msgIdx, type: "浏览网页", detail: browseCmd[1].slice(0, 60) },
       ]);
     } else if (searchCmd) {
+      setAgentTab("web");
       setAgentInitUrl(searchCmd[1].trim());
+      setAgentEditContent(undefined);
       setAgentOpen(true);
       setToolCalls((prev) => [
         ...prev,
         { msgIdx, type: "网络搜索", detail: searchCmd[1].trim().slice(0, 60) },
       ]);
     } else if (editCmd) {
+      setAgentTab("edit");
       setAgentInitUrl(undefined);
+      setAgentEditContent(editCmd[1].trim());
       setAgentOpen(true);
       setToolCalls((prev) => [
         ...prev,
         { msgIdx, type: "编辑文档", detail: editCmd[1].trim().slice(0, 60) },
+      ]);
+    } else if (kbCmd) {
+      setAgentTab("kb");
+      setAgentInitUrl(undefined);
+      setAgentEditContent(undefined);
+      setAgentOpen(true);
+      setToolCalls((prev) => [
+        ...prev,
+        {
+          msgIdx,
+          type: "打开知识库",
+          detail: (kbCmd[1] || "查看/整理知识库条目").slice(0, 60),
+        },
       ]);
     }
     if (web && web.trim()) {
@@ -1158,6 +1184,8 @@ export function AIChat({
               onClick={() => {
                 setAgentOpen((v) => {
                   if (!v) {
+                    setAgentTab("kb");
+                    setAgentEditContent(undefined);
                     const last = messages[messages.length - 1];
                     if (last?.role === "assistant") {
                       const m = last.content.match(
@@ -1480,11 +1508,13 @@ export function AIChat({
                           </button>
                           <button
                             onClick={() => {
+                              setAgentTab("web");
                               setAgentInitUrl(undefined);
                               const urls = m.content.match(
                                 /https?:\/\/[^\s<>"{}|\\^`\[\]]+/g,
                               );
                               if (urls) setAgentInitUrl(urls[0]);
+                              setAgentEditContent(undefined);
                               setAgentOpen(true);
                             }}
                             className="rounded-md p-1 text-gray-400 transition hover:text-blue-600 dark:hover:text-blue-400"
@@ -1678,7 +1708,12 @@ export function AIChat({
                       setKbPickerOpen(false);
                     }}
                     onClose={() => setKbPickerOpen(false)}
-                    onOpenAgent={() => setAgentOpen(true)}
+                    onOpenAgent={() => {
+                      setAgentTab("kb");
+                      setAgentInitUrl(undefined);
+                      setAgentEditContent(undefined);
+                      setAgentOpen(true);
+                    }}
                     webSearchOn={webSearchOn}
                     onToggleWebSearch={() => {
                       toggleWebSearch();
@@ -1949,6 +1984,8 @@ export function AIChat({
                   setAgentOpen(false);
                 }}
                 initUrl={agentInitUrl}
+                initTab={agentTab}
+                initEditContent={agentEditContent}
                 lastAssistantContent={lastAssistant?.content}
                 pageId={pageId}
                 memory={memory}
@@ -1980,6 +2017,8 @@ export function AIChat({
                 setAgentOpen(false);
               }}
               initUrl={agentInitUrl}
+              initTab={agentTab}
+              initEditContent={agentEditContent}
               lastAssistantContent={lastAssistant?.content}
               pageId={pageId}
               memory={memory}
