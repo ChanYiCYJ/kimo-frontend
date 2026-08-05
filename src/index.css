@@ -35,14 +35,25 @@ html {
 
 /* Agent面板从底部滑入 */
 @keyframes kslideUp {
-  from {
-    transform: translateY(40%);
-    opacity: 0;
+  from { transform: translateY(40%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* Editor 移动端适配 */
+@media (max-width: 768px) {
+  .lobe-editor [contenteditable] {
+    touch-action: pan-y !important;
+    -webkit-overflow-scrolling: touch;
   }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
+}
+
+/* Kimo 风格编辑器 */
+.lobe-editor {
+  border-radius: 1rem !important;
+}
+.dark .lobe-editor {
+  background-color: rgb(17 24 39) !important;
+  color: rgb(209 213 219) !important;
 }
 
 body {

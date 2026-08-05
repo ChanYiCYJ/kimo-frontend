@@ -84,9 +84,14 @@ async function ddgSearch(query: string): Promise<string> {
 }
 
 export async function webSearch(query: string): Promise<string> {
+  // 1) 后端搜索代理
   const backend = await backendSearch(query);
   if (backend) return backend;
-  return ddgSearch(query);
+  // 2) DuckDuckGo
+  const ddg = await ddgSearch(query);
+  if (ddg) return ddg;
+  // 3) 无结果提示
+  return "- 未找到相关结果\n  请尝试更精确的关键词，或直接输入网址获取网页内容";
 }
 
 /** 抓取网页正文文本（供 AI 浏览网页）。优先走后端代理，避免 CORS。 */

@@ -58,18 +58,18 @@ async function streamChat(
   web = "",
 ) {
   const sys =
+    (knowledge
+      ? `【重要】你必须优先基于以下用户知识库回答。如果知识库有相关信息，请以此为权威来源：\n${knowledge}\n\n---\n\n`
+      : "") +
     (cfg.systemPrompt || "") +
     (memory
       ? `\n\n以下是过往对话中学习到的用户偏好与经验，请据此优化你的回答：\n${memory}`
       : "") +
     (summary ? `\n\n对话上下文摘要：\n${summary}` : "") +
-    (knowledge
-      ? `\n\n以下是本站点知识库内容，请优先基于它回答问题：\n${knowledge}`
-      : "") +
     (web
       ? `\n\n以下是来自网络的最新搜索结果，请基于它们回答（并在适当时注明来源）：\n${web}`
       : "") +
-    `\n\n你可以使用以下工具：当需要浏览网页时，回复 [BROWSE:url]；当需要编写文档时，回复 [EDIT:内容]。用户说"打开浏览器"时会自动打开浏览器面板。`;
+    `\n\n工具：需要浏览网页时回复 [BROWSE:url]；需要搜索时回复 [SEARCH:关键词]；需要编辑文档时回复 [EDIT:内容]。`;
   const res = await fetch(
     cfg.endpoint.replace(/\/+$/, "") + "/chat/completions",
     {
@@ -286,26 +286,34 @@ export function AIChat({
   const messages = active?.messages || [];
 
   // Agent 面板宽度拖拽
-  const onResizeDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    resizeRef.current = { startX: e.clientX, startW: agentWidth };
-    const onMove = (ev: MouseEvent) => {
-      if (!resizeRef.current) return;
-      const d = resizeRef.current.startX - ev.clientX;
-      setAgentWidth(Math.min(Math.round(window.innerWidth * 0.8), Math.max(300, resizeRef.current.startW + d)));
-    };
-    const onUp = () => {
-      resizeRef.current = null;
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, [agentWidth]);
+  const onResizeDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      resizeRef.current = { startX: e.clientX, startW: agentWidth };
+      const onMove = (ev: MouseEvent) => {
+        if (!resizeRef.current) return;
+        const d = resizeRef.current.startX - ev.clientX;
+        setAgentWidth(
+          Math.min(
+            Math.round(window.innerWidth * 0.8),
+            Math.max(300, resizeRef.current.startW + d),
+          ),
+        );
+      };
+      const onUp = () => {
+        resizeRef.current = null;
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [agentWidth],
+  );
 
   // 有效配置：本地自定义 API/提示词 优先于机器人默认配置（非管理员各自本地设置）
   const effCfg: AIChatConfig = {
@@ -1523,7 +1531,9 @@ export function AIChat({
           <div className="flex items-center gap-0.5 rounded-[26px] border border-gray-200 bg-white p-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition focus-within:border-gray-400 focus-within:shadow-[0_0_0_3px_rgba(156,163,175,0.15)] dark:border-gray-600 dark:bg-gray-800">
             {/* + 按钮：打开知识库 */}
             <button
-              onClick={() => { setAgentOpen(true); }}
+              onClick={() => {
+                setAgentOpen(true);
+              }}
               className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
               title="知识库条目"
               aria-label="知识库条目"
