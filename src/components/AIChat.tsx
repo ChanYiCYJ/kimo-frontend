@@ -189,7 +189,6 @@ export function AIChat({
   const [agentInitUrl, setAgentInitUrl] = useState<string | undefined>();
   const [attachedFile, setAttachedFile] = useState("");
   const [searching, setSearching] = useState(false);
-  const [kbOn, setKbOn] = useState(true); // Coser 知识库默认开启
   const [kbText, setKbText] = useState("");
   const [chatFontSize, setChatFontSize] = useState<"sm" | "base" | "lg">(() => {
     try {
@@ -461,13 +460,10 @@ export function AIChat({
     }
   }, [pageId]);
 
-  const toggleKb = useCallback(
-    (on: boolean) => {
-      setKbOn(on);
-      if (on) refreshKb();
-    },
-    [refreshKb],
-  );
+  // 知识库默认启用，初始加载时刷新
+  useEffect(() => {
+    refreshKb();
+  }, [refreshKb]);
 
   const toggleWebSearch = useCallback(() => {
     setWebSearchOn((prev) => {
@@ -646,7 +642,7 @@ export function AIChat({
         upsertAssistant,
         ctrl.signal,
         summary,
-        kbOn ? kbText : "",
+        kbText,
         memory,
         web,
       );
@@ -1703,7 +1699,10 @@ export function AIChat({
         style={{ width: 22 + "rem" }}
       >
         <AgentPanel
-          onClose={() => setAgentOpen(false)}
+          onClose={() => {
+            refreshKb();
+            setAgentOpen(false);
+          }}
           onInsertMessage={(t: string) => {
             setInput((prev: string) => (prev ? prev + "\n\n" + t : t));
             setAgentOpen(false);
@@ -1716,20 +1715,30 @@ export function AIChat({
           enableArticles={enableArticles}
           messagesLength={messages.length}
           pageId={pageId}
-          kbOn={kbOn}
-          onToggleKb={toggleKb}
-          onApplied={refreshKb}
+          memory={memory}
+          onMemoryChange={(m) => {
+            setMemory(m);
+            try {
+              localStorage.setItem(STORAGE_PREFIX + "memory_" + pageId, m);
+            } catch {}
+          }}
         />
       </div>
       {/* 移动端：全屏 overlay */}
       <div className="fixed inset-0 z-50 lg:hidden">
         <div
           className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-          onClick={() => setAgentOpen(false)}
+          onClick={() => {
+            refreshKb();
+            setAgentOpen(false);
+          }}
         />
         <div className="absolute inset-y-0 right-0 w-full max-w-sm shadow-2xl">
           <AgentPanel
-            onClose={() => setAgentOpen(false)}
+            onClose={() => {
+              refreshKb();
+              setAgentOpen(false);
+            }}
             onInsertMessage={(t: string) => {
               setInput((prev: string) => (prev ? prev + "\n\n" + t : t));
               setAgentOpen(false);
@@ -1742,9 +1751,13 @@ export function AIChat({
             enableArticles={enableArticles}
             messagesLength={messages.length}
             pageId={pageId}
-            kbOn={kbOn}
-            onToggleKb={toggleKb}
-            onApplied={refreshKb}
+            memory={memory}
+            onMemoryChange={(m) => {
+              setMemory(m);
+              try {
+                localStorage.setItem(STORAGE_PREFIX + "memory_" + pageId, m);
+              } catch {}
+            }}
           />
         </div>
       </div>
