@@ -19,11 +19,13 @@ import {
   hasLocalApi,
   loadChatFontSize,
   loadWebSearchOn,
+  loadBrowseAgentOn,
   loadTtsPref,
   loadMemory,
   saveMemory,
   saveChatFontSize,
   saveWebSearchOn,
+  saveBrowseAgentOn,
   saveTtsPref,
   compressMemory,
   clearMemory as clearStoredMemory,
@@ -268,6 +270,18 @@ export function AIChat({
         ? "text-lg"
         : "text-[15px]";
   const [webSearchOn, setWebSearchOn] = useState(() => loadWebSearchOn());
+  /** 浏览 Agent：开启后搜索自动生成综合文章（默认开） */
+  const [browseAgentOn, setBrowseAgentOn] = useState(() =>
+    loadBrowseAgentOn(),
+  );
+  /** AI 读取知识库开关（默认开，设置里可关） */
+  const [kbAiReadAll, setKbAiReadAll] = useState(() => {
+    try {
+      return localStorage.getItem("kimo_kb_ai_read_all") !== "0";
+    } catch {
+      return true;
+    }
+  });
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [botMenuOpen, setBotMenuOpen] = useState(false);
@@ -556,6 +570,14 @@ export function AIChat({
     });
   }, []);
 
+  const toggleBrowseAgent = useCallback(() => {
+    setBrowseAgentOn((prev) => {
+      const n = !prev;
+      saveBrowseAgentOn(n);
+      return n;
+    });
+  }, []);
+
   // 会话重命名
   const startRename = useCallback((e: React.MouseEvent, s: Session) => {
     e.stopPropagation();
@@ -834,24 +856,21 @@ export function AIChat({
         },
       ]);
     } else if (searchCmd) {
-      if (window.innerWidth < 1024) {
-        setInlineBrowse({ query: searchCmd[1].trim(), msgIdx, nonce: Date.now() });
-      } else {
-        setAgentTab("web");
-        setAgentInitUrl(searchCmd[1].trim());
-        autoOpenAgent();
+      // 浏览 Agent 开启时才自动生成文章；手机端内嵌、桌面端开面板
+      if (browseAgentOn) {
+        if (window.innerWidth < 1024) {
+          setInlineBrowse({
+            query: searchCmd[1].trim(),
+            msgIdx,
+            nonce: Date.now(),
+          });
+        } else {
+          setAgentTab("web");
+          setAgentInitUrl(searchCmd[1].trim());
+          autoOpenAgent();
+        }
       }
       setAgentEditContent(undefined);
-      setToolCalls((prev) => [
-        ...prev,
-        {
-          msgIdx,
-          type: "网络搜索",
-          detail: searchCmd[1].trim().slice(0, 60),
-          tab: "web",
-          query: searchCmd[1].trim(),
-        },
-      ]);
     } else if (editCmd) {
       setAgentTab("edit");
       setAgentInitUrl(undefined);
@@ -881,8 +900,8 @@ export function AIChat({
         },
       ]);
     }
-    // 兜底：用户显式要求「搜索 xxx」但 AI 未发 [SEARCH:] 时，也强制触发浏览/生成文章
-    if (!searchCmd && !browseCmd) {
+    // 显式搜索兜底：用户说「搜索 xxx」且浏览 Agent 开启时，无论 AI 是否发 [SEARCH:] 都强制生成文章
+    if (!searchCmd && !browseCmd && browseAgentOn) {
       const es = t.match(
         /^\s*(?:请|麻烦|帮我)?\s*(?:搜索|查找|查询|搜一下|查一下|搜|查|搜搜|帮我搜|帮我查|了解一下|看看)\s*(?:的|关于|一下|下)?\s*(.+)$/i,
       );
@@ -896,33 +915,9 @@ export function AIChat({
           setAgentSearchNonce((n) => n + 1);
           setAgentOpen(true);
         }
-        setToolCalls((prev) => [
-          ...prev,
-          { msgIdx, type: "网络搜索", detail: q, tab: "web", query: q },
-        ]);
       }
     }
-    if (web && web.trim()) {
-      // 提炼搜索主题：优先用 AI 的 [SEARCH:] 关键词（意图最准），否则从输入清洗
-      const topic = (searchCmd ? searchCmd[1].trim() : t)
-        .replace(
-          /^\s*(?:请|麻烦|帮我|你好)?\s*(?:搜索|查找|查询|搜一下|查一下|搜|查|了解一下|看看|介绍下|介绍一下|了解下|讲解|整理|汇总|生成|帮我写|写)\s*(?:的|关于|一下|下|一个)?\s*/i,
-          "",
-        )
-        .replace(/[。！？!?\s]+$/, "")
-        .trim()
-        .slice(0, 60);
-      setToolCalls((prev) => [
-        ...prev,
-        {
-          msgIdx,
-          type: "网络资料",
-          detail: topic || "已联网检索",
-          tab: "web",
-          query: topic || t.trim().slice(0, 60),
-        },
-      ]);
-    }
+    // 网络资料不再以卡片展示（浏览结果由浏览 Agent 自动呈现），避免刷屏
 
     if (!reply.startsWith("错误")) learn(t, reply);
     if (ttsOn)
@@ -1477,10 +1472,10 @@ export function AIChat({
                 <p className="mt-1 text-sm text-gray-400">有什么可以帮你？</p>
                 <div className="mt-8 flex w-full max-w-md flex-wrap justify-center gap-2">
                   {[
+                    "搜索最新科技资讯并生成文章",
+                    "把这段内容存入知识库",
                     "介绍一下这个网站",
                     "帮我写一段代码",
-                    "总结我的文章",
-                    "给我一些建议",
                   ].map((s) => (
                     <button
                       key={s}
@@ -1914,6 +1909,11 @@ export function AIChat({
                       toggleWebSearch();
                       setKbPickerOpen(false);
                     }}
+                    browseAgentOn={browseAgentOn}
+                    onToggleBrowseAgent={() => {
+                      toggleBrowseAgent();
+                      setKbPickerOpen(false);
+                    }}
                   />
                 </>
               )}
@@ -1993,19 +1993,6 @@ export function AIChat({
             onClick={() => selectSession(s.id)}
             className={`group mb-1 flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2.5 text-sm transition ${s.id === activeId ? "bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100" : "text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-900"}`}
           >
-            <svg
-              className="h-4 w-4 shrink-0 opacity-60"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.6"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"
-              />
-            </svg>
             {s.id === editingSessionId ? (
               <input
                 autoFocus
@@ -2141,6 +2128,14 @@ export function AIChat({
     onToggleTts: toggleTts,
     webSearchOn,
     onToggleWebSearch: toggleWebSearch,
+    browseAgentOn,
+    onToggleBrowseAgent: toggleBrowseAgent,
+    kbAiReadAll,
+    onToggleKbAiReadAll: (v) => {
+      setKbAiReadAll(v);
+      localStorage.setItem("kimo_kb_ai_read_all", v ? "1" : "0");
+      refreshKb();
+    },
     onExportAll: exportAllSessions,
     onImport: () => importRef.current?.click(),
     onOpenDoc: () => setDocOpen(true),

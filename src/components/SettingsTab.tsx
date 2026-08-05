@@ -20,6 +20,10 @@ export interface AgentSettingsProps {
   onToggleTts: () => void;
   webSearchOn: boolean;
   onToggleWebSearch: () => void;
+  browseAgentOn: boolean;
+  onToggleBrowseAgent: () => void;
+  kbAiReadAll: boolean;
+  onToggleKbAiReadAll: (v: boolean) => void;
   onExportAll: () => void;
   onImport: () => void;
   onOpenDoc: () => void;
@@ -95,6 +99,10 @@ export function SettingsTab({
   onToggleTts,
   webSearchOn,
   onToggleWebSearch,
+  browseAgentOn,
+  onToggleBrowseAgent,
+  kbAiReadAll,
+  onToggleKbAiReadAll,
   onExportAll,
   onImport,
   onOpenDoc,
@@ -161,6 +169,20 @@ export function SettingsTab({
           onClick={onToggleWebSearch}
           label="网络搜索"
           sub="开启后 AI 会联网检索最新信息"
+        />
+        <div className="border-t border-gray-100 dark:border-gray-800" />
+        <Toggle
+          on={browseAgentOn}
+          onClick={onToggleBrowseAgent}
+          label="浏览 Agent"
+          sub="开启后搜索会自动联网抓取并生成综合文章"
+        />
+        <div className="border-t border-gray-100 dark:border-gray-800" />
+        <Toggle
+          on={kbAiReadAll}
+          onClick={() => onToggleKbAiReadAll(!kbAiReadAll)}
+          label="AI 读取知识库"
+          sub="开启后 AI 回答会自动参考知识库条目"
         />
       </Section>
 

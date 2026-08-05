@@ -125,13 +125,6 @@ export function AgentPanel({
   >([]);
   const [kbSiteLoading, setKbSiteLoading] = useState(true);
   const [kbSiteOpen, setKbSiteOpen] = useState(false);
-  const [kbAiReadAll, setKbAiReadAll] = useState(() => {
-    try {
-      return localStorage.getItem("kimo_kb_ai_read_all") !== "0";
-    } catch {
-      return true;
-    }
-  });
   /** 知识条目本地搜索 */
   const [entrySearch, setEntrySearch] = useState("");
   const [draftWordCount, setDraftWordCount] = useState(0);
@@ -923,6 +916,17 @@ export function AgentPanel({
                     </div>
                   </details>
                 )}
+                {/* 文章生成失败兜底：内容在但 AI 文章为空时，提供重试 */}
+                {parseBrowseContent(webContent).results.length > 0 &&
+                  !articleMd &&
+                  !articleLoading && (
+                    <button
+                      onClick={() => browse(webUrl)}
+                      className="w-full rounded-2xl border border-dashed border-gray-200 bg-white/50 px-3.5 py-2.5 text-center text-[11px] text-gray-400 transition hover:border-gray-300 hover:text-gray-600 dark:border-gray-700 dark:bg-gray-900/50 dark:text-gray-500 dark:hover:border-gray-500 dark:hover:text-gray-300"
+                    >
+                      AI 文章生成失败，点击重新生成
+                    </button>
+                  )}
                 {/* 兜底：普通文本 */}
                 {parseBrowseContent(webContent).results.length === 0 && (
                   <div className="whitespace-pre-wrap break-words rounded-2xl border border-gray-100 bg-white p-4 text-xs leading-relaxed text-gray-500 shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400">
@@ -961,35 +965,15 @@ export function AgentPanel({
                 新建条目
               </button>
             </div>
-            <div className="mt-2.5 grid grid-cols-3 gap-1.5">
-              <div className="rounded-xl border border-gray-100 bg-white px-2.5 py-2 dark:border-gray-800 dark:bg-gray-900">
-                <p className="text-base font-bold text-gray-800 dark:text-gray-100">
-                  {entries.length}
-                </p>
-                <p className="text-[10px] text-gray-400">知识条目</p>
-              </div>
-              <div className="rounded-xl border border-gray-100 bg-white px-2.5 py-2 dark:border-gray-800 dark:bg-gray-900">
-                <p className="text-base font-bold text-gray-800 dark:text-gray-100">
-                  {sel.articleIds.length + sel.categoryIds.length}
-                </p>
-                <p className="text-[10px] text-gray-400">知识源</p>
-              </div>
-              <div className="rounded-xl border border-gray-100 bg-white px-2.5 py-2 dark:border-gray-800 dark:bg-gray-900">
-                <p className="text-base font-bold text-gray-800 dark:text-gray-100">
-                  {memory ? memory.split("\n").filter(Boolean).length : 0}
-                </p>
-                <p className="text-[10px] text-gray-400">AI 记忆</p>
-              </div>
-            </div>
           </div>
 
           {/* 统一卡片区：知识源 + AI记忆 */}
-          <div className="shrink-0 space-y-2 p-3">
+          <div className="shrink-0 space-y-2.5 p-3">
             {/* 知识源 */}
             <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white dark:border-gray-800 dark:bg-gray-900">
               <button
                 onClick={() => setKbSiteOpen(!kbSiteOpen)}
-                className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-xs text-gray-500 transition hover:bg-gray-50 dark:hover:bg-gray-800"
+                className="flex w-full items-center gap-2 px-4 py-3 text-left text-xs text-gray-500 transition hover:bg-gray-50 dark:hover:bg-gray-800"
               >
                 <svg
                   className={
@@ -1090,7 +1074,7 @@ export function AgentPanel({
                     }
                     setEditingMemory(!editingMemory);
                   }}
-                  className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-xs text-gray-500 transition hover:bg-gray-50 dark:hover:bg-gray-800"
+                  className="flex w-full items-center gap-2 px-4 py-3 text-left text-xs text-gray-500 transition hover:bg-gray-50 dark:hover:bg-gray-800"
                 >
                   <svg
                     className="h-4 w-4 shrink-0 text-gray-400"
@@ -1161,29 +1145,6 @@ export function AgentPanel({
                   className="min-w-0 flex-1 bg-transparent text-xs text-gray-700 outline-none placeholder:text-gray-400 dark:text-gray-200 dark:placeholder:text-gray-500"
                 />
               </div>
-              <button
-                onClick={() => {
-                  const v = !kbAiReadAll;
-                  setKbAiReadAll(v);
-                  localStorage.setItem("kimo_kb_ai_read_all", v ? "1" : "0");
-                  onKbChanged?.();
-                }}
-                title={kbAiReadAll ? "AI 读取全部知识" : "AI 不读取知识库"}
-                className={
-                  "flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[10px] transition " +
-                  (kbAiReadAll
-                    ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                    : "bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500")
-                }
-              >
-                <span
-                  className={
-                    "h-1.5 w-1.5 rounded-full " +
-                    (kbAiReadAll ? "bg-green-500" : "bg-gray-400")
-                  }
-                />
-                AI
-              </button>
               <div className="relative shrink-0" ref={exportRef}>
                 <button
                   onClick={() => setShowExportMenu(!showExportMenu)}
@@ -1277,7 +1238,7 @@ export function AgentPanel({
                           setTab("edit");
                         }}
                         className={
-                          "group flex cursor-pointer items-start gap-2 rounded-xl border bg-white p-2.5 transition hover:border-gray-200 dark:bg-gray-900 dark:hover:border-gray-700 " +
+                          "group flex cursor-pointer items-start gap-2.5 rounded-2xl border bg-white p-3 transition hover:border-gray-200 dark:bg-gray-900 dark:hover:border-gray-700 " +
                           (activeEntry?.id === entry.id
                             ? "border-gray-300 ring-1 ring-gray-200 dark:border-gray-600 dark:ring-gray-700"
                             : "border-gray-100 dark:border-gray-800")

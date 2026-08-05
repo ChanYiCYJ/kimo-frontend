@@ -862,22 +862,35 @@ async function extractOgImage(url: string): Promise<string> {
 export async function webSearchToArticle(
   query: string,
   maxSources: number = 4,
+  seedUrls: string[] = [],
 ): Promise<{ article: string; sources: SearchResult[] }> {
   const cfg = getAICfg();
   if (!cfg?.endpoint || !cfg?.apiKey || !cfg?.model) {
     return { article: "", sources: [] };
   }
 
-  // 1) 多引擎搜索
-  const multi = await searchMulti(
-    query,
-    ["backend", "duckduckgo", "wikipedia"],
-    10,
-  );
-  let results = dedupeByUrl(multi.results);
+  // 1) 来源：优先复用已抓取到的 URL（避免并发重复搜索被限流导致空结果），
+  //    否则多引擎搜索
+  let results: SearchResult[] = seedUrls.map((u) => {
+    let host = "";
+    try {
+      host = new URL(u).hostname.replace(/^www\./i, "");
+    } catch {
+      host = u;
+    }
+    return { title: host, url: u, description: "", source: host, engine: "seed" };
+  });
   if (!results.length) {
-    const ai = await searchAI(query, 6);
-    results = dedupeByUrl(ai);
+    const multi = await searchMulti(
+      query,
+      ["backend", "duckduckgo", "wikipedia"],
+      10,
+    );
+    results = dedupeByUrl(multi.results);
+    if (!results.length) {
+      const ai = await searchAI(query, 6);
+      results = dedupeByUrl(ai);
+    }
   }
   if (!results.length) return { article: "", sources: results };
 
@@ -932,63 +945,71 @@ export async function webSearchToArticle(
       "\n",
     )}\n\n【来源内容】\n${sourcesBlock || "(抓取失败，仅凭搜索结果)"}`;
 
-  try {
-    const res = await fetchWithTimeout(
-      cfg.endpoint.replace(/\/+$/, "") + "/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + cfg.apiKey,
+  // 3) AI 综合筛选生成标准 markdown 文章（推理模型可能把 token 用尽在思考上，
+  //    因此加大 max_tokens 并在 content 为空时自动重试一次）
+  let article = "";
+  const tryGenerate = async () => {
+    try {
+      const res = await fetchWithTimeout(
+        cfg.endpoint.replace(/\/+$/, "") + "/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + cfg.apiKey,
+          },
+          body: JSON.stringify({
+            model: cfg.model,
+            messages: [
+              { role: "system", content: sys },
+              { role: "user", content: userMsg },
+            ],
+            temperature: 0.5,
+            max_tokens: 4000,
+            stream: false,
+          }),
         },
-        body: JSON.stringify({
-          model: cfg.model,
-          messages: [
-            { role: "system", content: sys },
-            { role: "user", content: userMsg },
-          ],
-          temperature: 0.5,
-          max_tokens: 2000,
-          stream: false,
-        }),
-      },
-      45000,
-    );
-    if (!res.ok) return { article: "", sources: results };
-    const j = (await res.json()) as {
-      choices?: { message?: { content?: string } }[];
-    };
-    let article = j.choices?.[0]?.message?.content?.trim() || "";
-    // 兜底：AI 漏插图但有来源封面时，自动在标题后补一张
-    if (article && !article.includes("![") && /^#/.test(article)) {
-      const cover = fetched
-        .filter(
-          (
-            f,
-          ): f is PromiseFulfilledResult<{
-            url: string;
-            title: string;
-            content: string;
-            image: string;
-          }> => f.status === "fulfilled" && !!f.value.image,
-        )
-        .map((f) => f.value.image)[0];
-      if (cover) {
-        const nl = article.indexOf("\n");
-        article =
-          nl > 0
-            ? article.slice(0, nl) +
-              "\n\n![配图](" +
-              cover +
-              ")\n" +
-              article.slice(nl)
-            : article + "\n\n![配图](" + cover + ")";
-      }
+        60000,
+      );
+      if (!res.ok) return "";
+      const j = (await res.json()) as {
+        choices?: { message?: { content?: string } }[];
+      };
+      return (j.choices?.[0]?.message?.content || "").trim();
+    } catch {
+      return "";
     }
-    return { article, sources: results };
-  } catch {
-    return { article: "", sources: results };
+  };
+  article = await tryGenerate();
+  if (!article) article = await tryGenerate();
+
+  // 兜底：AI 漏插图但有来源封面时，自动在标题后补一张
+  if (article && !article.includes("![") && /^#/.test(article)) {
+    const cover = fetched
+      .filter(
+        (
+          f,
+        ): f is PromiseFulfilledResult<{
+          url: string;
+          title: string;
+          content: string;
+          image: string;
+        }> => f.status === "fulfilled" && !!f.value.image,
+      )
+      .map((f) => f.value.image)[0];
+    if (cover) {
+      const nl = article.indexOf("\n");
+      article =
+        nl > 0
+          ? article.slice(0, nl) +
+            "\n\n![配图](" +
+            cover +
+            ")\n" +
+            article.slice(nl)
+          : article + "\n\n![配图](" + cover + ")";
+    }
   }
+  return { article, sources: results };
 }
 
 // ======================== 搜索/文章历史缓存（避免重复生成） ========================
@@ -1075,6 +1096,19 @@ export function clearSearchCache(query?: string): void {
   saveSearchCache(map);
 }
 
+/** 从已抓取的搜索内容里提取来源 URL（供文章生成复用，避免并发重复搜索） */
+function extractSourceUrls(content: string, max = 4): string[] {
+  if (!content) return [];
+  const urls: string[] = [];
+  const re = /https?:\/\/[^\s)\]】>]+/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) && urls.length < max) {
+    const u = m[0].replace(/[)\]】>]+$/, "");
+    if (/^https?:\/\//i.test(u) && !urls.includes(u)) urls.push(u);
+  }
+  return urls;
+}
+
 /**
  * 带缓存的深度搜索 + AI 文章（供浏览面板使用）：
  * - 命中缓存直接返回（不重复生成）
@@ -1096,21 +1130,50 @@ export async function searchWithCache(
   opts: { maxSources?: number; perSourceChars?: number } = {},
 ): Promise<SearchWithCacheResult> {
   const hit = readSearchCache(query);
-  if (hit) return { ...hit, loading: !!hit.loading, fresh: false };
+  // 命中缓存：有文章（或没有内容）直接返回；有内容但文章为空（上次生成失败）→ 补生成文章，
+  // 避免空文章长期占位导致永远不生成
+  if (hit && (hit.article || !hit.content)) {
+    return { ...hit, loading: !!hit.loading, fresh: false };
+  }
+  if (hit) {
+    writeSearchCache(query, { loading: true });
+    try {
+      const articleRes = await webSearchToArticle(
+        query,
+        opts.maxSources ?? 4,
+        extractSourceUrls(hit.content, opts.maxSources ?? 4),
+      );
+      const entry: SearchCacheEntry = {
+        content: hit.content,
+        article: articleRes.article || "",
+        sources:
+          articleRes.sources?.length > 0 ? articleRes.sources : hit.sources,
+        time: Date.now(),
+        loading: false,
+      };
+      writeSearchCache(query, entry);
+      return { ...entry, loading: false, cached: true, fresh: false };
+    } catch {
+      writeSearchCache(query, { loading: false });
+      return { ...hit, loading: false, cached: true, fresh: false };
+    }
+  }
 
   // 标记生成中（同关键词并发只生成一次）
   writeSearchCache(query, { loading: true });
 
   try {
-    // 并行：搜索+抓取内容 & AI 文章
-    const [content, articleRes] = await Promise.all([
-      webSearchWithContent(
-        query,
-        opts.maxSources ?? 3,
-        opts.perSourceChars ?? 2500,
-      ),
-      webSearchToArticle(query, opts.maxSources ?? 4),
-    ]);
+    // 先抓内容，再复用其来源生成文章（串行：避免并发重复搜索被限流导致文章为空）
+    const content = await webSearchWithContent(
+      query,
+      opts.maxSources ?? 3,
+      opts.perSourceChars ?? 2500,
+    );
+    const articleRes = await webSearchToArticle(
+      query,
+      opts.maxSources ?? 4,
+      extractSourceUrls(content, opts.maxSources ?? 4),
+    );
     const entry: SearchCacheEntry = {
       content: content || "",
       article: articleRes.article || "",

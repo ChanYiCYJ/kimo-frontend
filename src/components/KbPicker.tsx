@@ -16,6 +16,8 @@ export function KbPicker({
   onOpenAgent,
   webSearchOn,
   onToggleWebSearch,
+  browseAgentOn,
+  onToggleBrowseAgent,
 }: {
   selected: string[];
   onToggle: (id: string) => void;
@@ -24,6 +26,8 @@ export function KbPicker({
   onOpenAgent: () => void;
   webSearchOn: boolean;
   onToggleWebSearch: () => void;
+  browseAgentOn: boolean;
+  onToggleBrowseAgent: () => void;
 }) {
   const [notes] = useState<KbNote[]>(() => {
     try {
@@ -86,6 +90,62 @@ export function KbPicker({
               className={
                 "inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition " +
                 (webSearchOn ? "translate-x-[18px]" : "translate-x-1")
+              }
+            />
+          </span>
+        </button>
+        {/* 浏览 Agent 开关（开启后搜索自动生成综合文章） */}
+        <button
+          onClick={onToggleBrowseAgent}
+          className={
+            "mt-1 flex w-full items-center justify-between rounded-xl px-3 py-2.5 transition " +
+            (browseAgentOn
+              ? "bg-violet-50 dark:bg-violet-900/30"
+              : "hover:bg-gray-100 dark:hover:bg-gray-800")
+          }
+        >
+          <span
+            className={
+              "flex items-center gap-2.5 text-sm font-medium " +
+              (browseAgentOn
+                ? "text-violet-600 dark:text-violet-400"
+                : "text-gray-600 dark:text-gray-300")
+            }
+          >
+            <span
+              className={
+                "grid h-7 w-7 place-items-center rounded-lg " +
+                (browseAgentOn
+                  ? "bg-violet-100 text-violet-600 dark:bg-violet-900/50 dark:text-violet-400"
+                  : "bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500")
+              }
+            >
+              <svg
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"
+                />
+              </svg>
+            </span>
+            浏览 Agent
+          </span>
+          <span
+            className={
+              "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition " +
+              (browseAgentOn ? "bg-violet-500" : "bg-gray-300 dark:bg-gray-600")
+            }
+          >
+            <span
+              className={
+                "inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition " +
+                (browseAgentOn ? "translate-x-[18px]" : "translate-x-1")
               }
             />
           </span>

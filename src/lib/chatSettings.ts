@@ -20,6 +20,7 @@ export const FONT_SIZES: readonly ChatFontSize[] = ["sm", "base", "lg"];
 // ---- key 常量（保持线上稳定，勿随意改名）----
 const KEY_FONT_SIZE = "kimo_ai_fontsize";
 const KEY_WEB_SEARCH = "kimo_ai_websearch";
+const KEY_BROWSE_AGENT = "kimo_ai_browse_agent";
 const KEY_TTS = "kimo_ai_tts";
 const KEY_MEMORY_PREFIX = "kimo_chat_memory_";
 const KEY_CUSTOM_MODEL = "kimo_ai_custom_model";
@@ -62,6 +63,14 @@ export function loadWebSearchOn(): boolean {
 }
 export function saveWebSearchOn(on: boolean): void {
   lsSet(KEY_WEB_SEARCH, on ? "1" : "0");
+}
+
+// ---- 浏览 Agent（开启后搜索自动生成综合文章）----
+export function loadBrowseAgentOn(): boolean {
+  return lsGet(KEY_BROWSE_AGENT) !== "0"; // 默认开启
+}
+export function saveBrowseAgentOn(on: boolean): void {
+  lsSet(KEY_BROWSE_AGENT, on ? "1" : "0");
 }
 
 // ---- 自动朗读（用户浏览器偏好优先，未设置时跟随 config.autoTTS）----
