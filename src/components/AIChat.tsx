@@ -534,12 +534,16 @@ export function AIChat({
     if (!t || loading || cooldown > 0) return;
 
     // AI→Agent 语音触发：用户说"打开浏览器"/"搜索xxx"→自动打开 Agent 网页 tab
-    const browserCmd = t.match(/(?:打开|浏览|用|帮我).*(?:浏览器|网页|网站|搜索)\s*(.+)?/);
+    const browserCmd = t.match(
+      /(?:打开|浏览|用|帮我).*(?:浏览器|网页|网站|搜索)\s*(.+)?/,
+    );
     const browserUrl = t.match(/(?:打开|浏览)\s*(https?:\/\/[^\s，,。]+)/);
     if (browserCmd || browserUrl) {
       const target = browserUrl?.[1] || browserCmd?.[1]?.trim();
       if (target) {
-        const searchUrl = target.startsWith("http") ? target : `https://www.google.com/search?q=${encodeURIComponent(target)}`;
+        const searchUrl = target.startsWith("http")
+          ? target
+          : `https://www.google.com/search?q=${encodeURIComponent(target)}`;
         setAgentInitUrl(searchUrl);
       }
       setAgentOpen(true);
