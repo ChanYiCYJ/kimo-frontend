@@ -540,24 +540,28 @@ export function AgentPanel({
                 </div>
               )}
               {webContent && !webLoading && (
-                <div className="p-4">
+                <div className="p-3">
                   <div className="mb-2 flex items-center gap-2 text-xs text-gray-400">
                     <span>{webContent.length.toLocaleString()} 字符</span>
-                    <button
-                      onClick={() => onInsertMessage(webContent)}
-                      className="rounded-md bg-gray-100 px-2 py-0.5 text-gray-600 transition hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
-                    >
-                      发送到对话
-                    </button>
-                    <button
-                      onClick={() => setWebContent("")}
-                      className="rounded-md px-2 py-0.5 text-gray-400 hover:text-gray-600"
-                    >
-                      清除
-                    </button>
+                    <button onClick={() => onInsertMessage(webContent)}
+                      className="rounded-md bg-gray-100 px-2 py-0.5 text-gray-600 transition hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300">发送到对话</button>
+                    <button onClick={() => setWebContent("")} className="rounded-md px-2 py-0.5 text-gray-400 hover:text-gray-600">清除</button>
                   </div>
-                  <div className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-700 dark:text-gray-300">
-                    {webContent.slice(0, 50000)}
+                  {/* 卡片式搜索结果 */}
+                  <div className="space-y-2">
+                    {webContent.split(/\n(?=- )/).map((item, i) => {
+                      const m = item.match(/^- (.*?)(?:\s*\((https?:\/\/[^)]+)\))?\n\s+(.*)$/s);
+                      if (m) {
+                        return (
+                          <div key={i} className="rounded-xl border border-gray-200 bg-white p-3 transition hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800/50">
+                            <a href={m[2] || "#"} target="_blank" rel="noreferrer"
+                              className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400">{m[1]}</a>
+                            <p className="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{m[3].slice(0, 300)}</p>
+                          </div>
+                        );
+                      }
+                      return <div key={i} className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-600 dark:text-gray-300">{item}</div>;
+                    })}
                   </div>
                 </div>
               )}

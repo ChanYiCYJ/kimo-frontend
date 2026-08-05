@@ -221,6 +221,7 @@ export function AIChat({
   const [editTitle, setEditTitle] = useState("");
   const [botMenuOpen, setBotMenuOpen] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
+  const [toolCalls, setToolCalls] = useState<{ msgIdx: number; type: string; detail: string }[]>([]);
   const clearMemory = useCallback(() => {
     setMemory("");
     try {
@@ -679,15 +680,26 @@ export function AIChat({
     }
     upsertAssistant(reply);
 
-    // AI→Agent 工具调用：解析 [BROWSE:url] / [EDIT:content]
+    // AI→Agent 工具调用：解析 [BROWSE:url] / [EDIT:content] / [SEARCH:query]
     const browseCmd = reply.match(/\[BROWSE:\s*(https?:\/\/[^\s\]]+)\s*\]/);
     const editCmd = reply.match(/\[EDIT:\s*([\s\S]*?)\s*\]/);
+    const searchCmd = reply.match(/\[SEARCH:\s*([^\]]+)\s*\]/);
+    const msgIdx = messages.length;
     if (browseCmd) {
       setAgentInitUrl(browseCmd[1]);
       setAgentOpen(true);
+      setToolCalls((prev) => [...prev, { msgIdx, type: "浏览网页", detail: browseCmd[1].slice(0, 60) }]);
+    } else if (searchCmd) {
+      setAgentInitUrl(searchCmd[1].trim());
+      setAgentOpen(true);
+      setToolCalls((prev) => [...prev, { msgIdx, type: "网络搜索", detail: searchCmd[1].trim().slice(0, 60) }]);
     } else if (editCmd) {
       setAgentInitUrl(undefined);
       setAgentOpen(true);
+      setToolCalls((prev) => [...prev, { msgIdx, type: "编辑文档", detail: editCmd[1].trim().slice(0, 60) }]);
+    }
+    if (web && web.trim()) {
+      setToolCalls((prev) => [...prev, { msgIdx, type: "网络资料", detail: web.slice(0, 120) }]);
     }
 
     if (!reply.startsWith("错误")) learn(t, reply);
@@ -924,26 +936,11 @@ export function AIChat({
 
   const chatBody = (
     <div className="flex h-full min-h-0 flex-col bg-white dark:bg-gray-900">
-      {/* 顶栏：/ai 中心页提供品牌+机器人切换+主题+管理；页面模式提供返回 */}
+      {/* 顶栏：左侧历史+机器人，右侧Agent+主题 */}
       <div className="flex shrink-0 items-center gap-1.5 border-b border-gray-100 px-3 py-2 dark:border-gray-700 sm:px-4">
-        <button
-          onClick={() => setSidebarOpen(true)}
-          className={`${iconBtn} sm:hidden`}
-          title="会话列表"
-          aria-label="会话列表"
-        >
-          <svg
-            className="h-5 w-5"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-          >
-            <path
-              strokeLinecap="round"
-              d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
-            />
-          </svg>
+        {/* 左侧：历史按钮 */}
+        <button onClick={() => setSidebarOpen(true)} className={iconBtn} title="会话列表" aria-label="会话列表">
+          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
         </button>
 
         {center ? (
@@ -1073,6 +1070,25 @@ export function AIChat({
               </div>
             )}
             <div className="flex-1" />
+            <button
+              onClick={() => {
+                setAgentOpen((v) => {
+                  if (!v) {
+                    const last = messages[messages.length - 1];
+                    if (last?.role === "assistant") {
+                      const m = last.content.match(/https?:\/\/[^\s<>"{}|\\^`\[\]]+/);
+                      if (m) setAgentInitUrl(m[0]);
+                    }
+                  }
+                  return !v;
+                });
+              }}
+              className={`${iconBtn} ${agentOpen ? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300" : ""}`}
+              title="Agent 工具箱"
+              aria-label="Agent 工具箱"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21"/></svg>
+            </button>
             {canManage && (
               <button
                 onClick={onManage}
@@ -1166,26 +1182,6 @@ export function AIChat({
             </div>
           </div>
         )}
-
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className={`${iconBtn} hidden lg:grid`}
-          title={collapsed ? "展开侧边栏" : "收起侧边栏"}
-          aria-label="切换侧边栏"
-        >
-          <svg
-            className="h-5 w-5"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-          >
-            <path
-              strokeLinecap="round"
-              d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
-            />
-          </svg>
-        </button>
       </div>
 
       {/* 消息区（铺满的多重水印暗纹网格，不随消息滚动） */}
@@ -1275,6 +1271,20 @@ export function AIChat({
                         </div>
                       ) : (
                         <span className="whitespace-pre-wrap">{m.content}</span>
+                      )}
+                      {/* 工具调用卡片 */}
+                      {toolCalls.filter((tc) => tc.msgIdx === i).length > 0 && (
+                        <div className="mt-2 space-y-1.5">
+                          {toolCalls.filter((tc) => tc.msgIdx === i).map((tc, j) => (
+                            <div key={j} className="rounded-xl border border-blue-200 bg-blue-50/60 px-3 py-2 dark:border-blue-800 dark:bg-blue-900/20">
+                              <div className="flex items-center gap-1.5 text-xs">
+                                <svg className="h-3.5 w-3.5 text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg>
+                                <span className="font-medium text-blue-600 dark:text-blue-400">{tc.type}</span>
+                              </div>
+                              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 truncate">{tc.detail}</p>
+                            </div>
+                          ))}
+                        </div>
                       )}
                       {m.role === "assistant" && (
                         <div
@@ -1445,40 +1455,6 @@ export function AIChat({
             </div>
           )}
           <div className="flex items-center gap-0.5 rounded-[26px] border border-gray-200 bg-white p-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition focus-within:border-gray-400 focus-within:shadow-[0_0_0_3px_rgba(156,163,175,0.15)] dark:border-gray-600 dark:bg-gray-800">
-            {/* Agent 工具箱：文档 / 网页 / 提示词 + 知识库 / 上传 / 导出 / 写文章（合并原 + 菜单） */}
-            <button
-              onClick={() => {
-                setAgentOpen((v) => {
-                  if (!v) {
-                    const last = messages[messages.length - 1];
-                    if (last?.role === "assistant") {
-                      const m = last.content.match(
-                        /https?:\/\/[^\s<>"{}|\\^`\[\]]+/,
-                      );
-                      if (m) setAgentInitUrl(m[0]);
-                    }
-                  }
-                  return !v;
-                });
-              }}
-              className={`${iconBtn} ${agentOpen ? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300" : ""}`}
-              title="Agent 工具箱"
-              aria-label="Agent 工具箱"
-            >
-              <svg
-                className="h-5 w-5"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.689-1.718-.293-2.3-2.379-1.068-3.611L5 14.5"
-                />
-              </svg>
-            </button>
             <input
               ref={fileRef}
               type="file"
