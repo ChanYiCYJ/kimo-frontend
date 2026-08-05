@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { MdEditor } from "./MdEditor";
 
-interface AgentPanelProps { onClose: () => void; onInsertMessage: (t: string) => void; }
+interface AgentPanelProps { onClose: () => void; onInsertMessage: (t: string) => void; onOpenKb?: () => void; onExport?: () => void; onArticle?: () => void; onUploadFile?: () => void; canExport?: boolean; canArticle?: boolean; }
 interface PromptFile { name: string; content: string; createdAt: number; }
 
 const PK = "kimo_agent_prompts";
@@ -9,7 +9,7 @@ const L = (): PromptFile[] => { try { const r = localStorage.getItem(PK); return
 const S = (f: PromptFile[]) => { try { localStorage.setItem(PK, JSON.stringify(f)); } catch {} };
 const IC = "w-full rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs outline-none transition focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800";
 
-export function AgentPanel({ onClose, onInsertMessage }: AgentPanelProps) {
+export function AgentPanel({ onClose, onInsertMessage, onOpenKb, onExport, onArticle, onUploadFile, canExport, canArticle }: AgentPanelProps) {
   const [tab, setTab] = useState<"web" | "markdown" | "prompts">("markdown");
   const [webUrl, setWebUrl] = useState("");
   const [mdContent, setMdContent] = useState("");
@@ -39,6 +39,13 @@ export function AgentPanel({ onClose, onInsertMessage }: AgentPanelProps) {
         <div className="flex gap-0.5 rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800">{tabs.map(t => <button key={t.k} onClick={() => setTab(t.k)} className={`px-2.5 py-1 text-xs font-medium rounded-md transition ${tab === t.k ? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{t.i} {t.l}</button>)}</div>
         <button onClick={onClose} className="rounded p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" /></svg></button>
       </div>
+      <div className="flex shrink-0 items-center gap-1 border-b border-gray-200 px-3 py-1.5 dark:border-gray-700">
+        {onUploadFile && <button onClick={onUploadFile} className="rounded px-1.5 py-0.5 text-[11px] text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800">上传</button>}
+        {onOpenKb && <button onClick={onOpenKb} className="rounded px-1.5 py-0.5 text-[11px] text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800">知识库</button>}
+        {canArticle && onArticle && <button onClick={onArticle} className="rounded px-1.5 py-0.5 text-[11px] text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800">写文章</button>}
+        {canExport && onExport && <button onClick={onExport} className="rounded px-1.5 py-0.5 text-[11px] text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800">导出</button>}
+      </div>
+
       <div className="relative min-h-0 flex-1 overflow-hidden">
         {tab === "web" && <div className="flex h-full flex-col p-3"><div className="flex shrink-0 gap-1.5 mb-2"><input value={webUrl} onChange={e => setWebUrl(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && webUrl.trim()) setWebUrl(webUrl.trim().startsWith("http") ? webUrl.trim() : "https://" + webUrl.trim()); }} placeholder="输入网址后回车…" className={`${IC} flex-1`} /><button onClick={() => { const u = webUrl.trim(); if (u) setWebUrl(u.startsWith("http") ? u : "https://" + u); }} className="shrink-0 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 dark:bg-gray-200 dark:text-gray-900">打开</button></div>{webUrl ? <div className="min-h-0 flex-1 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700"><iframe src={webUrl} className="w-full h-full" title="网页" sandbox="allow-scripts allow-same-origin allow-forms" /></div> : <p className="text-xs text-gray-400">输入网址即可浏览网页（部分网站可能因安全策略无法嵌入）</p>}</div>}
         {tab === "markdown" && <div className="flex h-full flex-col"><div className="flex-1 min-h-0"><MdEditor value={mdContent} onChange={setMdContent} height={h} placeholder="在此编写 Markdown，也可拖拽 .md 文件…" aiPolish={false} /></div><div className="flex shrink-0 gap-2 border-t border-gray-200 px-3 py-2 dark:border-gray-700"><button onClick={() => onInsertMessage(mdContent)} disabled={!mdContent.trim()} className="flex-1 rounded-lg bg-gray-900 py-2 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-30 dark:bg-gray-200 dark:text-gray-900">发送到对话</button><button onClick={() => mdContent.trim() ? addP(mdContent.slice(0, 30)) : addP()} className="rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300">存为提示词</button><button onClick={() => setMdContent("")} className="rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-400 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">清空</button></div></div>}
