@@ -281,8 +281,31 @@ export function AIChat({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
+  const resizeRef = useRef<{ startX: number; startW: number } | null>(null);
   const active = sessions.find((s) => s.id === activeId) || sessions[0];
   const messages = active?.messages || [];
+
+  // Agent 面板宽度拖拽
+  const onResizeDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    resizeRef.current = { startX: e.clientX, startW: agentWidth };
+    const onMove = (ev: MouseEvent) => {
+      if (!resizeRef.current) return;
+      const d = resizeRef.current.startX - ev.clientX;
+      setAgentWidth(Math.min(Math.round(window.innerWidth * 0.8), Math.max(300, resizeRef.current.startW + d)));
+    };
+    const onUp = () => {
+      resizeRef.current = null;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [agentWidth]);
 
   // 有效配置：本地自定义 API/提示词 优先于机器人默认配置（非管理员各自本地设置）
   const effCfg: AIChatConfig = {
@@ -1505,7 +1528,15 @@ export function AIChat({
               title="知识库条目"
               aria-label="知识库条目"
             >
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+              <svg
+                className="h-5 w-5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+              >
+                <path strokeLinecap="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
             </button>
             <input
               ref={fileRef}
@@ -1735,37 +1766,6 @@ export function AIChat({
     </div>
   );
 
-  // Agent 面板宽度拖拽
-  const resizeRef = useRef<{ startX: number; startW: number } | null>(null);
-  const onResizeDown = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      resizeRef.current = { startX: e.clientX, startW: agentWidth };
-      const onMove = (ev: MouseEvent) => {
-        if (!resizeRef.current) return;
-        const d = resizeRef.current.startX - ev.clientX;
-        setAgentWidth(
-          Math.min(
-            Math.round(window.innerWidth * 0.8),
-            Math.max(300, resizeRef.current.startW + d),
-          ),
-        );
-      };
-      const onUp = () => {
-        resizeRef.current = null;
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-      };
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
-    },
-    [agentWidth],
-  );
-
   const lastAssistant = [...messages]
     .reverse()
     .find((m) => m.role === "assistant");
@@ -1826,7 +1826,10 @@ export function AIChat({
               setAgentOpen(false);
             }}
           />
-          <div className="absolute inset-x-0 bottom-0 animate-[kslideUp_0.35s_ease-out]" style={{ top: "52px", maxHeight: "85vh" }}>
+          <div
+            className="absolute inset-x-0 bottom-0 animate-[kslideUp_0.35s_ease-out]"
+            style={{ top: "52px", maxHeight: "85vh" }}
+          >
             <AgentPanel
               onClose={() => {
                 refreshKb();

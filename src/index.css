@@ -35,8 +35,14 @@ html {
 
 /* Agent面板从底部滑入 */
 @keyframes kslideUp {
-  from { transform: translateY(40%); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from {
+    transform: translateY(40%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 body {

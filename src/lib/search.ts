@@ -4,41 +4,83 @@
  * 2) 回退：DuckDuckGo Instant Answer API（支持 CORS）
  */
 
-interface SearchItem { title?: string; url?: string; description?: string; snippet?: string; }
+interface SearchItem {
+  title?: string;
+  url?: string;
+  description?: string;
+  snippet?: string;
+}
 
 async function backendSearch(query: string): Promise<string> {
   try {
-    const res = await fetch("/api/search?q=" + encodeURIComponent(query), { headers: { Accept: "application/json" } });
+    const res = await fetch("/api/search?q=" + encodeURIComponent(query), {
+      headers: { Accept: "application/json" },
+    });
     if (!res.ok) return "";
-    const data = (await res.json().catch(() => null)) as { items?: SearchItem[] } | SearchItem[] | null;
-    const items = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : null;
+    const data = (await res.json().catch(() => null)) as
+      | { items?: SearchItem[] }
+      | SearchItem[]
+      | null;
+    const items = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.items)
+        ? data.items
+        : null;
     if (!items || !items.length) return "";
-    return items.slice(0, 6).map(it => "- " + (it.title || "") + (it.url ? " (" + it.url + ")" : "") + "\n  " + (it.description || it.snippet || "").slice(0, 300)).join("\n");
-  } catch { return ""; }
+    return items
+      .slice(0, 6)
+      .map(
+        (it) =>
+          "- " +
+          (it.title || "") +
+          (it.url ? " (" + it.url + ")" : "") +
+          "\n  " +
+          (it.description || it.snippet || "").slice(0, 300),
+      )
+      .join("\n");
+  } catch {
+    return "";
+  }
 }
 
 /** DuckDuckGo Instant Answer（支持CORS，无需API Key） */
 async function ddgSearch(query: string): Promise<string> {
   try {
-    const u = "https://api.duckduckgo.com/?q=" + encodeURIComponent(query) + "&format=json&no_html=1&skip_disambig=1";
+    const u =
+      "https://api.duckduckgo.com/?q=" +
+      encodeURIComponent(query) +
+      "&format=json&no_html=1&skip_disambig=1";
     const res = await fetch(u);
     if (!res.ok) return "";
-    const j = await res.json() as Record<string, unknown>;
+    const j = (await res.json()) as Record<string, unknown>;
     const results: string[] = [];
     // RelatedTopics
-    const topics = (j.RelatedTopics || []) as { Text?: string; FirstURL?: string }[];
+    const topics = (j.RelatedTopics || []) as {
+      Text?: string;
+      FirstURL?: string;
+    }[];
     for (const t of topics.slice(0, 6)) {
       if (t.Text) {
         const text = t.Text.replace(/<[^>]+>/g, "").trim();
-        results.push("- " + text.slice(0, 200) + (t.FirstURL ? " (" + t.FirstURL + ")" : ""));
+        results.push(
+          "- " +
+            text.slice(0, 200) +
+            (t.FirstURL ? " (" + t.FirstURL + ")" : ""),
+        );
       }
     }
     // Abstract
     if (!results.length && j.AbstractText) {
-      results.push("- " + String(j.AbstractText).slice(0, 300) + (j.AbstractURL ? " (" + j.AbstractURL + ")" : ""));
+      results.push(
+        "- " +
+          String(j.AbstractText).slice(0, 300) +
+          (j.AbstractURL ? " (" + j.AbstractURL + ")" : ""),
+      );
     }
     return results.join("\n");
-  } catch { return ""; }
+  } catch {
+    return "";
+  }
 }
 
 export async function webSearch(query: string): Promise<string> {

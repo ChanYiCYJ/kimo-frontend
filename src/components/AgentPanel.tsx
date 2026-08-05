@@ -880,11 +880,26 @@ export function AgentPanel({
             {activeEntry ? (
               <>
                 <div className="flex items-center gap-2 border-b border-gray-50 px-3 py-1.5 dark:border-gray-800">
-                  <button onClick={() => { setActiveEntry(null); setMdContent(""); }}
-                    className="rounded p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" d="M19 12H5m7-7l-7 7 7 7"/></svg>
+                  <button
+                    onClick={() => {
+                      setActiveEntry(null);
+                      setMdContent("");
+                    }}
+                    className="rounded p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                  >
+                    <svg
+                      className="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path strokeLinecap="round" d="M19 12H5m7-7l-7 7 7 7" />
+                    </svg>
                   </button>
-                  <span className="truncate text-xs font-medium text-gray-600 dark:text-gray-300">{activeEntry.name}</span>
+                  <span className="truncate text-xs font-medium text-gray-600 dark:text-gray-300">
+                    {activeEntry.name}
+                  </span>
                 </div>
                 <MdEditor
                   value={activeEntry.content}
