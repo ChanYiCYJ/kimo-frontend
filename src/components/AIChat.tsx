@@ -8,12 +8,26 @@ import { useTheme } from "../lib/theme";
 import { webSearch, fetchWebpage } from "../lib/search";
 import { getKbSelections, getKbNotes, assembleKnowledge } from "../lib/kb";
 import { getLocalCfg } from "../lib/localCfg";
+import {
+  mergeEffCfg,
+  hasLocalApi,
+  loadChatFontSize,
+  loadWebSearchOn,
+  loadTtsPref,
+  loadMemory,
+  saveMemory,
+  saveChatFontSize,
+  saveWebSearchOn,
+  saveTtsPref,
+  clearMemory as clearStoredMemory,
+  type ChatFontSize,
+} from "../lib/chatSettings";
 import { LocalApiModal } from "./LocalApiModal";
 import { UsageDocModal } from "./UsageDocModal";
 import { ArticleComposerModal } from "./ArticleComposerModal";
-import { UserSettingsPanel } from "./UserSettingsPanel";
 import { AgentPanel } from "./AgentPanel";
 import { KbPicker } from "./KbPicker";
+import type { AgentSettingsProps } from "./SettingsTab";
 
 interface Message {
   role: "user" | "assistant";
@@ -186,7 +200,6 @@ export function AIChat({
   const [apiModalOpen, setApiModalOpen] = useState(false);
   const [docOpen, setDocOpen] = useState(false);
   const [articleOpen, setArticleOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
   const [kbPickerOpen, setKbPickerOpen] = useState(false);
   const [kbPickerSelected, setKbPickerSelected] = useState<string[]>([]);
@@ -194,7 +207,9 @@ export function AIChat({
     { id: string; title: string; content: string }[]
   >([]);
   const [agentInitUrl, setAgentInitUrl] = useState<string | undefined>();
-  const [agentTab, setAgentTab] = useState<"web" | "kb" | "edit">("kb");
+  const [agentTab, setAgentTab] = useState<"web" | "kb" | "edit" | "settings">(
+    "kb",
+  );
   const [agentEditContent, setAgentEditContent] = useState<
     string | undefined
   >();
@@ -205,29 +220,16 @@ export function AIChat({
   const [attachedFile, setAttachedFile] = useState("");
   const [searching, setSearching] = useState(false);
   const [kbText, setKbText] = useState("");
-  const [chatFontSize, setChatFontSize] = useState<"sm" | "base" | "lg">(() => {
-    try {
-      return (localStorage.getItem("kimo_ai_fontsize") || "base") as
-        | "sm"
-        | "base"
-        | "lg";
-    } catch {
-      return "base";
-    }
-  });
+  const [chatFontSize, setChatFontSize] = useState<ChatFontSize>(() =>
+    loadChatFontSize(),
+  );
   const fontSizeCls =
     chatFontSize === "sm"
       ? "text-sm"
       : chatFontSize === "lg"
         ? "text-lg"
         : "text-[15px]";
-  const [webSearchOn, setWebSearchOn] = useState(() => {
-    try {
-      return localStorage.getItem("kimo_ai_websearch") === "1";
-    } catch {
-      return false;
-    }
-  });
+  const [webSearchOn, setWebSearchOn] = useState(() => loadWebSearchOn());
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [botMenuOpen, setBotMenuOpen] = useState(false);
@@ -237,9 +239,7 @@ export function AIChat({
   >([]);
   const clearMemory = useCallback(() => {
     setMemory("");
-    try {
-      localStorage.removeItem(STORAGE_PREFIX + "memory_" + pageId);
-    } catch {}
+    clearStoredMemory(pageId);
   }, [pageId]);
   const [dailyUsed, setDailyUsed] = useState(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -253,29 +253,13 @@ export function AIChat({
       return 0;
     }
   });
-  const [memory, setMemory] = useState(() => {
-    try {
-      return localStorage.getItem(STORAGE_PREFIX + "memory_" + pageId) || "";
-    } catch {
-      return "";
-    }
-  });
+  const [memory, setMemory] = useState(() => loadMemory(pageId));
   // 自动朗读：优先用户浏览器偏好（kimo_ai_tts），默认关；用户关闭则进入页面即为关
-  const [ttsOn, setTtsOn] = useState(() => {
-    try {
-      const p = localStorage.getItem("kimo_ai_tts");
-      if (p) return p === "1";
-    } catch {
-      /* 忽略 */
-    }
-    return !!config.autoTTS;
-  });
+  const [ttsOn, setTtsOn] = useState(() => loadTtsPref(config.autoTTS).on);
   const toggleTts = useCallback(() => {
     setTtsOn((prev) => {
       const n = !prev;
-      try {
-        localStorage.setItem("kimo_ai_tts", n ? "1" : "0");
-      } catch {}
+      saveTtsPref(n);
       return n;
     });
   }, []);
@@ -328,19 +312,15 @@ export function AIChat({
     [agentWidth],
   );
 
-  // 有效配置：本地自定义 API/提示词 优先于机器人默认配置（非管理员各自本地设置）
-  const effCfg: AIChatConfig = {
-    ...config,
-    endpoint: localCfg.endpoint || config.endpoint,
-    apiKey: localCfg.apiKey || config.apiKey,
-    model: localCfg.model || config.model,
-    systemPrompt: localCfg.prompt || config.systemPrompt,
-  };
-  const hasCustom = !!(localCfg.endpoint || localCfg.apiKey || localCfg.model);
+  // 人设选择（多套人设由 BotEditorModal 配置；选中后覆盖默认 systemPrompt）
   const [activePromptIdx, setActivePromptIdx] = useState<number | null>(null);
-  const allPrompts = (effCfg.prompts || config.prompts || []).filter(
+  const allPrompts = (config.prompts || []).filter(
     (p: { systemPrompt: string }) => p.systemPrompt.trim(),
   );
+
+  // 有效配置：本地自定义 API/提示词 > 选中人设 > 机器人默认（非管理员各自本地设置）
+  const effCfg: AIChatConfig = mergeEffCfg(config, localCfg, activePromptIdx);
+  const hasCustom = hasLocalApi(localCfg);
 
   const dailyLimit = effCfg.dailyLimit || config.dailyLimit || 0;
   const dailyRemaining =
@@ -517,9 +497,7 @@ export function AIChat({
   const toggleWebSearch = useCallback(() => {
     setWebSearchOn((prev) => {
       const n = !prev;
-      try {
-        localStorage.setItem("kimo_ai_websearch", n ? "1" : "0");
-      } catch {}
+      saveWebSearchOn(n);
       return n;
     });
   }, []);
@@ -551,9 +529,7 @@ export function AIChat({
       if (lines.length > 12) lines.shift();
       const next = lines.join("\n");
       setMemory(next);
-      try {
-        localStorage.setItem(STORAGE_PREFIX + "memory_" + pageId, next);
-      } catch {}
+      saveMemory(pageId, next);
     },
     [memory, pageId],
   );
@@ -1866,7 +1842,7 @@ export function AIChat({
           </div>
         ))}
       </div>
-      {/* 底部：用户设置（导出导入 / 模型 / 文档 / GitHub 整合进设置面板） */}
+      {/* 底部：站点名 + 声明（用户设置已迁入 Agent 面板「设置」tab） */}
       <div className="shrink-0 border-t border-gray-200 p-2 dark:border-gray-800">
         <input
           ref={importRef}
@@ -1875,30 +1851,6 @@ export function AIChat({
           onChange={onImportAll}
           className="hidden"
         />
-        <button
-          onClick={() => setSettingsOpen(true)}
-          className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-600 shadow-sm transition hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
-        >
-          <svg
-            className="h-4 w-4"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"
-            />
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-            />
-          </svg>
-          用户设置
-        </button>
         {dailyLimit > 0 && (
           <div className="mt-2 space-y-1 px-1">
             <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-gray-500">
@@ -1966,6 +1918,29 @@ export function AIChat({
     .reverse()
     .find((m) => m.role === "assistant");
 
+  // Agent 面板「设置」tab 数据（desktop/mobile 双渲染共用一份）
+  const settingsData: AgentSettingsProps = {
+    pageId,
+    canManage: !!canManage,
+    hasCustom,
+    botName: config.botName || "AI",
+    ttsOn,
+    onToggleTts: toggleTts,
+    webSearchOn,
+    onToggleWebSearch: toggleWebSearch,
+    onExportAll: exportAllSessions,
+    onImport: () => importRef.current?.click(),
+    onOpenDoc: () => setDocOpen(true),
+    onClearMemory: clearMemory,
+    chatFontSize,
+    onSetFontSize: (v) => {
+      setChatFontSize(v);
+      saveChatFontSize(v);
+    },
+    onCustomSaved: () => setLocalCfg(getLocalCfg(pageId)),
+    allowCustomApi: customApiEnabled,
+  };
+
   const agentSidebar = (
     <>
       {/* 桌面端：右侧可拖拽面板 + 滑入动画 */}
@@ -1997,14 +1972,10 @@ export function AIChat({
                 memory={memory}
                 onMemoryChange={(m) => {
                   setMemory(m);
-                  try {
-                    localStorage.setItem(
-                      STORAGE_PREFIX + "memory_" + pageId,
-                      m,
-                    );
-                  } catch {}
+                  saveMemory(pageId, m);
                 }}
                 onKbChanged={refreshKb}
+                settings={settingsData}
               />
             </div>
           )}
@@ -2030,11 +2001,10 @@ export function AIChat({
               memory={memory}
               onMemoryChange={(m) => {
                 setMemory(m);
-                try {
-                  localStorage.setItem(STORAGE_PREFIX + "memory_" + pageId, m);
-                } catch {}
+                saveMemory(pageId, m);
               }}
               onKbChanged={refreshKb}
+              settings={settingsData}
             />
           </div>
         </div>
@@ -2069,34 +2039,6 @@ export function AIChat({
       <ArticleComposerModal
         open={articleOpen}
         onClose={() => setArticleOpen(false)}
-      />
-      <UserSettingsPanel
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        pageId={pageId}
-        canManage={!!canManage}
-        hasCustom={hasCustom}
-        botName={config.botName || "AI"}
-        ttsOn={ttsOn}
-        onToggleTts={toggleTts}
-        webSearchOn={webSearchOn}
-        onToggleWebSearch={toggleWebSearch}
-        onExportAll={exportAllSessions}
-        onImport={() => importRef.current?.click()}
-        onOpenDoc={() => {
-          setSettingsOpen(false);
-          setDocOpen(true);
-        }}
-        onClearMemory={clearMemory}
-        chatFontSize={chatFontSize}
-        onSetFontSize={(v) => {
-          setChatFontSize(v as any);
-          try {
-            localStorage.setItem("kimo_ai_fontsize", v);
-          } catch {}
-        }}
-        onCustomSaved={() => setLocalCfg(getLocalCfg(pageId))}
-        allowCustomApi={customApiEnabled}
       />
       {layout}
     </>

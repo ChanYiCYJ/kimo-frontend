@@ -12,6 +12,8 @@
     "dev:all": "concurrently -k -n API,WEB -c blue,green \"npm:dev:api\" \"npm:dev\"",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "test": "NODE_OPTIONS=--no-experimental-webstorage vitest run",
+    "test:watch": "NODE_OPTIONS=--no-experimental-webstorage vitest",
     "preview": "vite preview",
     "deploy:cf": "npm run build && wrangler deploy",
     "dev:cf": "wrangler dev"
@@ -40,10 +42,12 @@
     "@vercel/config": "^0.5.6",
     "@vitejs/plugin-react": "^6.0.2",
     "concurrently": "^10.0.4",
+    "jsdom": "^30.0.1",
     "oxlint": "^1.69.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "vite": "^8.1.0",
+    "vitest": "^4.1.10",
     "wrangler": "^4.118.0"
   }
 }

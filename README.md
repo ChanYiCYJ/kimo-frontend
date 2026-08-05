@@ -13,15 +13,15 @@
 
 ## 🎨 设计亮点（对比原 Kimo 的优化）
 
-| 维度 | 原 Kimo（Flask） | 本前端（React） |
-| --- | --- | --- |
-| 页面切换 | 整页刷新 | SPA 无刷新路由 |
-| 写作编辑器 | Vditor | @uiw/react-md-editor（React 原生） |
-| Markdown 渲染 | 服务端 HTML | 客户端渲染（防 XSS） |
-| 登录态 | Session | JWT + localStorage + Context |
-| 提示反馈 | alert 弹窗 | 轻量 Toast 通知 |
-| 图片上传 | - | 编辑器内上传 + 封面/头像上传 |
-| 代码体积 | - | 后台页面按需加载（Route-level code splitting） |
+| 维度          | 原 Kimo（Flask） | 本前端（React）                                |
+| ------------- | ---------------- | ---------------------------------------------- |
+| 页面切换      | 整页刷新         | SPA 无刷新路由                                 |
+| 写作编辑器    | Vditor           | @uiw/react-md-editor（React 原生）             |
+| Markdown 渲染 | 服务端 HTML      | 客户端渲染（防 XSS）                           |
+| 登录态        | Session          | JWT + localStorage + Context                   |
+| 提示反馈      | alert 弹窗       | 轻量 Toast 通知                                |
+| 图片上传      | -                | 编辑器内上传 + 封面/头像上传                   |
+| 代码体积      | -                | 后台页面按需加载（Route-level code splitting） |
 
 ## 🤖 AI 对话中心（/ai）
 
@@ -34,7 +34,7 @@
 - **水印**：AI 生成内容带多重水印（含模型名 + API 状态），防止被冒用
 - **写文章**：后台开关 `enable_ai_articles` 开启后，可直接在对话中撰写并发布文章
 - **适用范围**：每个助手可设「仅管理员可用」；主页「AI」菜单可用 `show_ai` 关闭；访客自定义 API 可用 `enable_custom_api` 开关
-- **用户设置**：侧边栏「用户设置」面板整合 自动朗读/网络搜索、导出导入、模型 API、使用文档、GitHub 开源链接
+- **用户设置**：已迁入 Agent 工具箱「设置」tab，整合 自动朗读/网络搜索、对话字体、导出导入、模型 API、使用文档、GitHub 开源链接
 
 ## 🚀 快速开始
 
@@ -64,28 +64,28 @@ server: {
 
 可用的环境变量（`.env`）：
 
-| 变量 | 说明 | 默认 |
-| --- | --- | --- |
-| `VITE_API_BASE` | API 基础路径 | `/api/v1` |
-| `VITE_USE_MOCK` | 强制使用演示数据（`1`） | 关闭 |
-| `VITE_MEDIA_BASE` | 静态资源/图片源（跨源部署时拼前缀） | 关闭 |
+| 变量              | 说明                                | 默认      |
+| ----------------- | ----------------------------------- | --------- |
+| `VITE_API_BASE`   | API 基础路径                        | `/api/v1` |
+| `VITE_USE_MOCK`   | 强制使用演示数据（`1`）             | 关闭      |
+| `VITE_MEDIA_BASE` | 静态资源/图片源（跨源部署时拼前缀） | 关闭      |
 
 ## 🗺 路由
 
-| 路径 | 说明 |
-| --- | --- |
-| `/` | 首页（文章列表、分页、分类筛选、搜索） |
-| `/article/:id` | 文章详情 |
-| `/page/:name` | 自定义页面（markdown / list / link） |
-| `/ai`、`/ai/:botId` | **AI 对话中心**（多助手切换） |
-| `/login` | 登录 / 注册 |
-| `/dashboard` | 管理后台（需管理员 role=0） |
-| `/dashboard/articles*` | 文章管理 / 新建 / 编辑 |
-| `/dashboard/pages*` | 页面管理 / 新建 / 编辑 |
-| `/dashboard/ai` | **AI 助手管理**（统一管理所有助手） |
-| `/dashboard/categories` | 分类标签 |
-| `/dashboard/settings` | 站点设置（含 AI 改写、功能开关、默认落地页） |
-| `/dashboard/users` | 用户管理 |
+| 路径                    | 说明                                         |
+| ----------------------- | -------------------------------------------- |
+| `/`                     | 首页（文章列表、分页、分类筛选、搜索）       |
+| `/article/:id`          | 文章详情                                     |
+| `/page/:name`           | 自定义页面（markdown / list / link）         |
+| `/ai`、`/ai/:botId`     | **AI 对话中心**（多助手切换）                |
+| `/login`                | 登录 / 注册                                  |
+| `/dashboard`            | 管理后台（需管理员 role=0）                  |
+| `/dashboard/articles*`  | 文章管理 / 新建 / 编辑                       |
+| `/dashboard/pages*`     | 页面管理 / 新建 / 编辑                       |
+| `/dashboard/ai`         | **AI 助手管理**（统一管理所有助手）          |
+| `/dashboard/categories` | 分类标签                                     |
+| `/dashboard/settings`   | 站点设置（含 AI 改写、功能开关、默认落地页） |
+| `/dashboard/users`      | 用户管理                                     |
 
 > 💡 后端未启动时，前端会自动回退到**演示数据**（`src/lib/mock.ts`），便于本地预览 UI。
 
@@ -99,10 +99,10 @@ server: {
 
 ### 环境变量
 
-| 变量 | 必填 | 说明 | 示例 |
-| --- | --- | --- | --- |
-| `API_BACKEND` | ✅ | 后端 FastAPI 地址（**不带尾部斜杠**），用于反代 `/api`、`/static` | `https://api.example.com` |
-| `VITE_USE_MOCK` | 可选 | 置 `1` 强制使用演示数据（不联网） | `1` |
+| 变量            | 必填 | 说明                                                              | 示例                      |
+| --------------- | ---- | ----------------------------------------------------------------- | ------------------------- |
+| `API_BACKEND`   | ✅   | 后端 FastAPI 地址（**不带尾部斜杠**），用于反代 `/api`、`/static` | `https://api.example.com` |
+| `VITE_USE_MOCK` | 可选 | 置 `1` 强制使用演示数据（不联网）                                 | `1`                       |
 
 > 未设置 `API_BACKEND` 也能构建成功，但站点无法联网（仅渲染静态页面），构建日志会给出提醒。
 
@@ -133,6 +133,7 @@ vercel --prod
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/ChanYiCYJ/kimo-frontend)
 
 > 一键部署完成后，还需在控制台做两步：
+>
 > 1. Worker「设置 → 变量和 Secret」添加 `API_BACKEND`（后端地址，**不带尾部斜杠**，如 `https://api.example.com`）
 > 2. Worker「设置 → 域」绑定自定义域名（如 `v2.yogofor.top`），即可访问
 >
@@ -166,11 +167,11 @@ cp .dev.vars.example .dev.vars   # 填入 API_BACKEND
 npx wrangler dev                 # 或 npm run dev:cf
 ```
 
-| 文件 | 作用 |
-| --- | --- |
-| `wrangler.jsonc` | Worker 配置：`assets`(dist 静态托管 + SPA 回退)、`API_BACKEND` 变量 |
-| `worker.js` | 反代 `/api`、`/static` 到后端，其余交给 Assets |
-| `.dev.vars.example` | 本地 `wrangler dev` 环境变量示例 |
+| 文件                | 作用                                                                |
+| ------------------- | ------------------------------------------------------------------- |
+| `wrangler.jsonc`    | Worker 配置：`assets`(dist 静态托管 + SPA 回退)、`API_BACKEND` 变量 |
+| `worker.js`         | 反代 `/api`、`/static` 到后端，其余交给 Assets                      |
+| `.dev.vars.example` | 本地 `wrangler dev` 环境变量示例                                    |
 
 > 💡 部署到任意平台（Vercel / Cloudflare / 宝塔 Nginx）的**落地页跳转逻辑一致**：`route_map` 精确匹配优先。若某个精确域名被父域后缀匹配抢先导致不跳转（如 `v2.yogofor.top` 被 `yogofor.top` 抢成 `/`），请确保使用最新代码（该 bug 已修复）。
 
@@ -200,10 +201,10 @@ AI 的网络搜索默认**关闭**，在用户设置中开启。搜索优先调�
 
 前后端是两个独立进程，各自拥有热重载能力：
 
-| 端 | 命令 | 热更新机制 |
-| --- | --- | --- |
-| 前端（Vite） | `npm run dev` | **HMR**：保存 `.tsx/.css` 立即局部刷新，不清空状态 |
-| 后端（FastAPI） | `uvicorn app.main:app --reload` | **--reload**：保存 `.py` 自动重启服务（秒级） |
+| 端              | 命令                            | 热更新机制                                         |
+| --------------- | ------------------------------- | -------------------------------------------------- |
+| 前端（Vite）    | `npm run dev`                   | **HMR**：保存 `.tsx/.css` 立即局部刷新，不清空状态 |
+| 后端（FastAPI） | `uvicorn app.main:app --reload` | **--reload**：保存 `.py` 自动重启服务（秒级）      |
 
 两者通过 Vite 代理串联：前端请求 `/api/*` 转发到 `:8000`，因此后端代码一改、刷新即可看到新接口，无需处理跨域。
 
@@ -224,6 +225,7 @@ npm run dev:all
 ```
 
 它会用 `concurrently` 同时启动：
+
 - `API`（蓝色）：`cd ../kimo-fastapi && uvicorn app.main:app --reload --port 8000`
 - `WEB`（绿色）：`vite`（HMR）
 
@@ -259,7 +261,8 @@ src/
 │   ├── ai.ts                 # 后台「AI 改写」调用（复用 AI 管理模型）
 │   ├── search.ts             # 网络搜索（后端 /api/search → 维基百科回退）
 │   ├── kb.ts                 # Coser 知识库（站点内容选择 + 本机笔记 + 导出）
-│   └── localCfg.ts           # 访客自定义模型 API（本机存储）
+│   ├── localCfg.ts           # 访客自定义模型 API（本机存储）
+│   └── chatSettings.ts       # AI Chat 用户设置统一存储层（字体/TTS/搜索/记忆/effCfg 合并）
 ├── components/
 │   ├── Layout.tsx            # 前台布局（含域名重定向 / AI 沉浸式分支）
 │   ├── Header.tsx / Sidebar.tsx / PostCard.tsx / Pagination.tsx
@@ -267,7 +270,8 @@ src/
 │   ├── AIChat.tsx            # AI 对话核心（会话/Coser/搜索/水印/限制）
 │   ├── KbModal.tsx           # Coser 角色扮演设定弹窗
 │   ├── LocalApiModal.tsx     # 自定义模型 API 弹窗
-│   ├── UserSettingsPanel.tsx # 用户设置面板（侧滑）
+│   ├── LocalApiForm.tsx      # 本地模型 API 表单（弹窗/设置 tab 复用）
+│   ├── SettingsTab.tsx       # Agent 面板「设置」tab（用户设置已迁入）
 │   ├── UsageDocModal.tsx     # 使用文档
 │   ├── ArticleComposerModal.tsx # 对话内写文章
 │   ├── BotEditorModal.tsx    # AI 助手编辑弹窗
@@ -284,20 +288,20 @@ src/
 
 ## 🗺 路由
 
-| 路径 | 说明 |
-| --- | --- |
-| `/` | 首页（文章列表、分页、分类筛选、搜索） |
-| `/article/:id` | 文章详情 |
-| `/page/:name` | 自定义页面（markdown / list / link） |
-| `/login` | 登录 / 注册 |
-| `/dashboard` | 管理后台（需管理员 role=0） |
-| `/dashboard/articles` | 文章管理 |
-| `/dashboard/articles/new` | 新建文章 |
-| `/dashboard/articles/:id/edit` | 编辑文章 |
-| `/dashboard/pages` | 页面管理 |
-| `/dashboard/pages/new` | 新建页面 |
-| `/dashboard/pages/:id/edit` | 编辑页面 |
-| `/dashboard/settings` | 站点设置 |
+| 路径                           | 说明                                   |
+| ------------------------------ | -------------------------------------- |
+| `/`                            | 首页（文章列表、分页、分类筛选、搜索） |
+| `/article/:id`                 | 文章详情                               |
+| `/page/:name`                  | 自定义页面（markdown / list / link）   |
+| `/login`                       | 登录 / 注册                            |
+| `/dashboard`                   | 管理后台（需管理员 role=0）            |
+| `/dashboard/articles`          | 文章管理                               |
+| `/dashboard/articles/new`      | 新建文章                               |
+| `/dashboard/articles/:id/edit` | 编辑文章                               |
+| `/dashboard/pages`             | 页面管理                               |
+| `/dashboard/pages/new`         | 新建页面                               |
+| `/dashboard/pages/:id/edit`    | 编辑页面                               |
+| `/dashboard/settings`          | 站点设置                               |
 
 ## 🛠 常用命令
 
@@ -311,4 +315,3 @@ npm run preview  # 预览生产构建
 ---
 
 Made with ❤️ · 前端重构自 [Kimo](https://github.com/ChanYiCYJ/Kimo)，对接 [Kimo API](https://github.com/ChanYiCYJ/kimo-fastapi)
-

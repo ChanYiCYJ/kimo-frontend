@@ -13,6 +13,8 @@ import {
 import {
   Bold,
   Check,
+  ChevronDown,
+  ChevronUp,
   Code,
   Heading1,
   Heading2,
@@ -109,6 +111,7 @@ export function MdEditor({
   const toolbar = useEditorState(editor);
   const [cmdInput, setCmdInput] = useState("");
   const [cmdLoading, setCmdLoading] = useState(false);
+  const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const lastMdRef = useRef<string>("");
@@ -220,207 +223,228 @@ export function MdEditor({
       }
       style={{ height }}
     >
-      {/* 工具栏（移动端单行横向滚动，桌面换行） */}
+      {/* 工具栏（移动端单行横向滚动，桌面换行；可整体收起） */}
       <div className="no-scrollbar flex flex-none items-center gap-0.5 overflow-x-auto border-b border-gray-100 bg-gray-50/60 px-2 py-1.5 sm:flex-wrap">
-        <button
-          onClick={() => toolbar.undo()}
-          disabled={!toolbar.canUndo}
-          title="撤销 (Ctrl+Z)"
-          className={btnBase}
-        >
-          <Undo2 className="h-4 w-4" />
-        </button>
-        <button
-          onClick={() => toolbar.redo()}
-          disabled={!toolbar.canRedo}
-          title="重做 (Ctrl+Y)"
-          className={btnBase}
-        >
-          <Redo2 className="h-4 w-4" />
-        </button>
-        <Divider />
-
-        {/* 行内格式 */}
-        <button
-          onClick={() => {
-            editor?.focus();
-            toolbar.bold();
-          }}
-          title="加粗 (Ctrl+B)"
-          className={`${btnBase} ${toolbar.isBold ? btnActive : ""}`}
-        >
-          <Bold className="h-4 w-4" />
-        </button>
-        <button
-          onClick={() => {
-            editor?.focus();
-            toolbar.italic();
-          }}
-          title="斜体 (Ctrl+I)"
-          className={`${btnBase} ${toolbar.isItalic ? btnActive : ""}`}
-        >
-          <Italic className="h-4 w-4" />
-        </button>
-        <button
-          onClick={() => {
-            editor?.focus();
-            toolbar.underline();
-          }}
-          title="下划线 (Ctrl+U)"
-          className={`${btnBase} ${toolbar.isUnderline ? btnActive : ""}`}
-        >
-          <Underline className="h-4 w-4" />
-        </button>
-        <button
-          onClick={() => {
-            editor?.focus();
-            toolbar.strikethrough();
-          }}
-          title="删除线"
-          className={`${btnBase} ${toolbar.isStrikethrough ? btnActive : ""}`}
-        >
-          <Strikethrough className="h-4 w-4" />
-        </button>
-        <button
-          onClick={() => {
-            editor?.focus();
-            toolbar.code();
-          }}
-          title="行内代码"
-          className={`${btnBase} ${toolbar.isCode ? btnActive : ""}`}
-        >
-          <Code className="h-4 w-4" />
-        </button>
-        <Divider />
-
-        {/* 块级 */}
-        {(["paragraph", "h1", "h2", "h3"] as BlockTag[]).map(blockBtn)}
-        <Divider />
-        <button
-          onClick={() => {
-            editor?.focus();
-            toolbar.blockquote();
-          }}
-          title="引用"
-          className={`${btnBase} ${toolbar.isBlockquote ? btnActive : ""}`}
-        >
-          <Quote className="h-4 w-4" />
-        </button>
-        <button
-          onClick={() => {
-            editor?.focus();
-            toolbar.bulletList();
-          }}
-          title="无序列表"
-          className={`${btnBase} ${toolbar.blockType === "bullet" ? btnActive : ""}`}
-        >
-          <List className="h-4 w-4" />
-        </button>
-        <button
-          onClick={() => {
-            editor?.focus();
-            toolbar.numberList();
-          }}
-          title="有序列表"
-          className={`${btnBase} ${toolbar.blockType === "number" ? btnActive : ""}`}
-        >
-          <ListOrdered className="h-4 w-4" />
-        </button>
-        <button
-          onClick={() => {
-            editor?.focus();
-            toolbar.checkList();
-          }}
-          title="任务列表"
-          className={`${btnBase} ${toolbar.blockType === "check" ? btnActive : ""}`}
-        >
-          <ListChecks className="h-4 w-4" />
-        </button>
-        <Divider />
-
-        <button
-          onClick={() => {
-            editor?.focus();
-            toolbar.codeblock();
-          }}
-          title="代码块"
-          className={`${btnBase} ${toolbar.isCodeblock ? btnActive : ""}`}
-        >
-          <SquareCode className="h-4 w-4" />
-        </button>
-        <button
-          onClick={() => {
-            editor?.focus();
-            toolbar.insertLink();
-          }}
-          title="插入链接"
-          className={btnBase}
-        >
-          <Link2 className="h-4 w-4" />
-        </button>
-        <button onClick={pickImage} title="插入图片" className={btnBase}>
-          <ImageIcon className="h-4 w-4" />
-        </button>
-
-        {/* AI 润色（右对齐，低调灰字，与工具栏图标风格协调，不突兀） */}
-        {aiPolish && (
+        {toolbarCollapsed ? (
+          <button
+            onClick={() => setToolbarCollapsed(false)}
+            title="展开工具栏"
+            aria-label="展开工具栏"
+            className="mx-auto grid h-8 w-8 place-items-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800"
+          >
+            <ChevronDown className="h-4 w-4" />
+          </button>
+        ) : (
           <>
+            <button
+              onClick={() => toolbar.undo()}
+              disabled={!toolbar.canUndo}
+              title="撤销 (Ctrl+Z)"
+              className={btnBase}
+            >
+              <Undo2 className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => toolbar.redo()}
+              disabled={!toolbar.canRedo}
+              title="重做 (Ctrl+Y)"
+              className={btnBase}
+            >
+              <Redo2 className="h-4 w-4" />
+            </button>
+            <Divider />
+
+            {/* 行内格式 */}
+            <button
+              onClick={() => {
+                editor?.focus();
+                toolbar.bold();
+              }}
+              title="加粗 (Ctrl+B)"
+              className={`${btnBase} ${toolbar.isBold ? btnActive : ""}`}
+            >
+              <Bold className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => {
+                editor?.focus();
+                toolbar.italic();
+              }}
+              title="斜体 (Ctrl+I)"
+              className={`${btnBase} ${toolbar.isItalic ? btnActive : ""}`}
+            >
+              <Italic className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => {
+                editor?.focus();
+                toolbar.underline();
+              }}
+              title="下划线 (Ctrl+U)"
+              className={`${btnBase} ${toolbar.isUnderline ? btnActive : ""}`}
+            >
+              <Underline className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => {
+                editor?.focus();
+                toolbar.strikethrough();
+              }}
+              title="删除线"
+              className={`${btnBase} ${toolbar.isStrikethrough ? btnActive : ""}`}
+            >
+              <Strikethrough className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => {
+                editor?.focus();
+                toolbar.code();
+              }}
+              title="行内代码"
+              className={`${btnBase} ${toolbar.isCode ? btnActive : ""}`}
+            >
+              <Code className="h-4 w-4" />
+            </button>
+            <Divider />
+
+            {/* 块级 */}
+            {(["paragraph", "h1", "h2", "h3"] as BlockTag[]).map(blockBtn)}
             <Divider />
             <button
-              onClick={runPolish}
-              disabled={aiState === "loading"}
-              title="使用 AI 润色正文"
-              className="ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-gray-700 transition hover:bg-gray-100 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-300 dark:hover:text-gray-100"
+              onClick={() => {
+                editor?.focus();
+                toolbar.blockquote();
+              }}
+              title="引用"
+              className={`${btnBase} ${toolbar.isBlockquote ? btnActive : ""}`}
             >
-              {aiState === "loading" ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Sparkles className="h-3.5 w-3.5" />
-              )}
-              <span className="hidden sm:inline">AI 润色</span>
+              <Quote className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => {
+                editor?.focus();
+                toolbar.bulletList();
+              }}
+              title="无序列表"
+              className={`${btnBase} ${toolbar.blockType === "bullet" ? btnActive : ""}`}
+            >
+              <List className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => {
+                editor?.focus();
+                toolbar.numberList();
+              }}
+              title="有序列表"
+              className={`${btnBase} ${toolbar.blockType === "number" ? btnActive : ""}`}
+            >
+              <ListOrdered className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => {
+                editor?.focus();
+                toolbar.checkList();
+              }}
+              title="任务列表"
+              className={`${btnBase} ${toolbar.blockType === "check" ? btnActive : ""}`}
+            >
+              <ListChecks className="h-4 w-4" />
+            </button>
+            <Divider />
+
+            <button
+              onClick={() => {
+                editor?.focus();
+                toolbar.codeblock();
+              }}
+              title="代码块"
+              className={`${btnBase} ${toolbar.isCodeblock ? btnActive : ""}`}
+            >
+              <SquareCode className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => {
+                editor?.focus();
+                toolbar.insertLink();
+              }}
+              title="插入链接"
+              className={btnBase}
+            >
+              <Link2 className="h-4 w-4" />
+            </button>
+            <button onClick={pickImage} title="插入图片" className={btnBase}>
+              <ImageIcon className="h-4 w-4" />
+            </button>
+
+            {/* AI 润色（右对齐，低调灰字，与工具栏图标风格协调，不突兀） */}
+            {aiPolish && (
+              <>
+                <Divider />
+                <button
+                  onClick={runPolish}
+                  disabled={aiState === "loading"}
+                  title="使用 AI 润色正文"
+                  className="ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-gray-700 transition hover:bg-gray-100 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-300 dark:hover:text-gray-100"
+                >
+                  {aiState === "loading" ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5" />
+                  )}
+                  <span className="hidden sm:inline">AI 润色</span>
+                </button>
+              </>
+            )}
+
+            {/* AI 指令生成 — 内联在工具栏，像浏览器地址栏 */}
+            {aiCommand && (
+              <div className="ml-auto flex items-center gap-1.5">
+                <input
+                  value={cmdInput}
+                  onChange={(e) => setCmdInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && cmdInput.trim()) {
+                      const p = cmdInput.trim();
+                      setCmdLoading(true);
+                      setCmdInput("");
+                      aiCommand(p).finally(() => setCmdLoading(false));
+                    }
+                  }}
+                  placeholder="AI 指令…"
+                  disabled={cmdLoading}
+                  className="h-7 w-28 rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none transition-all focus:w-40 focus:border-gray-400 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                />
+                <button
+                  onClick={() => {
+                    const p = cmdInput.trim();
+                    if (!p) return;
+                    setCmdLoading(true);
+                    setCmdInput("");
+                    aiCommand(p).finally(() => setCmdLoading(false));
+                  }}
+                  disabled={!cmdInput.trim() || cmdLoading}
+                  className="grid h-7 w-7 place-items-center rounded-lg text-gray-500 transition hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-800"
+                  title="生成"
+                >
+                  {cmdLoading ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              </div>
+            )}
+
+            <button
+              onClick={() => setToolbarCollapsed(true)}
+              title="收起工具栏"
+              aria-label="收起工具栏"
+              className={btnBase}
+            >
+              <ChevronUp className="h-4 w-4" />
             </button>
           </>
         )}
-
-        {/* AI 指令生成 — 内联在工具栏，像浏览器地址栏 */}
-        {aiCommand && (
-          <div className="ml-auto flex items-center gap-1.5">
-            <input
-              value={cmdInput}
-              onChange={(e) => setCmdInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && cmdInput.trim()) {
-                  const p = cmdInput.trim();
-                  setCmdLoading(true);
-                  setCmdInput("");
-                  aiCommand(p).finally(() => setCmdLoading(false));
-                }
-              }}
-              placeholder="AI 指令…"
-              disabled={cmdLoading}
-              className="h-7 w-28 rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none transition-all focus:w-40 focus:border-gray-400 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-            />
-            <button
-              onClick={() => {
-                const p = cmdInput.trim();
-                if (!p) return;
-                setCmdLoading(true);
-                setCmdInput("");
-                aiCommand(p).finally(() => setCmdLoading(false));
-              }}
-              disabled={!cmdInput.trim() || cmdLoading}
-              className="grid h-7 w-7 place-items-center rounded-lg text-gray-500 transition hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-800"
-              title="生成"
-            >
-              {cmdLoading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Sparkles className="h-3.5 w-3.5" />
-              )}
-            </button>
-          </div>
-        )}
-
         <input
           ref={imageInputRef}
           type="file"
