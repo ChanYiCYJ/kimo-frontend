@@ -60,7 +60,6 @@ function persist(e: KbEntry[]) {
 
 export function AgentPanel({
   onClose,
-  onInsertMessage,
   initUrl,
   lastAssistantContent,
   pageId,
@@ -69,7 +68,6 @@ export function AgentPanel({
   onKbChanged,
 }: {
   onClose: () => void;
-  onInsertMessage: (t: string) => void;
   initUrl?: string;
   lastAssistantContent?: string;
   pageId: number;
@@ -426,20 +424,54 @@ export function AgentPanel({
   };
 
   // ---- Browse ----
-  const browse = async () => {
-    const u = webUrl.trim();
+  const browse = async (q?: string) => {
+    const u = (q ?? webUrl).trim();
     if (!u) return;
     setWebContent("");
     setWebLoading(true);
     try {
       if (/^https?:\/\//i.test(u)) {
+        // 搜索引擎 URL（如 google/bing/duckduckgo）→ 提取 q 参数转关键词搜索
+        const lower = u.toLowerCase();
+        if (
+          lower.includes("google.") ||
+          lower.includes("bing.com") ||
+          lower.includes("duckduckgo") ||
+          lower.includes("baidu.com")
+        ) {
+          try {
+            const qp = new URL(u).searchParams.get("q");
+            if (qp) {
+              setWebUrl(qp);
+              const result = await webSearch(qp);
+              setWebContent(result || "未找到结果");
+              return;
+            }
+          } catch {}
+        }
         setWebUrl(u);
         const text = await fetchWebpage(u);
-        setWebContent(text || "无法获取内容");
+        if (text) {
+          setWebContent(text);
+        } else {
+          // URL 抓取失败（如搜索引擎 CORS 拦截）时回退为关键词搜索
+          let q2 = u;
+          try {
+            const url = new URL(u);
+            const qp = url.searchParams.get("q");
+            if (qp) q2 = qp;
+            else q2 = url.hostname.replace(/^www\./i, "");
+          } catch {
+            q2 = u
+              .replace(/^https?:\/\//i, "")
+              .replace(/^www\./i, "")
+              .replace(/\/.*$/, "");
+          }
+          const result = await webSearch(q2);
+          setWebContent(result || "无法获取内容");
+        }
       } else if (
-        /^[a-zA-Z0-9][-a-zA-Z0-9]*(\.[a-zA-Z0-9][-a-zA-Z0-9]*)+\.?$/.test(
-          u,
-        )
+        /^[a-zA-Z0-9][-a-zA-Z0-9]*(\.[a-zA-Z0-9][-a-zA-Z0-9]*)+\.?$/.test(u)
       ) {
         // 纯域名（不含空格）才按网址抓取，否则按关键词搜索
         const full = "https://" + u;
@@ -457,6 +489,17 @@ export function AgentPanel({
       setWebLoading(false);
     }
   };
+
+  // AI 触发搜索/浏览时自动执行（[SEARCH:] / [BROWSE:]）
+  useEffect(() => {
+    if (initUrl) {
+      setTab("web");
+      setWebUrl(initUrl);
+      setWebContent("");
+      browse(initUrl);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initUrl]);
 
   const h = Math.max(360, window.innerHeight - 260);
   const btn =
@@ -582,39 +625,11 @@ export function AgentPanel({
               需要搜索或浏览网页？
             </p>
             <p className="mt-1 text-xs text-gray-400">
-              在对话中告诉 AI，比如「帮我搜索 Vue.js 最新特性」
+              直接在对话中告诉 AI，比如「帮我搜索 Vue.js 最新特性」
             </p>
             <p className="mt-1 text-xs text-gray-400">
-              或直接输入网址让 AI 帮你抓取内容
+              AI 会自动执行搜索并在这里展示结果
             </p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => onInsertMessage("请帮我搜索：")}
-              className="rounded-lg border border-gray-200 px-4 py-2 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-            >
-              发起搜索
-            </button>
-            <input
-              value={webUrl}
-              onChange={(e) => setWebUrl(e.target.value)}
-              placeholder="或输入网址..."
-              className="w-40 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && webUrl.trim()) {
-                  browse();
-                }
-              }}
-            />
-            {webUrl.trim() && (
-              <button
-                onClick={browse}
-                disabled={webLoading}
-                className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50 dark:bg-gray-200 dark:text-gray-900"
-              >
-                {webLoading ? "获取中..." : "获取"}
-              </button>
-            )}
           </div>
           {webLoading && (
             <div className="flex gap-1.5">
@@ -631,54 +646,61 @@ export function AgentPanel({
           )}
           {webContent && !webLoading && (
             <div className="w-full text-left">
-              <div className="mb-2 flex items-center gap-2 text-xs text-gray-400">
-                <button
-                  onClick={() => onInsertMessage(webContent)}
-                  className="rounded-md bg-gray-100 px-2 py-0.5 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
-                >
-                  发送到对话
-                </button>
-                <button
-                  onClick={() => setWebContent("")}
-                  className="rounded-md px-2 py-0.5 hover:text-gray-600"
-                >
-                  清除
-                </button>
-              </div>
               <div className="max-h-96 overflow-y-auto rounded-xl border border-gray-200 p-3 dark:border-gray-700">
                 <div className="space-y-2">
-                  {webContent.split(/\n(?=- )/).map((item, i) => {
-                    const m = item.match(
-                      /^- (.*?)(?:\s*\((https?:\/\/[^)]+)\))?\n\s+(.*)$/s,
-                    );
-                    if (m)
+                  {webContent
+                    .split(/\n(?=(?:-\s|\d+[.、]\s))/)
+                    .map((item, i) => {
+                      const t = item.trim();
+                      if (!t) return null;
+                      // 兼容多种格式：- Title (URL) / 1. **Title**\n URL\n desc / 仅标题+描述
+                      const urlM =
+                        t.match(/https?:\/\/[^\s)\]】>]+/);
+                      const title = t
+                        .replace(/^(?:-\s|\d+[.、]\s+)/, "")
+                        .replace(/\*\*/g, "")
+                        .replace(/\s*(?:https?:\/\/[^\s)\]】>]+)\s*/, " ")
+                        .split("\n")[0]
+                        .trim()
+                        .slice(0, 80);
+                      const desc = t
+                        .split("\n")
+                        .slice(1)
+                        .join(" ")
+                        .replace(/\*\*/g, "")
+                        .replace(/\s+/g, " ")
+                        .trim()
+                        .slice(0, 300);
+                      if (title || urlM)
+                        return (
+                          <div
+                            key={i}
+                            className="rounded-lg border border-gray-100 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-800/50"
+                          >
+                            <a
+                              href={urlM ? urlM[0] : "#"}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block truncate text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
+                            >
+                              {title || urlM?.[0]}
+                            </a>
+                            {desc && (
+                              <p className="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                                {desc}
+                              </p>
+                            )}
+                          </div>
+                        );
                       return (
                         <div
                           key={i}
-                          className="rounded-lg border border-gray-100 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-800/50"
+                          className="whitespace-pre-wrap break-words text-sm text-gray-600 dark:text-gray-300"
                         >
-                          <a
-                            href={m[2] || "#"}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
-                          >
-                            {m[1]}
-                          </a>
-                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                            {m[3]?.slice(0, 300)}
-                          </p>
+                          {item}
                         </div>
                       );
-                    return (
-                      <div
-                        key={i}
-                        className="whitespace-pre-wrap break-words text-sm text-gray-600 dark:text-gray-300"
-                      >
-                        {item}
-                      </div>
-                    );
-                  })}
+                    })}
                 </div>
               </div>
             </div>

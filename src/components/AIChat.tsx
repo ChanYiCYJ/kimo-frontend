@@ -72,7 +72,7 @@ async function streamChat(
     (web
       ? `\n\n以下是来自网络的最新搜索结果，请基于它们回答（并在适当时注明来源）：\n${web}`
       : "") +
-    `\n\n工具：需要浏览网页时回复 [BROWSE:url]；需要搜索时回复 [SEARCH:关键词]；需要编辑文档时回复 [EDIT:内容]。`;
+    `\n\n工具：需要联网搜索信息时，请回复 [SEARCH:关键词]（直接给出关键词，不要构造或浏览搜索引擎 URL）；需要抓取某个具体网页内容时回复 [BROWSE:url]；需要编辑文档时回复 [EDIT:内容]。`;
   const res = await fetch(
     cfg.endpoint.replace(/\/+$/, "") + "/chat/completions",
     {
@@ -1006,7 +1006,10 @@ export function AIChat({
             if (window.innerWidth >= 1024) setSidebarCollapsed((v) => !v);
             else setSidebarOpen(true);
           }}
-          className={iconBtn + (sidebarCollapsed ? " text-gray-600 dark:text-gray-300" : "")}
+          className={
+            iconBtn +
+            (sidebarCollapsed ? " text-gray-600 dark:text-gray-300" : "")
+          }
           title="会话列表"
           aria-label="会话列表"
         >
@@ -1392,7 +1395,9 @@ export function AIChat({
                               ))}
                             </div>
                           )}
-                          <span className="whitespace-pre-wrap">{m.content}</span>
+                          <span className="whitespace-pre-wrap">
+                            {m.content}
+                          </span>
                         </>
                       )}
                       {/* 工具调用卡片 */}
@@ -1943,10 +1948,6 @@ export function AIChat({
                   refreshKb();
                   setAgentOpen(false);
                 }}
-                onInsertMessage={(t: string) => {
-                  setInput((prev: string) => (prev ? prev + "\n\n" + t : t));
-                  setAgentOpen(false);
-                }}
                 initUrl={agentInitUrl}
                 lastAssistantContent={lastAssistant?.content}
                 pageId={pageId}
@@ -1976,10 +1977,6 @@ export function AIChat({
             <AgentPanel
               onClose={() => {
                 refreshKb();
-                setAgentOpen(false);
-              }}
-              onInsertMessage={(t: string) => {
-                setInput((prev: string) => (prev ? prev + "\n\n" + t : t));
                 setAgentOpen(false);
               }}
               initUrl={agentInitUrl}
