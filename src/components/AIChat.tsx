@@ -72,7 +72,7 @@ async function streamChat(
     (web
       ? `\n\n以下是来自网络的最新搜索结果，请基于它们回答（并在适当时注明来源）：\n${web}`
       : "") +
-    `\n\n工具使用说明：当用户询问实时动态、最新资讯、或不熟悉的时效性信息时，请主动联网搜索并回复 [SEARCH:关键词]（直接给出简洁关键词，不要构造或浏览搜索引擎 URL）；当用户明确给出某个网页链接并要求获取其内容时，回复 [BROWSE:url]；当需要帮你写作文档或编辑内容时，回复 [EDIT:内容]（自动打开编辑器填入内容）；当用户需要查看、整理或应用知识库时，回复 [KB:说明]（自动打开知识库面板）。一次只回复一个工具指令。`;
+    `\n\n工具使用说明：当用户询问实时动态、最新资讯、或不熟悉的时效性信息时，请主动联网搜索并回复 [SEARCH:关键词]（直接给出简洁关键词，不要构造或浏览搜索引擎 URL）；当用户明确给出某个网页链接并要求获取其内容时，回复 [BROWSE:url]；当需要帮你写作文档或编辑内容时，用 [EDIT:内容] 括起完整内容（必须用 ] 闭合，且编辑内容之后不要再追加其他文字）；当用户需要查看、整理或应用知识库时，回复 [KB:说明]（自动打开知识库面板）。一次只回复一个工具指令。`;
   const res = await fetch(
     cfg.endpoint.replace(/\/+$/, "") + "/chat/completions",
     {
@@ -755,8 +755,14 @@ export function AIChat({
 
     // AI→Agent 工具调用：解析 [BROWSE:url] / [SEARCH:query] / [EDIT:content] / [KB:指令]
     const browseCmd = reply.match(/\[BROWSE:\s*(https?:\/\/[^\s\]]+)\s*\]/);
-    const editCmd = reply.match(/\[EDIT:\s*([\s\S]*?)\s*\]/);
     const searchCmd = reply.match(/\[SEARCH:\s*([^\]]+)\s*\]/);
+    // EDIT 内容可能较长且 AI 偶尔不写闭合 ]，兼容未闭合到末尾的情况
+    const editClosed = reply.match(/\[EDIT:\s*([\s\S]*?)\s*\]/);
+    const editOpen =
+      !editClosed && reply.includes("[EDIT:")
+        ? reply.match(/\[EDIT:\s*([\s\S]*)/)
+        : null;
+    const editCmd = editClosed || editOpen;
     const kbCmd = reply.match(/\[(?:KB|OPEN_KB|知识库)(?::\s*([^\]]+))?\]/);
     const msgIdx = messages.length;
     if (browseCmd) {
