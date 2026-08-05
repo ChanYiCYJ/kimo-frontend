@@ -1,7 +1,7 @@
 /**
- * 网络搜索（客户端直连，无 API Key）
- * 1) 优先调用站点后端 /api/search（若后端实现了搜索代理，可绕过 CORS 与地域限制，国内站点也能用）
- * 2) 回退：维基百科（zh → en）。维基在部分地域（如中国大陆）可能不可达，此时返回空字符串并优雅降级。
+ * 网络搜索（国内合规优先）
+ * 1) 优先调用站点后端 /api/search（绕过 CORS，国内可用）
+ * 2) 回退：Bing 中国 cn.bing.com（合规）
  */
 
 interface SearchItem {
@@ -21,7 +21,7 @@ async function backendSearch(query: string): Promise<string> {
     const items = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : null
     if (!items || !items.length) return ''
     return items
-      .slice(0, 4)
+      .slice(0, 6)
       .map((it) => `- ${it.title || ''}${it.url ? ` (${it.url})` : ''}\n  ${(it.description || it.snippet || '').slice(0, 300)}`)
       .filter(Boolean)
       .join('\n')
@@ -30,41 +30,31 @@ async function backendSearch(query: string): Promise<string> {
   }
 }
 
-async function wikiSearch(query: string, langs: string[]): Promise<string> {
-  for (const lang of langs) {
-    try {
-      const wiki = lang === 'zh' ? 'https://zh.wikipedia.org/w/api.php' : 'https://en.wikipedia.org/w/api.php'
-      const searchUrl = `${wiki}?action=opensearch&search=${encodeURIComponent(query)}&limit=3&namespace=0&format=json&origin=*`
-      const res = await fetch(searchUrl)
-      if (!res.ok) continue
-      const data = (await res.json()) as unknown[]
-      const titles = (data[1] || []) as string[]
-      const descs = (data[2] || []) as string[]
-      const urls = (data[3] || []) as string[]
-
-      const out: string[] = []
-      for (let i = 0; i < Math.min(titles.length, 2); i++) {
-        try {
-          const extractUrl = `${wiki}?action=query&prop=extracts&exintro&explaintext&redirects=1&titles=${encodeURIComponent(titles[i])}&format=json&origin=*`
-          const eres = await fetch(extractUrl)
-          if (!eres.ok) continue
-          const ej = (await eres.json()) as { query?: { pages?: Record<string, { extract?: string }> } }
-          const pages = ej.query?.pages || {}
-          const first = Object.values(pages)[0]
-          const extract = first?.extract || descs[i] || ''
-          out.push(`- ${titles[i]}${urls[i] ? ` (${urls[i]})` : ''}\n  ${extract.slice(0, 600)}`)
-        } catch { /* 单条失败忽略 */ }
-      }
-      if (out.length) return out.join('\n')
-    } catch { /* 换下一个来源 */ }
-  }
-  return ''
+/** Bing 中国搜索回退（HTML 解析） */
+async function bingSearch(query: string): Promise<string> {
+  try {
+    const res = await fetch(`https://cn.bing.com/search?q=${encodeURIComponent(query)}&setlang=zh-cn`, {
+      headers: { 'Accept': 'text/html', 'User-Agent': 'Mozilla/5.0' },
+    })
+    if (!res.ok) return ''
+    const html = await res.text()
+    // 解析 Bing 搜索结果
+    const results: string[] = []
+    const items = html.match(/<li class="b_algo"[^>]*>[\s\S]*?<\/li>/gi) || []
+    for (const item of items.slice(0, 6)) {
+      const title = (item.match(/<h2[^>]*>[\s\S]*?<a[^>]*>([\s\S]*?)<\/a>/) || [])[1]?.replace(/<[^>]+>/g, '').trim()
+      const url = (item.match(/href="(https?:\/\/[^"]+)"/) || [])[1]
+      const desc = (item.match(/<p[^>]*>([\s\S]*?)<\/p>/) || [])[1]?.replace(/<[^>]+>/g, '').trim()
+      if (title) results.push(`- ${title}${url ? ` (${url})` : ''}\n  ${(desc || '').slice(0, 300)}`)
+    }
+    return results.join('\n')
+  } catch { return '' }
 }
 
-export async function webSearch(query: string, lang = 'zh'): Promise<string> {
+export async function webSearch(query: string, _lang?: string): Promise<string> {
   const backend = await backendSearch(query)
   if (backend) return backend
-  return wikiSearch(query, [lang, lang === 'zh' ? 'en' : 'zh'])
+  return bingSearch(query)
 }
 
 /** 抓取网页正文文本（供 AI 浏览网页）。优先走后端代理，避免 CORS。 */
