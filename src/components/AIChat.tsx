@@ -1184,7 +1184,7 @@ export function AIChat({
                         </span>
                       ))}
                     <div
-                      className={`min-w-0 ${m.role === "user" ? "max-w-[85%] rounded-2xl border border-gray-200 bg-gray-100 px-4 py-2.5 leading-relaxed text-gray-800 sm:max-w-[70%] ${fontSizeCls} dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100" : `flex-1 leading-relaxed text-gray-800 dark:text-gray-100 ${fontSizeCls}`}`}
+                      className={`min-w-0 ${m.role === "user" ? `max-w-[85%] rounded-2xl border border-gray-200 bg-gray-100 px-4 py-2.5 leading-relaxed text-gray-800 sm:max-w-[70%] dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 ${fontSizeCls}` : `flex-1 leading-relaxed text-gray-800 dark:text-gray-100 ${fontSizeCls}`}`}
                     >
                       {m.role === "assistant" ? (
                         <div className="chat-md">
