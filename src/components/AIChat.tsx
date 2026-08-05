@@ -33,6 +33,7 @@ import { LocalApiModal } from "./LocalApiModal";
 import { UsageDocModal } from "./UsageDocModal";
 import { ArticleComposerModal } from "./ArticleComposerModal";
 import { AgentPanel } from "./AgentPanel";
+import { InlineBrowse } from "./InlineBrowse";
 import { KbPicker } from "./KbPicker";
 import type { AgentSettingsProps } from "./SettingsTab";
 
@@ -283,6 +284,12 @@ export function AIChat({
   >([]);
   // 卡片点击后强制重新触发浏览（避免同关键词二次点击不生效）
   const [agentSearchNonce, setAgentSearchNonce] = useState(0);
+  /** 手机端：搜索/浏览结果内嵌对话显示（不强制弹面板） */
+  const [inlineBrowse, setInlineBrowse] = useState<{
+    query: string;
+    msgIdx: number;
+    nonce: number;
+  } | null>(null);
   const clearMemory = useCallback(() => {
     setMemory("");
     clearStoredMemory(pageId);
@@ -808,10 +815,14 @@ export function AIChat({
         },
       ]);
     } else if (browseCmd) {
-      setAgentTab("web");
-      setAgentInitUrl(browseCmd[1]);
+      if (window.innerWidth < 1024) {
+        setInlineBrowse({ query: browseCmd[1], msgIdx, nonce: Date.now() });
+      } else {
+        setAgentTab("web");
+        setAgentInitUrl(browseCmd[1]);
+        autoOpenAgent();
+      }
       setAgentEditContent(undefined);
-      autoOpenAgent();
       setToolCalls((prev) => [
         ...prev,
         {
@@ -823,10 +834,14 @@ export function AIChat({
         },
       ]);
     } else if (searchCmd) {
-      setAgentTab("web");
-      setAgentInitUrl(searchCmd[1].trim());
+      if (window.innerWidth < 1024) {
+        setInlineBrowse({ query: searchCmd[1].trim(), msgIdx, nonce: Date.now() });
+      } else {
+        setAgentTab("web");
+        setAgentInitUrl(searchCmd[1].trim());
+        autoOpenAgent();
+      }
       setAgentEditContent(undefined);
-      autoOpenAgent();
       setToolCalls((prev) => [
         ...prev,
         {
@@ -866,9 +881,30 @@ export function AIChat({
         },
       ]);
     }
+    // 兜底：用户显式要求「搜索 xxx」但 AI 未发 [SEARCH:] 时，也强制触发浏览/生成文章
+    if (!searchCmd && !browseCmd) {
+      const es = t.match(
+        /^\s*(?:请|麻烦|帮我)?\s*(?:搜索|查找|查询|搜一下|查一下|搜|查|搜搜|帮我搜|帮我查|了解一下|看看)\s*(?:的|关于|一下|下)?\s*(.+)$/i,
+      );
+      const q = es?.[1]?.trim().slice(0, 60);
+      if (q) {
+        if (window.innerWidth < 1024) {
+          setInlineBrowse({ query: q, msgIdx, nonce: Date.now() });
+        } else {
+          setAgentTab("web");
+          setAgentInitUrl(q);
+          setAgentSearchNonce((n) => n + 1);
+          setAgentOpen(true);
+        }
+        setToolCalls((prev) => [
+          ...prev,
+          { msgIdx, type: "网络搜索", detail: q, tab: "web", query: q },
+        ]);
+      }
+    }
     if (web && web.trim()) {
-      // 从用户输入中提炼搜索主题，作为「网络资料」卡片的浏览关键词
-      const qClean = t
+      // 提炼搜索主题：优先用 AI 的 [SEARCH:] 关键词（意图最准），否则从输入清洗
+      const topic = (searchCmd ? searchCmd[1].trim() : t)
         .replace(
           /^\s*(?:请|麻烦|帮我|你好)?\s*(?:搜索|查找|查询|搜一下|查一下|搜|查|了解一下|看看|介绍下|介绍一下|了解下|讲解|整理|汇总|生成|帮我写|写)\s*(?:的|关于|一下|下|一个)?\s*/i,
           "",
@@ -881,9 +917,9 @@ export function AIChat({
         {
           msgIdx,
           type: "网络资料",
-          detail: web.slice(0, 120),
+          detail: topic || "已联网检索",
           tab: "web",
-          query: qClean || t.trim().slice(0, 60),
+          query: topic || t.trim().slice(0, 60),
         },
       ]);
     }
@@ -1546,20 +1582,32 @@ export function AIChat({
                                 <button
                                   key={j}
                                   onClick={() => {
-                                    if (tc.tab) {
-                                      setAgentTab(tc.tab);
-                                      if (tc.tab === "web") {
-                                        setAgentInitUrl(
-                                          tc.query ||
-                                            (tc.type === "网络搜索"
-                                              ? tc.detail.split(" ")[0]
-                                              : undefined),
-                                        );
-                                        setAgentSearchNonce((n) => n + 1);
-                                      }
-                                      setAgentEditContent(undefined);
-                                      setAgentOpen(true);
+                                    if (!tc.tab) return;
+                                    const q =
+                                      tc.query ||
+                                      (tc.type === "网络搜索"
+                                        ? tc.detail.split(" ")[0]
+                                        : undefined);
+                                    if (
+                                      tc.tab === "web" &&
+                                      q &&
+                                      window.innerWidth < 1024
+                                    ) {
+                                      // 手机端：内嵌到对话显示结果
+                                      setInlineBrowse({
+                                        query: q,
+                                        msgIdx: i,
+                                        nonce: Date.now(),
+                                      });
+                                      return;
                                     }
+                                    setAgentTab(tc.tab);
+                                    if (tc.tab === "web") {
+                                      setAgentInitUrl(q);
+                                      setAgentSearchNonce((n) => n + 1);
+                                    }
+                                    setAgentEditContent(undefined);
+                                    setAgentOpen(true);
                                   }}
                                   title={
                                     tc.tab ? "点击打开 Agent 面板" : undefined
@@ -1598,6 +1646,14 @@ export function AIChat({
                               );
                             })}
                         </div>
+                      )}
+                      {/* 手机端：搜索/浏览结果内嵌对话 */}
+                      {inlineBrowse && inlineBrowse.msgIdx === i && (
+                        <InlineBrowse
+                          key={inlineBrowse.nonce}
+                          query={inlineBrowse.query}
+                          onOpenPanel={() => setAgentOpen(true)}
+                        />
                       )}
                       {m.role === "assistant" && (
                         <div
