@@ -179,7 +179,6 @@ export function AIChat({
   const [speakingIdx, setSpeakingIdx] = useState(-1);
   const [stick, setStick] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
   const [localCfg, setLocalCfg] = useState(() => getLocalCfg(pageId));
   const [apiModalOpen, setApiModalOpen] = useState(false);
   const [docOpen, setDocOpen] = useState(false);
@@ -1653,13 +1652,9 @@ export function AIChat({
     </div>
   );
 
-  // 桌面端侧边栏（可折叠，宽度平滑过渡）+ 移动端抽屉（滑入滑出 + 遮罩淡入淡出）
+  // 桌面端侧边栏（始终显示）
   const desktopSidebar = (
-    <div
-      className={`hidden shrink-0 overflow-hidden border-r border-gray-200 transition-[width] duration-300 ease-in-out lg:block dark:border-gray-800 ${
-        collapsed ? "w-0 border-r-0" : ""
-      }`}
-    >
+    <div className="hidden shrink-0 overflow-hidden border-r border-gray-200 lg:block dark:border-gray-800">
       {sidebar}
     </div>
   );
