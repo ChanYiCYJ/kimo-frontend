@@ -640,13 +640,22 @@ export function AIChat({
           : [...prev, { role: "assistant" as const, content }];
       });
     try {
+      // 每次发送时实时读取知识库（不等异步 refreshKb）
+      const kbKnowledge = (() => {
+        try {
+          const notes = getKbNotes();
+          const valid = notes.filter((n: { title?: string; content?: string }) => n.title || n.content);
+          if (valid.length) return "【知识库条目】\n" + valid.map((n: { title?: string; content?: string }) => `- ${n.title}：${n.content}`).join("\n");
+        } catch {}
+        return "";
+      })();
       reply = await streamChat(
         effCfg,
         recent,
         upsertAssistant,
         ctrl.signal,
         summary,
-        kbText,
+        kbKnowledge || kbText,
         memory,
         web,
       );
