@@ -372,6 +372,46 @@ export function MdEditor({
             </button>
           </>
         )}
+
+        {/* AI 指令生成 — 内联在工具栏，像浏览器地址栏 */}
+        {aiCommand && (
+          <div className="ml-auto flex items-center gap-1.5">
+            <input
+              value={cmdInput}
+              onChange={(e) => setCmdInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && cmdInput.trim()) {
+                  const p = cmdInput.trim();
+                  setCmdLoading(true);
+                  setCmdInput("");
+                  aiCommand(p).finally(() => setCmdLoading(false));
+                }
+              }}
+              placeholder="AI 指令…"
+              disabled={cmdLoading}
+              className="h-7 w-28 rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none transition-all focus:w-40 focus:border-gray-400 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+            />
+            <button
+              onClick={() => {
+                const p = cmdInput.trim();
+                if (!p) return;
+                setCmdLoading(true);
+                setCmdInput("");
+                aiCommand(p).finally(() => setCmdLoading(false));
+              }}
+              disabled={!cmdInput.trim() || cmdLoading}
+              className="grid h-7 w-7 place-items-center rounded-lg text-gray-500 transition hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-800"
+              title="生成"
+            >
+              {cmdLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="h-3.5 w-3.5" />
+              )}
+            </button>
+          </div>
+        )}
+
         <input
           ref={imageInputRef}
           type="file"
