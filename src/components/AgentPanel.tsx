@@ -919,15 +919,10 @@ export function AgentPanel({
           </div>
           <div className="flex shrink-0 items-center gap-1.5 border-t border-gray-100 px-3 py-2 dark:border-gray-800">
             {!activeEntry && (
-              <button
-                onClick={saveEntry}
-                disabled={!mdContent.trim() || saving}
-                className={
-                  btn +
-                  " bg-gray-900 text-white hover:bg-gray-700 disabled:opacity-30 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
-                }
-              >
-                {saving ? (
+              <>
+                <button onClick={saveEntry} disabled={!mdContent.trim() || saving}
+                  className={btn + " bg-gray-900 text-white hover:bg-gray-700 disabled:opacity-30 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"}>
+                  {saving ? (
                   <svg
                     className="h-3.5 w-3.5 animate-spin"
                     viewBox="0 0 24 24"
@@ -960,6 +955,7 @@ export function AgentPanel({
                 )}
                 {saving ? "保存中" : "存为条目"}
               </button>
+              </>
             )}
           </div>
         </div>

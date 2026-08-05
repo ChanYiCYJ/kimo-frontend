@@ -187,6 +187,7 @@ export function AIChat({
   const [agentOpen, setAgentOpen] = useState(false);
   const [kbPickerOpen, setKbPickerOpen] = useState(false);
   const [kbPickerSelected, setKbPickerSelected] = useState<string[]>([]);
+  const [kbAttachments, setKbAttachments] = useState<{id:string;title:string;content:string}[]>([]);
   const [agentInitUrl, setAgentInitUrl] = useState<string | undefined>();
   const [agentWidth, setAgentWidth] = useState(() => {
     if (typeof window === "undefined") return 384;
@@ -614,7 +615,8 @@ export function AIChat({
         return;
       }
     }
-    const user: Message = { role: "user" as const, content: t };
+    const attachText = kbAttachments.length ? "【附加知识条目】\n" + kbAttachments.map((a: {content: string}) => a.content).join("\n\n") : "";
+    const user: Message = { role: "user" as const, content: attachText ? t + "\n\n" + attachText : t };
     const allMsgs = [...messages, user];
     let summary = "";
     const recent = allMsgs.length > 6 ? allMsgs.slice(-6) : allMsgs;
@@ -627,7 +629,7 @@ export function AIChat({
         )
         .join("; ");
     updateActive((prev) => [...prev, user]);
-    setInput("");
+    setInput(""); setKbAttachments([]);
     setLoading(true);
     setStick(true);
     if (!hasCustom) {
@@ -1479,6 +1481,19 @@ export function AIChat({
       <div className="shrink-0 bg-white px-3 pb-3 pt-2 dark:bg-gray-900 sm:px-6 sm:pb-4">
         <div className="mx-auto w-full max-w-3xl">
           {/* 可关闭的圆角小卡片（网络搜索 / 附加文件 / 搜索中） */}
+          
+          {/* KB附件卡片 */}
+          {kbAttachments.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {kbAttachments.map((a) => (
+                <span key={a.id} className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                  {a.title.slice(0, 20)}
+                  <button onClick={() => setKbAttachments(prev => prev.filter(x => x.id !== a.id))} className="text-blue-400 hover:text-blue-600">×</button>
+                </span>
+              ))}
+            </div>
+          )}
+
           {(webSearchOn || attachedFile || searching) && (
             <div className="mb-2 flex flex-wrap gap-1.5">
               {searching && (
@@ -1573,26 +1588,7 @@ export function AIChat({
                           : [...p, id],
                       )
                     }
-                    onInsert={() => {
-                      try {
-                        const notes = JSON.parse(
-                          localStorage.getItem("kimo_kb_notes") || "[]",
-                        ) as { id: string; content: string }[];
-                        const texts = notes
-                          .filter((n: { id: string }) =>
-                            kbPickerSelected.includes(n.id),
-                          )
-                          .map((n: { content: string }) => n.content)
-                          .join("\n\n");
-                        if (texts)
-                          setInput(
-                            (p: string) => (p ? p + "\n\n" : "") + texts,
-                          );
-                      } catch (e) {
-                        console.error(e);
-                      }
-                      setKbPickerOpen(false);
-                    }}
+                    onInsert={(notes) => { setKbAttachments(prev => [...prev, ...notes.filter(n => !prev.find(x => x.id === n.id))]); setKbPickerOpen(false); }}
                     onClose={() => setKbPickerOpen(false)}
                     onOpenAgent={() => setAgentOpen(true)}
                   />
