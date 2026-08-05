@@ -187,6 +187,10 @@ export function AIChat({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
   const [agentInitUrl, setAgentInitUrl] = useState<string | undefined>();
+  const [agentWidth, setAgentWidth] = useState(() => {
+    if (typeof window === "undefined") return 384;
+    return Math.min(520, Math.max(320, Math.round(window.innerWidth * 0.3)));
+  });
   const [attachedFile, setAttachedFile] = useState("");
   const [searching, setSearching] = useState(false);
   const [kbText, setKbText] = useState("");
@@ -1687,44 +1691,80 @@ export function AIChat({
     </div>
   );
 
+  // Agent 面板宽度拖拽
+  const resizeRef = useRef<{ startX: number; startW: number } | null>(null);
+  const onResizeDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    resizeRef.current = { startX: e.clientX, startW: agentWidth };
+    const onMove = (ev: MouseEvent) => {
+      if (!resizeRef.current) return;
+      const d = resizeRef.current.startX - ev.clientX;
+      setAgentWidth(Math.min(560, Math.max(300, resizeRef.current.startW + d)));
+    };
+    const onUp = () => {
+      resizeRef.current = null;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [agentWidth]);
+
   const lastAssistant = [...messages]
     .reverse()
     .find((m) => m.role === "assistant");
 
-  const agentSidebar = agentOpen && (
+  const agentSidebar = (
     <>
-      {/* 桌面端：右侧固定面板 */}
+      {/* 桌面端：右侧可拖拽面板 + 滑入动画 */}
       <div
-        className="hidden shrink-0 border-l border-gray-200 lg:block dark:border-gray-700"
-        style={{ width: 24 + "rem" }}
+        className="hidden shrink-0 overflow-hidden border-l border-gray-200 transition-all duration-300 ease-in-out lg:block dark:border-gray-700"
+        style={{
+          width: agentOpen ? agentWidth : 0,
+          borderLeftWidth: agentOpen ? undefined : 0,
+        }}
       >
-        <AgentPanel
-          onClose={() => {
-            refreshKb();
-            setAgentOpen(false);
-          }}
-          onInsertMessage={(t: string) => {
-            setInput((prev: string) => (prev ? prev + "\n\n" + t : t));
-            setAgentOpen(false);
-          }}
-          initUrl={agentInitUrl}
-          lastAssistantContent={lastAssistant?.content}
-          onExport={exportChat}
-          onUpload={() => fileRef.current?.click()}
-          onArticle={enableArticles ? () => setArticleOpen(true) : undefined}
-          enableArticles={enableArticles}
-          messagesLength={messages.length}
-          pageId={pageId}
-          memory={memory}
-          onMemoryChange={(m) => {
-            setMemory(m);
-            try {
-              localStorage.setItem(STORAGE_PREFIX + "memory_" + pageId, m);
-            } catch {}
-          }}
-        />
+        <div className="relative flex h-full" style={{ width: agentWidth }}>
+          {/* 拖拽手柄 */}
+          <div
+            className="absolute left-0 top-0 z-10 h-full w-4 cursor-col-resize hover:bg-gray-300/30 active:bg-gray-400/40 dark:hover:bg-gray-600/30"
+            onMouseDown={onResizeDown}
+          />
+          {agentOpen && (
+            <div className="flex-1 animate-[kfade_0.25s_ease-out]">
+              <AgentPanel
+                onClose={() => {
+                  refreshKb();
+                  setAgentOpen(false);
+                }}
+                onInsertMessage={(t: string) => {
+                  setInput((prev: string) => (prev ? prev + "\n\n" + t : t));
+                  setAgentOpen(false);
+                }}
+                initUrl={agentInitUrl}
+                lastAssistantContent={lastAssistant?.content}
+                onExport={exportChat}
+                onUpload={() => fileRef.current?.click()}
+                onArticle={enableArticles ? () => setArticleOpen(true) : undefined}
+                enableArticles={enableArticles}
+                messagesLength={messages.length}
+                pageId={pageId}
+                memory={memory}
+                onMemoryChange={(m) => {
+                  setMemory(m);
+                  try { localStorage.setItem(STORAGE_PREFIX + "memory_" + pageId, m); } catch {}
+                }}
+              />
+            </div>
+          )}
+        </div>
       </div>
       {/* 移动端：全屏 overlay */}
+      {agentOpen && (
       <div className="fixed inset-0 z-50 lg:hidden">
         <div
           className="absolute inset-0 bg-black/40 backdrop-blur-sm"
@@ -1758,9 +1798,11 @@ export function AIChat({
                 localStorage.setItem(STORAGE_PREFIX + "memory_" + pageId, m);
               } catch {}
             }}
+            onKbChanged={refreshKb}
           />
         </div>
       </div>
+      )}
     </>
   );
 

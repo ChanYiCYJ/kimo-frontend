@@ -85,6 +85,7 @@ export function AgentPanel({
   pageId,
   memory,
   onMemoryChange,
+  onKbChanged,
 }: {
   onClose: () => void;
   onInsertMessage: (t: string) => void;
@@ -98,6 +99,7 @@ export function AgentPanel({
   pageId: number;
   memory?: string;
   onMemoryChange?: (m: string) => void;
+  onKbChanged?: () => void;
 }) {
   const [tab, setTab] = useState<"web" | "kb">(initUrl ? "web" : "kb");
   const [webUrl, setWebUrl] = useState(initUrl || "");
@@ -220,6 +222,7 @@ export function AgentPanel({
       persistEntries(nx);
       return nx;
     });
+    onKbChanged?.();
   };
 
   // ---- Delete entry ----
@@ -233,6 +236,7 @@ export function AgentPanel({
       setActiveEntry(null);
       setMdContent("");
     }
+    onKbChanged?.();
   };
 
   // ---- Update active entry ----
@@ -432,11 +436,11 @@ export function AgentPanel({
               <input value={webUrl}
                 onChange={(e) => { setWebUrl(e.target.value); setWebContent(""); }}
                 onKeyDown={(e) => { if (e.key === "Enter") browse(); }}
-                placeholder="输入网址，按回车获取内容…"
+                placeholder="输入网址或关键词搜索…"
                 className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" />
               <button onClick={browse} disabled={webLoading}
                 className="shrink-0 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-700 disabled:opacity-50 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300">
-                {webLoading ? "获取中…" : "获取"}
+                {webLoading ? "搜索中…" : "搜索"}
               </button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
@@ -459,14 +463,18 @@ export function AgentPanel({
                     </button>
                     <button onClick={() => setWebContent("")} className="rounded-md px-2 py-0.5 text-gray-400 hover:text-gray-600">清除</button>
                   </div>
-                  <pre className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-700 dark:text-gray-300">
+                  <div className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-700 dark:text-gray-300">
                     {webContent.slice(0, 50000)}
-                  </pre>
+                  </div>
                 </div>
               )}
               {!webContent && !webLoading && (
-                <div className="flex flex-1 items-center justify-center py-16">
-                  <p className="text-sm text-gray-400">输入网址获取网页内容</p>
+                <div className="flex flex-col items-center justify-center gap-3 py-16 px-4 text-center">
+                  <svg className="h-10 w-10 text-gray-300 dark:text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+                  </svg>
+                  <p className="text-sm text-gray-400">输入网址获取网页内容，或输入关键词进行网络搜索</p>
+                  <p className="text-xs text-gray-400">AI 将根据搜索结果回答你的问题</p>
                 </div>
               )}
             </div>
@@ -629,29 +637,9 @@ export function AgentPanel({
                   </div>
                 )}
               </div>
-              <button
-                onClick={() => setKbExpanded(!kbExpanded)}
-                className={`${btn} border border-gray-200 text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 ${kbExpanded ? "bg-gray-100 dark:bg-gray-800" : ""}`}
-              >
-                <svg
-                  className="h-3.5 w-3.5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9z"
-                  />
-                  <path d="M12 8v4l3 3" />
-                </svg>
-                站点源
-              </button>
             </div>
 
-            {/* Site content selector */}
+            {/* Site sources (moved here, less prominent) */}
             {kbExpanded && (
               <div className="shrink-0 border-t border-gray-50 px-3 py-2 max-h-48 overflow-y-auto dark:border-gray-800">
                 <div className="mb-2 flex items-center justify-between">
@@ -788,6 +776,16 @@ export function AgentPanel({
 
             {/* Saved entries list */}
             <div className="shrink-0 border-t border-gray-50 max-h-52 overflow-y-auto dark:border-gray-800">
+              <div className="flex items-center justify-between px-3 py-2">
+                <span className="text-[11px] font-medium text-gray-400">知识条目</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-gray-400">{entries.length} 条</span>
+                  <button onClick={() => setKbExpanded(!kbExpanded)}
+                    className={`text-[10px] transition ${kbExpanded ? "text-gray-700 dark:text-gray-300" : "text-gray-400 hover:text-gray-600"}`}>
+                    {kbExpanded ? "隐藏站点源" : "站点源"}
+                  </button>
+                </div>
+              </div>
               {entries.length === 0 ? (
                 <p className="px-3 py-6 text-center text-xs text-gray-400">
                   保存的知识条目会出现在这里
