@@ -1253,7 +1253,10 @@ export function AgentPanel({
                         stroke="currentColor"
                         strokeWidth="1.8"
                       >
-                        <path strokeLinecap="round" d="M12 4.5v15m7.5-7.5h-15" />
+                        <path
+                          strokeLinecap="round"
+                          d="M12 4.5v15m7.5-7.5h-15"
+                        />
                       </svg>
                       保存当前为草稿
                     </button>

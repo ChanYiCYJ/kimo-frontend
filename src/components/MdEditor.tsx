@@ -188,7 +188,7 @@ export function MdEditor({
   };
 
   const btnBase =
-    "grid h-8 w-8 place-items-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-gray-500";
+    "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-gray-500";
   const btnActive = "bg-gray-900 text-white hover:bg-gray-900 hover:text-white";
 
   const blockBtn = (tag: BlockTag) => {
@@ -235,7 +235,7 @@ export function MdEditor({
             onClick={() => setToolbarCollapsed(false)}
             title="展开工具栏"
             aria-label="展开工具栏"
-            className="mx-auto grid h-8 w-8 place-items-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800"
+            className="mx-auto grid h-8 w-8 shrink-0 place-items-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800"
           >
             <ChevronDown className="h-4 w-4" />
           </button>
@@ -417,7 +417,7 @@ export function MdEditor({
                   }}
                   placeholder="AI 指令…"
                   disabled={cmdLoading}
-                  className="h-7 w-28 rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none transition-all focus:w-40 focus:border-gray-400 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                  className="h-7 w-28 shrink-0 rounded-lg border border-gray-200 bg-white px-2 text-xs outline-none transition-all focus:w-40 focus:border-gray-400 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
                 />
                 <button
                   onClick={() => {
