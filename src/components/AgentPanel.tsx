@@ -610,38 +610,45 @@ export function AgentPanel({
       {/* TAB 1: Browse */}
       {tab === "web" && (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 py-12 text-center">
-          <svg
-            className="h-12 w-12 text-gray-300 dark:text-gray-600"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          >
-            <circle cx="12" cy="12" r="10" />
-            <path d="M2 12h20M12 2a15.3 15.3 0 014 10" />
-          </svg>
-          <div>
-            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-              需要搜索或浏览网页？
-            </p>
-            <p className="mt-1 text-xs text-gray-400">
-              直接在对话中告诉 AI，比如「帮我搜索 Vue.js 最新特性」
-            </p>
-            <p className="mt-1 text-xs text-gray-400">
-              AI 会自动执行搜索并在这里展示结果
-            </p>
-          </div>
+          {!webLoading && !webContent && (
+            <>
+              <svg
+                className="h-12 w-12 text-gray-300 dark:text-gray-600"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <path d="M2 12h20M12 2a15.3 15.3 0 014 10" />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                  需要搜索或浏览网页？
+                </p>
+                <p className="mt-1 text-xs text-gray-400">
+                  直接在对话中告诉 AI，比如「帮我搜索 Vue.js 最新特性」
+                </p>
+                <p className="mt-1 text-xs text-gray-400">
+                  AI 会自动执行搜索并在这里展示结果
+                </p>
+              </div>
+            </>
+          )}
           {webLoading && (
-            <div className="flex gap-1.5">
-              <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" />
-              <span
-                className="h-2 w-2 animate-bounce rounded-full bg-gray-400"
-                style={{ animationDelay: "0.15s" }}
-              />
-              <span
-                className="h-2 w-2 animate-bounce rounded-full bg-gray-400"
-                style={{ animationDelay: "0.3s" }}
-              />
+            <div className="flex flex-col items-center gap-2">
+              <div className="flex gap-1.5">
+                <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" />
+                <span
+                  className="h-2 w-2 animate-bounce rounded-full bg-gray-400"
+                  style={{ animationDelay: "0.15s" }}
+                />
+                <span
+                  className="h-2 w-2 animate-bounce rounded-full bg-gray-400"
+                  style={{ animationDelay: "0.3s" }}
+                />
+              </div>
+              <span className="text-xs text-gray-400">正在搜索…</span>
             </div>
           )}
           {webContent && !webLoading && (
@@ -649,19 +656,24 @@ export function AgentPanel({
               <div className="max-h-96 overflow-y-auto rounded-xl border border-gray-200 p-3 dark:border-gray-700">
                 <div className="space-y-2">
                   {webContent
-                    .split(/\n(?=(?:-\s|\d+[.、]\s))/)
+                    .split(/\n(?=(?:-\s|\d+[.、)]\s))/)
                     .map((item, i) => {
                       const t = item.trim();
                       if (!t) return null;
-                      // 兼容多种格式：- Title (URL) / 1. **Title**\n URL\n desc / 仅标题+描述
-                      const urlM =
-                        t.match(/https?:\/\/[^\s)\]】>]+/);
+                      // 兼容多种格式：- Title (URL) / 1. **Title**\n URL\n desc
+                      const urlM = t.match(
+                        /https?:\/\/[^\s)\]】>]+/,
+                      );
+                      const href = urlM
+                        ? urlM[0].replace(/[)\]】>]+$/, "")
+                        : "#";
                       const title = t
-                        .replace(/^(?:-\s|\d+[.、]\s+)/, "")
+                        .replace(/^(?:-\s|\d+[.、)]\s+)/, "")
                         .replace(/\*\*/g, "")
-                        .replace(/\s*(?:https?:\/\/[^\s)\]】>]+)\s*/, " ")
+                        .replace(/\s*https?:\/\/[^\s)\]】>]+/, " ")
                         .split("\n")[0]
                         .trim()
+                        .replace(/[\s()）【】]+$/g, "")
                         .slice(0, 80);
                       const desc = t
                         .split("\n")
@@ -671,19 +683,22 @@ export function AgentPanel({
                         .replace(/\s+/g, " ")
                         .trim()
                         .slice(0, 300);
-                      if (title || urlM)
+                      if (title || href !== "#")
                         return (
                           <div
                             key={i}
                             className="rounded-lg border border-gray-100 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-800/50"
                           >
                             <a
-                              href={urlM ? urlM[0] : "#"}
+                              href={href}
                               target="_blank"
                               rel="noreferrer"
+                              onClick={(e) => {
+                                if (href === "#") e.preventDefault();
+                              }}
                               className="block truncate text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
                             >
-                              {title || urlM?.[0]}
+                              {title || href}
                             </a>
                             {desc && (
                               <p className="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">

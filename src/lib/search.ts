@@ -48,8 +48,49 @@ async function aiSearch(query: string): Promise<string> {
     });
     if (!res.ok) return "";
     const j = await res.json() as { choices?: { message?: { content?: string } }[] };
-    return j.choices?.[0]?.message?.content || "";
+    return normalizeSearch(j.choices?.[0]?.message?.content || "");
   } catch { return ""; }
+}
+
+/** 将 AI 返回的搜索结果统一规范化为「- 标题 (URL)\n  描述」格式 */
+function normalizeSearch(raw: string): string {
+  if (!raw.trim()) return "";
+  // 按列表项切分：支持 - / 1. / 1、/ 1) 等
+  const items = raw
+    .split(/\n(?=(?:-\s|\d+[.、)]\s))/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const out: string[] = [];
+  for (const it of items) {
+    // 去掉列表前缀与 markdown 加粗
+    let body = it.replace(/^(?:-\s|\d+[.、)]\s+)/, "").replace(/\*\*/g, "");
+    // 提取 URL（含 (URL) 或裸 URL 或 markdown [t](u)）
+    const md = body.match(/\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/);
+    const paren = body.match(/\(?(https?:\/\/[^\s)\]】>,;]+)/);
+    let title = "";
+    let url = "";
+    if (md) {
+      title = md[1].trim();
+      url = md[2].replace(/[)\]】>]+$/, "");
+      body = body.replace(/\[[^\]]*\]\(https?:\/\/[^\s)]+\)/, " ");
+    } else if (paren) {
+      url = paren[1];
+      body = body.replace(
+        /\(?https?:\/\/[^\s)\]】>,;]+\)?/,
+        " ",
+      );
+    }
+    const lines = body.split("\n").map((s) => s.trim()).filter(Boolean);
+    const first = lines.shift() || "";
+    if (!title)
+      title = first.replace(/[\s()）【】\[\]—–-]+$/g, "").trim();
+    const desc = lines.join(" ").replace(/\s+/g, " ").trim();
+    if (title || url) {
+      const line = (title || url) + (url ? " (" + url + ")" : "");
+      out.push("- " + line + (desc ? "\n  " + desc.slice(0, 300) : ""));
+    }
+  }
+  return out.join("\n");
 }
 
 async function ddgLite(query: string): Promise<string> {
