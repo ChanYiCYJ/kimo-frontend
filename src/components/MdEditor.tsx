@@ -464,34 +464,34 @@ export function MdEditor({
 
       {/* 底部状态栏 */}
       {showStatusBar && (
-      <div className="flex flex-none items-center justify-between gap-3 border-t border-gray-100 bg-gray-50/60 px-3 py-1.5 text-xs text-gray-400">
-        <span>支持 Markdown · 图片可直接粘贴</span>
-        <span className="flex items-center gap-3">
-          {aiState !== "idle" && (
-            <span
-              className={`flex items-center gap-1 ${
-                aiState === "ok"
-                  ? "text-green-600"
-                  : aiState === "error"
-                    ? "text-red-500"
-                    : "text-gray-500"
-              }`}
-            >
-              {aiState === "loading" ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : aiState === "ok" ? (
-                <Check className="h-3 w-3" />
-              ) : (
-                <X className="h-3 w-3" />
-              )}
-              {aiMsg}
+        <div className="flex flex-none items-center justify-between gap-3 border-t border-gray-100 bg-gray-50/60 px-3 py-1.5 text-xs text-gray-400">
+          <span>支持 Markdown · 图片可直接粘贴</span>
+          <span className="flex items-center gap-3">
+            {aiState !== "idle" && (
+              <span
+                className={`flex items-center gap-1 ${
+                  aiState === "ok"
+                    ? "text-green-600"
+                    : aiState === "error"
+                      ? "text-red-500"
+                      : "text-gray-500"
+                }`}
+              >
+                {aiState === "loading" ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : aiState === "ok" ? (
+                  <Check className="h-3 w-3" />
+                ) : (
+                  <X className="h-3 w-3" />
+                )}
+                {aiMsg}
+              </span>
+            )}
+            <span>
+              正文 {value.length} 字 · 约 {readingTime(value)} 分钟
             </span>
-          )}
-          <span>
-            正文 {value.length} 字 · 约 {readingTime(value)} 分钟
           </span>
-        </span>
-      </div>
+        </div>
       )}
     </div>
   );

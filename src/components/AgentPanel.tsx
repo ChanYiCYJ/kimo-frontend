@@ -96,6 +96,7 @@ export function AgentPanel({
   >([]);
   const [kbSiteLoading, setKbSiteLoading] = useState(true);
   const [kbSiteOpen, setKbSiteOpen] = useState(false);
+  const [kbAiReadAll, setKbAiReadAll] = useState(() => { try { return localStorage.getItem("kimo_kb_ai_read_all") !== "0"; } catch { return true; } });
   const [activeEntry, setActiveEntry] = useState<KbEntry | null>(null);
 
   // Memory
@@ -511,46 +512,117 @@ export function AgentPanel({
       {/* TAB 1: Browse */}
       {tab === "web" && (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 py-12 text-center">
-          <svg className="h-12 w-12 text-gray-300 dark:text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10"/></svg>
+          <svg
+            className="h-12 w-12 text-gray-300 dark:text-gray-600"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <path d="M2 12h20M12 2a15.3 15.3 0 014 10" />
+          </svg>
           <div>
-            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">需要搜索或浏览网页？</p>
-            <p className="mt-1 text-xs text-gray-400">在对话中告诉 AI，比如「帮我搜索 Vue.js 最新特性」</p>
-            <p className="mt-1 text-xs text-gray-400">或直接输入网址让 AI 帮你抓取内容</p>
+            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+              需要搜索或浏览网页？
+            </p>
+            <p className="mt-1 text-xs text-gray-400">
+              在对话中告诉 AI，比如「帮我搜索 Vue.js 最新特性」
+            </p>
+            <p className="mt-1 text-xs text-gray-400">
+              或直接输入网址让 AI 帮你抓取内容
+            </p>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => onInsertMessage("请帮我搜索：")}
-              className="rounded-lg border border-gray-200 px-4 py-2 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">
+            <button
+              onClick={() => onInsertMessage("请帮我搜索：")}
+              className="rounded-lg border border-gray-200 px-4 py-2 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
               发起搜索
             </button>
-            <input value={webUrl} onChange={(e) => setWebUrl(e.target.value)}
-              placeholder="或输入网址..." className="w-40 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-              onKeyDown={(e) => { if (e.key === "Enter" && webUrl.trim()) { browse(); } }} />
+            <input
+              value={webUrl}
+              onChange={(e) => setWebUrl(e.target.value)}
+              placeholder="或输入网址..."
+              className="w-40 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && webUrl.trim()) {
+                  browse();
+                }
+              }}
+            />
             {webUrl.trim() && (
-              <button onClick={browse} disabled={webLoading}
-                className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50 dark:bg-gray-200 dark:text-gray-900">
+              <button
+                onClick={browse}
+                disabled={webLoading}
+                className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50 dark:bg-gray-200 dark:text-gray-900"
+              >
                 {webLoading ? "获取中..." : "获取"}
               </button>
             )}
           </div>
-          {webLoading && <div className="flex gap-1.5"><span className="h-2 w-2 animate-bounce rounded-full bg-gray-400"/><span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{animationDelay:"0.15s"}}/><span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{animationDelay:"0.3s"}}/></div>}
+          {webLoading && (
+            <div className="flex gap-1.5">
+              <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" />
+              <span
+                className="h-2 w-2 animate-bounce rounded-full bg-gray-400"
+                style={{ animationDelay: "0.15s" }}
+              />
+              <span
+                className="h-2 w-2 animate-bounce rounded-full bg-gray-400"
+                style={{ animationDelay: "0.3s" }}
+              />
+            </div>
+          )}
           {webContent && !webLoading && (
             <div className="w-full text-left">
               <div className="mb-2 flex items-center gap-2 text-xs text-gray-400">
-                <button onClick={() => onInsertMessage(webContent)} className="rounded-md bg-gray-100 px-2 py-0.5 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300">发送到对话</button>
-                <button onClick={() => setWebContent("")} className="rounded-md px-2 py-0.5 hover:text-gray-600">清除</button>
+                <button
+                  onClick={() => onInsertMessage(webContent)}
+                  className="rounded-md bg-gray-100 px-2 py-0.5 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
+                >
+                  发送到对话
+                </button>
+                <button
+                  onClick={() => setWebContent("")}
+                  className="rounded-md px-2 py-0.5 hover:text-gray-600"
+                >
+                  清除
+                </button>
               </div>
               <div className="max-h-96 overflow-y-auto rounded-xl border border-gray-200 p-3 dark:border-gray-700">
                 <div className="space-y-2">
                   {webContent.split(/\n(?=- )/).map((item, i) => {
-                    const m = item.match(/^- (.*?)(?:\s*\((https?:\/\/[^)]+)\))?\n\s+(.*)$/s);
-                    if (m) return (
-                      <div key={i} className="rounded-lg border border-gray-100 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-800/50">
-                        <a href={m[2] || "#"} target="_blank" rel="noreferrer" className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400">{m[1]}</a>
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{m[3]?.slice(0, 300)}</p>
+                    const m = item.match(
+                      /^- (.*?)(?:\s*\((https?:\/\/[^)]+)\))?\n\s+(.*)$/s,
+                    );
+                    if (m)
+                      return (
+                        <div
+                          key={i}
+                          className="rounded-lg border border-gray-100 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-800/50"
+                        >
+                          <a
+                            href={m[2] || "#"}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
+                          >
+                            {m[1]}
+                          </a>
+                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            {m[3]?.slice(0, 300)}
+                          </p>
+                        </div>
+                      );
+                    return (
+                      <div
+                        key={i}
+                        className="whitespace-pre-wrap break-words text-sm text-gray-600 dark:text-gray-300"
+                      >
+                        {item}
                       </div>
                     );
-                    return <div key={i} className="whitespace-pre-wrap break-words text-sm text-gray-600 dark:text-gray-300">{item}</div>;
                   })}
                 </div>
               </div>
@@ -698,9 +770,19 @@ export function AgentPanel({
           {/* Entries */}
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-50 bg-white px-3 py-2 dark:border-gray-800 dark:bg-gray-900">
-              <span className="text-[11px] font-semibold text-gray-500">
-                知识条目 · {entries.length}条
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-semibold text-gray-500">
+                  知识条目 · {entries.length}条
+                </span>
+                <button
+                  onClick={() => { const v = !kbAiReadAll; setKbAiReadAll(v); localStorage.setItem("kimo_kb_ai_read_all", v ? "1" : "0"); onKbChanged?.(); }}
+                  className={"flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] transition " + (kbAiReadAll ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500")}
+                  title={kbAiReadAll ? "AI 正在读取全部知识" : "AI 不读取知识库"}
+                >
+                  <span className={"h-1.5 w-1.5 rounded-full " + (kbAiReadAll ? "bg-green-500" : "bg-gray-400")} />
+                  AI读取{kbAiReadAll ? "中" : "关"}
+                </button>
+              </div>
               <div className="relative" ref={exportRef}>
                 <button
                   onClick={() => setShowExportMenu(!showExportMenu)}
@@ -845,7 +927,8 @@ export function AgentPanel({
                   onChange={updateEntry}
                   height={h}
                   placeholder="编辑知识条目..."
-                  aiPolish={false} showStatusBar={false}
+                  aiPolish={false}
+                  showStatusBar={false}
                 />
               </>
             ) : (
@@ -854,48 +937,55 @@ export function AgentPanel({
                 onChange={setMdContent}
                 height={h}
                 placeholder="编写内容..."
-                aiPolish={false} showStatusBar={false}
+                aiPolish={false}
+                showStatusBar={false}
               />
             )}
           </div>
           <div className="flex shrink-0 items-center gap-1.5 border-t border-gray-100 px-3 py-2 dark:border-gray-800">
             {!activeEntry && (
               <>
-                <button onClick={saveEntry} disabled={!mdContent.trim() || saving}
-                  className={btn + " bg-gray-900 text-white hover:bg-gray-700 disabled:opacity-30 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"}>
+                <button
+                  onClick={saveEntry}
+                  disabled={!mdContent.trim() || saving}
+                  className={
+                    btn +
+                    " bg-gray-900 text-white hover:bg-gray-700 disabled:opacity-30 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
+                  }
+                >
                   {saving ? (
-                  <svg
-                    className="h-3.5 w-3.5 animate-spin"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
+                    <svg
+                      className="h-3.5 w-3.5 animate-spin"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
+                    </svg>
+                  ) : (
+                    <svg
+                      className="h-3.5 w-3.5"
+                      viewBox="0 0 24 24"
+                      fill="none"
                       stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                    />
-                  </svg>
-                ) : (
-                  <svg
-                    className="h-3.5 w-3.5"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path strokeLinecap="round" d="M12 4.5v15m7.5-7.5h-15" />
-                  </svg>
-                )}
-                {saving ? "保存中" : "存为条目"}
-              </button>
+                      strokeWidth="2"
+                    >
+                      <path strokeLinecap="round" d="M12 4.5v15m7.5-7.5h-15" />
+                    </svg>
+                  )}
+                  {saving ? "保存中" : "存为条目"}
+                </button>
               </>
             )}
           </div>

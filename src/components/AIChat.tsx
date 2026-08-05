@@ -188,7 +188,9 @@ export function AIChat({
   const [agentOpen, setAgentOpen] = useState(false);
   const [kbPickerOpen, setKbPickerOpen] = useState(false);
   const [kbPickerSelected, setKbPickerSelected] = useState<string[]>([]);
-  const [kbAttachments, setKbAttachments] = useState<{id:string;title:string;content:string}[]>([]);
+  const [kbAttachments, setKbAttachments] = useState<
+    { id: string; title: string; content: string }[]
+  >([]);
   const [agentInitUrl, setAgentInitUrl] = useState<string | undefined>();
   const [agentWidth, setAgentWidth] = useState(() => {
     if (typeof window === "undefined") return 384;
@@ -616,8 +618,14 @@ export function AIChat({
         return;
       }
     }
-    const attachText = kbAttachments.length ? "【附加知识条目】\n" + kbAttachments.map((a: {content: string}) => a.content).join("\n\n") : "";
-    const user: Message = { role: "user" as const, content: attachText ? t + "\n\n" + attachText : t };
+    const attachText = kbAttachments.length
+      ? "【附加知识条目】\n" +
+        kbAttachments.map((a: { content: string }) => a.content).join("\n\n")
+      : "";
+    const user: Message = {
+      role: "user" as const,
+      content: attachText ? t + "\n\n" + attachText : t,
+    };
     const allMsgs = [...messages, user];
     let summary = "";
     const recent = allMsgs.length > 6 ? allMsgs.slice(-6) : allMsgs;
@@ -630,7 +638,8 @@ export function AIChat({
         )
         .join("; ");
     updateActive((prev) => [...prev, user]);
-    setInput(""); setKbAttachments([]);
+    setInput("");
+    setKbAttachments([]);
     setLoading(true);
     setStick(true);
     if (!hasCustom) {
@@ -678,23 +687,17 @@ export function AIChat({
           : [...prev, { role: "assistant" as const, content }];
       });
     try {
-      // 每次发送时实时读取知识库（不等异步 refreshKb）
+      // 每次发送时实时读取知识库（尊重 AI读取开关 + 附件）
       const kbKnowledge = (() => {
         try {
-          const notes = getKbNotes();
-          const valid = notes.filter(
-            (n: { title?: string; content?: string }) => n.title || n.content,
-          );
-          if (valid.length)
-            return (
-              "【知识库条目】\n" +
-              valid
-                .map(
-                  (n: { title?: string; content?: string }) =>
-                    `- ${n.title}：${n.content}`,
-                )
-                .join("\n")
-            );
+          const aiReadAll = localStorage.getItem("kimo_kb_ai_read_all") !== "0";
+          const notes = aiReadAll ? getKbNotes() : [];
+          const attachNotes = kbAttachments.map((a: { title: string; content: string }) => ({ title: a.title, content: a.content }));
+          const all = aiReadAll ? [...attachNotes, ...notes] : attachNotes;
+          const unique = new Map<string, { title: string; content: string }>();
+          for (const n of all) { if (n.content && !unique.has(n.content)) unique.set(n.content, n); }
+          const valid = [...unique.values()];
+          if (valid.length) return "【知识库条目】\n" + valid.map((n) => "- " + n.title + "：" + n.content).join("\n");
         } catch {}
         return "";
       })();
@@ -1482,14 +1485,26 @@ export function AIChat({
       <div className="shrink-0 bg-white px-3 pb-3 pt-2 dark:bg-gray-900 sm:px-6 sm:pb-4">
         <div className="mx-auto w-full max-w-3xl">
           {/* 可关闭的圆角小卡片（网络搜索 / 附加文件 / 搜索中） */}
-          
+
           {/* KB附件卡片 */}
           {kbAttachments.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-1.5">
               {kbAttachments.map((a) => (
-                <span key={a.id} className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                <span
+                  key={a.id}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                >
                   {a.title.slice(0, 20)}
-                  <button onClick={() => setKbAttachments(prev => prev.filter(x => x.id !== a.id))} className="text-blue-400 hover:text-blue-600">×</button>
+                  <button
+                    onClick={() =>
+                      setKbAttachments((prev) =>
+                        prev.filter((x) => x.id !== a.id),
+                      )
+                    }
+                    className="text-blue-400 hover:text-blue-600"
+                  >
+                    ×
+                  </button>
                 </span>
               ))}
             </div>
@@ -1577,7 +1592,8 @@ export function AIChat({
               {kbPickerOpen && (
                 <>
                   <div
-                    className="fixed inset-0 z-40" style={{ bottom: "80px" }}
+                    className="fixed inset-0 z-40"
+                    style={{ bottom: "80px" }}
                     onClick={() => setKbPickerOpen(false)}
                   />
                   <KbPicker
@@ -1589,7 +1605,15 @@ export function AIChat({
                           : [...p, id],
                       )
                     }
-                    onInsert={(notes) => { setKbAttachments(prev => [...prev, ...notes.filter(n => !prev.find(x => x.id === n.id))]); setKbPickerOpen(false); }}
+                    onInsert={(notes) => {
+                      setKbAttachments((prev) => [
+                        ...prev,
+                        ...notes.filter(
+                          (n) => !prev.find((x) => x.id === n.id),
+                        ),
+                      ]);
+                      setKbPickerOpen(false);
+                    }}
                     onClose={() => setKbPickerOpen(false)}
                     onOpenAgent={() => setAgentOpen(true)}
                   />
@@ -1663,8 +1687,20 @@ export function AIChat({
           </svg>
           新建会话
         </button>
-        <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)} className="ml-1.5 hidden lg:grid rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800" title="收起">
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/></svg>
+        <button
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          className="ml-1.5 hidden lg:grid rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+          title="收起"
+        >
+          <svg
+            className="h-4 w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path strokeLinecap="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+          </svg>
         </button>
       </div>
       <div className="flex-1 overflow-y-auto px-2.5 pb-3">
@@ -1799,7 +1835,12 @@ export function AIChat({
 
   // 桌面端侧边栏（可折叠）
   const desktopSidebar = (
-    <div className={"hidden shrink-0 overflow-hidden border-r border-gray-200 transition-all duration-300 ease-in-out lg:block dark:border-gray-800 " + (sidebarCollapsed ? "w-0 border-r-0" : "w-64")}>
+    <div
+      className={
+        "hidden shrink-0 overflow-hidden border-r border-gray-200 transition-all duration-300 ease-in-out lg:block dark:border-gray-800 " +
+        (sidebarCollapsed ? "w-0 border-r-0" : "w-64")
+      }
+    >
       {!sidebarCollapsed && sidebar}
     </div>
   );
@@ -1880,7 +1921,10 @@ export function AIChat({
       {/* 移动端：底部滑入，无模糊遮罩 */}
       {agentOpen && (
         <div className="fixed inset-0 z-50 lg:hidden pointer-events-none">
-          <div className="absolute inset-x-0 bottom-0 pointer-events-auto animate-[kslideUp_0.35s_ease-out] bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 shadow-2xl" style={{ top: "52px", maxHeight: "calc(100vh - 52px)" }}>
+          <div
+            className="absolute inset-x-0 bottom-0 pointer-events-auto animate-[kslideUp_0.35s_ease-out] bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 shadow-2xl"
+            style={{ top: "52px", maxHeight: "calc(100vh - 52px)" }}
+          >
             <AgentPanel
               onClose={() => {
                 refreshKb();
