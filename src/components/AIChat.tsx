@@ -1498,6 +1498,15 @@ export function AIChat({
             </div>
           )}
           <div className="flex items-center gap-0.5 rounded-[26px] border border-gray-200 bg-white p-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition focus-within:border-gray-400 focus-within:shadow-[0_0_0_3px_rgba(156,163,175,0.15)] dark:border-gray-600 dark:bg-gray-800">
+            {/* + 按钮：打开知识库 */}
+            <button
+              onClick={() => setAgentOpen(true)}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+              title="知识库条目"
+              aria-label="知识库条目"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+            </button>
             <input
               ref={fileRef}
               type="file"
@@ -1736,7 +1745,10 @@ export function AIChat({
         if (!resizeRef.current) return;
         const d = resizeRef.current.startX - ev.clientX;
         setAgentWidth(
-          Math.min(Math.round(window.innerWidth * 0.8), Math.max(300, resizeRef.current.startW + d)),
+          Math.min(
+            Math.round(window.innerWidth * 0.8),
+            Math.max(300, resizeRef.current.startW + d),
+          ),
         );
       };
       const onUp = () => {
@@ -1777,13 +1789,27 @@ export function AIChat({
           {agentOpen && (
             <div className="flex-1 animate-[kfade_0.25s_ease-out]">
               <AgentPanel
-                onClose={() => { refreshKb(); setAgentOpen(false); }}
-                onInsertMessage={(t: string) => { setInput((prev: string) => (prev ? prev + "\n\n" + t : t)); setAgentOpen(false); }}
+                onClose={() => {
+                  refreshKb();
+                  setAgentOpen(false);
+                }}
+                onInsertMessage={(t: string) => {
+                  setInput((prev: string) => (prev ? prev + "\n\n" + t : t));
+                  setAgentOpen(false);
+                }}
                 initUrl={agentInitUrl}
                 lastAssistantContent={lastAssistant?.content}
                 pageId={pageId}
                 memory={memory}
-                onMemoryChange={(m) => { setMemory(m); try { localStorage.setItem(STORAGE_PREFIX + "memory_" + pageId, m); } catch {} }}
+                onMemoryChange={(m) => {
+                  setMemory(m);
+                  try {
+                    localStorage.setItem(
+                      STORAGE_PREFIX + "memory_" + pageId,
+                      m,
+                    );
+                  } catch {}
+                }}
                 onKbChanged={refreshKb}
               />
             </div>
@@ -1793,16 +1819,33 @@ export function AIChat({
       {/* 移动端：全屏 overlay（不覆盖顶栏） */}
       {agentOpen && (
         <div className="fixed inset-0 top-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { refreshKb(); setAgentOpen(false); }} />
-          <div className="absolute inset-x-0 bottom-0" style={{ top: "52px" }}>
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity duration-300"
+            onClick={() => {
+              refreshKb();
+              setAgentOpen(false);
+            }}
+          />
+          <div className="absolute inset-x-0 bottom-0 animate-[kslideUp_0.35s_ease-out]" style={{ top: "52px", maxHeight: "85vh" }}>
             <AgentPanel
-              onClose={() => { refreshKb(); setAgentOpen(false); }}
-              onInsertMessage={(t: string) => { setInput((prev: string) => (prev ? prev + "\n\n" + t : t)); setAgentOpen(false); }}
+              onClose={() => {
+                refreshKb();
+                setAgentOpen(false);
+              }}
+              onInsertMessage={(t: string) => {
+                setInput((prev: string) => (prev ? prev + "\n\n" + t : t));
+                setAgentOpen(false);
+              }}
               initUrl={agentInitUrl}
               lastAssistantContent={lastAssistant?.content}
               pageId={pageId}
               memory={memory}
-              onMemoryChange={(m) => { setMemory(m); try { localStorage.setItem(STORAGE_PREFIX + "memory_" + pageId, m); } catch {} }}
+              onMemoryChange={(m) => {
+                setMemory(m);
+                try {
+                  localStorage.setItem(STORAGE_PREFIX + "memory_" + pageId, m);
+                } catch {}
+              }}
               onKbChanged={refreshKb}
             />
           </div>
