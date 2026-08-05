@@ -2,10 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { MdEditor } from "./MdEditor";
-import {
-  fetchWebpage,
-  searchWithCache,
-} from "../lib/search";
+import { fetchWebpage, searchWithCache } from "../lib/search";
 import { SettingsTab, type AgentSettingsProps } from "./SettingsTab";
 import {
   saveKbNotes,
@@ -534,7 +531,10 @@ export function AgentPanel({
     // 关键词搜索（复用，含缓存读取）
     const runKeyword = async (kw: string) => {
       setWebUrl(kw);
-      const r = await searchWithCache(kw, { maxSources: 3, perSourceChars: 2500 });
+      const r = await searchWithCache(kw, {
+        maxSources: 3,
+        perSourceChars: 2500,
+      });
       setFromCache(!!r.cached);
       setWebContent(r.content || "未找到结果");
       setArticleMd(r.article || "");
@@ -617,7 +617,7 @@ export function AgentPanel({
     const results = resultsText
       .split(/\n(?=(?:-\s|\d+[.、)]\s))/)
       .map((s) => s.trim())
-      .filter(Boolean)
+      .filter((s) => s && !/^【[^】]*】\s*$/.test(s))
       .map((line) => {
         const urlM = line.match(/https?:\/\/[^\s)\]】>]+/);
         const href = urlM ? urlM[0].replace(/[)\]】>]+$/, "") : "";
@@ -641,7 +641,12 @@ export function AgentPanel({
         } catch {}
         return { title, href, desc, host };
       })
-      .filter((r) => r.title || r.href);
+      .filter(
+        (r) =>
+          r.href &&
+          /^https?:\/\//i.test(r.href) &&
+          (r.title || r.desc),
+      );
     return { results, sourcesText };
   };
 
@@ -718,6 +723,29 @@ export function AgentPanel({
             设置
           </button>
         </div>
+        {tab === "web" && (
+          <button
+            onClick={() => {
+              setWebContent("");
+              setArticleMd("");
+              setArticleLoading(false);
+              setFromCache(false);
+            }}
+            title="搜索"
+            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+          >
+            <svg
+              className="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <path strokeLinecap="round" d="M21 21l-4.35-4.35" />
+            </svg>
+          </button>
+        )}
         <button
           onClick={onClose}
           className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
@@ -737,147 +765,164 @@ export function AgentPanel({
       {/* TAB 1: Browse（美化版：搜索栏 + 结果卡片 + 来源折叠 + AI 文章） */}
       {tab === "web" && (
         <div className="flex min-h-0 flex-1 flex-col">
-          {/* 顶部搜索栏 */}
-          <div className="shrink-0 border-b border-gray-100 px-3 py-2 dark:border-gray-800">
-            <div className="flex items-center gap-2 rounded-xl bg-gray-100 px-2.5 py-1.5 transition focus-within:ring-2 focus-within:ring-gray-300 dark:bg-gray-800 dark:focus-within:ring-gray-600">
-              <svg
-                className="h-4 w-4 shrink-0 text-gray-400"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <circle cx="11" cy="11" r="8" />
-                <path strokeLinecap="round" d="M21 21l-4.35-4.35" />
-              </svg>
-              <input
-                value={webUrl}
-                onChange={(e) => setWebUrl(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") browse();
-                }}
-                placeholder="输入网址或关键词，AI 联网搜索…"
-                className="min-w-0 flex-1 bg-transparent text-sm text-gray-700 outline-none placeholder:text-gray-400 dark:text-gray-200 dark:placeholder:text-gray-500"
-              />
-              <button
-                onClick={() => browse()}
-                disabled={webLoading}
-                className="shrink-0 rounded-lg bg-gray-900 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-gray-700 disabled:opacity-40 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
-              >
-                {webLoading ? "…" : "搜索"}
-              </button>
-            </div>
-            {fromCache && !webLoading && webContent && (
-              <div className="mt-1.5 flex items-center gap-1 text-[10px] text-gray-400">
-                <svg
-                  className="h-3 w-3"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <circle cx="12" cy="12" r="10" />
-                  <path strokeLinecap="round" d="M12 6v6l4 2" />
-                </svg>
-                已加载历史记录（无需重新搜索）
+          {/* 内容滚动区 */}
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {/* 加载中 */}
+            {webLoading && (
+              <div className="flex h-full flex-col items-center justify-center gap-4">
+                <div className="h-9 w-9 animate-spin rounded-full border-2 border-gray-200 border-t-gray-900 dark:border-gray-700 dark:border-t-gray-100" />
+                <p className="text-xs text-gray-400">AI 正在联网整理…</p>
               </div>
             )}
-          </div>
-
-          {/* 内容滚动区 */}
-          <div className="min-h-0 flex-1 overflow-y-auto p-3">
-            {/* 空态 */}
+            {/* 空态：唯一搜索入口（极简胶囊，无常驻搜索栏） */}
             {!webLoading && !webContent && (
-              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-                <div className="grid h-14 w-14 place-items-center rounded-2xl bg-gray-100 dark:bg-gray-800">
+              <div className="flex h-full flex-col items-center justify-center gap-5 px-6">
+                <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white shadow-sm ring-1 ring-gray-100 dark:bg-gray-900 dark:ring-gray-800">
                   <svg
-                    className="h-7 w-7 text-gray-400"
+                    className="h-6 w-6 text-gray-300 dark:text-gray-600"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="1.5"
                   >
                     <circle cx="12" cy="12" r="10" />
-                    <path d="M2 12h20M12 2a15.3 15.3 0 014 10" />
+                    <path d="M2 12h20M12 2a15.3 15.3 0 014 10M12 22a15.3 15.3 0 01-4-10 15.3 15.3 0 014-10" />
                   </svg>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                    搜索或浏览网页
-                  </p>
-                  <p className="mt-1 max-w-[240px] text-xs leading-relaxed text-gray-400">
-                    输入网址抓取正文，或输入关键词让 AI 多引擎搜索并生成综合文章
-                  </p>
-                </div>
+                <form
+                  className="w-full max-w-sm"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    browse();
+                  }}
+                >
+                  <div className="flex items-center gap-2.5 rounded-full border border-gray-200 bg-white py-2.5 pl-4 pr-3 shadow-sm transition focus-within:border-gray-300 focus-within:ring-2 focus-within:ring-gray-900/5 dark:border-gray-700 dark:bg-gray-900 dark:focus-within:border-gray-600 dark:focus-within:ring-gray-100/5">
+                    <svg
+                      className="h-4 w-4 shrink-0 text-gray-400"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <circle cx="11" cy="11" r="8" />
+                      <path strokeLinecap="round" d="M21 21l-4.35-4.35" />
+                    </svg>
+                    <input
+                      autoFocus
+                      value={webUrl}
+                      onChange={(e) => setWebUrl(e.target.value)}
+                      placeholder="搜索或输入网址，回车"
+                      className="min-w-0 flex-1 bg-transparent text-sm text-gray-700 outline-none placeholder:text-gray-400 dark:text-gray-200 dark:placeholder:text-gray-500"
+                    />
+                    <kbd className="rounded-md border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500">
+                      ↵
+                    </kbd>
+                  </div>
+                </form>
+                <p className="text-[11px] text-gray-400">
+                  多引擎联网搜索，AI 自动生成综合文章
+                </p>
               </div>
             )}
-            {/* 加载中 */}
-            {webLoading && (
-              <div className="flex h-full flex-col items-center justify-center gap-3">
-                <div className="flex gap-1.5">
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" />
-                  <span
-                    className="h-2 w-2 animate-bounce rounded-full bg-gray-400"
-                    style={{ animationDelay: "0.15s" }}
-                  />
-                  <span
-                    className="h-2 w-2 animate-bounce rounded-full bg-gray-400"
-                    style={{ animationDelay: "0.3s" }}
-                  />
-                </div>
-                <span className="text-xs text-gray-400">
-                  正在搜索并抓取资料…
-                </span>
-              </div>
-            )}
-            {/* 结果 */}
+            {/* 结果态：AI 文章为主 + 紧凑来源 */}
             {webContent && !webLoading && (
-              <div className="space-y-3">
-                {parseBrowseContent(webContent).results.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-400">
-                      <svg
-                        className="h-3.5 w-3.5"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <circle cx="11" cy="11" r="8" />
-                        <path strokeLinecap="round" d="M21 21l-4.35-4.35" />
-                      </svg>
-                      搜索结果 · {parseBrowseContent(webContent).results.length}
+              <div className="space-y-3 p-3">
+                {/* AI 综合文章（主角） */}
+                {(articleMd || articleLoading) && (
+                  <article className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                    <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-2.5 dark:border-gray-800">
+                      <span className="grid h-5 w-5 place-items-center rounded-md bg-gray-900 text-white dark:bg-gray-200 dark:text-gray-900">
+                        <svg
+                          className="h-3 w-3"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"
+                          />
+                        </svg>
+                      </span>
+                      <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                        综合文章
+                      </span>
+                      {fromCache && articleMd && (
+                        <span
+                          title="已加载历史记录"
+                          className="h-1.5 w-1.5 rounded-full bg-green-400"
+                        />
+                      )}
+                      <div className="flex-1" />
+                      {articleMd && (
+                        <button
+                          onClick={() => {
+                            setMdContent(articleMd);
+                            setActiveEntry(null);
+                            setTab("edit");
+                          }}
+                          className="rounded-full border border-gray-200 px-2.5 py-1 text-[10px] text-gray-500 transition hover:border-gray-900 hover:text-gray-900 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-200 dark:hover:text-gray-100"
+                        >
+                          在编辑器中打开
+                        </button>
+                      )}
                     </div>
-                    {parseBrowseContent(webContent).results.map((r, i) => (
-                      <a
-                        key={i}
-                        href={r.href || "#"}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={(e) => {
-                          if (!r.href) e.preventDefault();
-                        }}
-                        className="group block rounded-2xl border border-gray-100 bg-white p-3 shadow-sm transition hover:border-gray-300 hover:shadow-md dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-600"
-                      >
-                        <div className="flex items-start gap-2.5">
-                          <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-gray-100 text-[11px] font-bold text-gray-500 transition group-hover:bg-blue-50 group-hover:text-blue-500 dark:bg-gray-800 dark:text-gray-400 dark:group-hover:bg-blue-900/30 dark:group-hover:text-blue-400">
+                    <div className="px-4 py-4">
+                      {articleLoading ? (
+                        <div className="space-y-3">
+                          <div className="h-4 w-2/3 animate-pulse rounded bg-gray-100 dark:bg-gray-800" />
+                          <div className="h-3 w-full animate-pulse rounded bg-gray-100 dark:bg-gray-800" />
+                          <div className="h-3 w-11/12 animate-pulse rounded bg-gray-100 dark:bg-gray-800" />
+                          <div className="h-3 w-4/5 animate-pulse rounded bg-gray-100 dark:bg-gray-800" />
+                        </div>
+                      ) : (
+                        <div className="markdown-body kimo-panel">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {articleMd}
+                          </ReactMarkdown>
+                        </div>
+                      )}
+                    </div>
+                  </article>
+                )}
+                {/* 搜索结果（紧凑来源列表） */}
+                {parseBrowseContent(webContent).results.length > 0 && (
+                  <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                    <div className="flex items-center justify-between px-3.5 py-2">
+                      <span className="text-[10px] font-medium uppercase tracking-wider text-gray-400">
+                        来源
+                      </span>
+                      <span className="text-[10px] text-gray-300 dark:text-gray-600">
+                        {parseBrowseContent(webContent).results.length}
+                      </span>
+                    </div>
+                    <div className="divide-y divide-gray-50 dark:divide-gray-800/60">
+                      {parseBrowseContent(webContent).results.map((r, i) => (
+                        <a
+                          key={i}
+                          href={r.href || "#"}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(e) => {
+                            if (!r.href) e.preventDefault();
+                          }}
+                          className="group flex items-center gap-2.5 px-3.5 py-2 transition hover:bg-gray-50 dark:hover:bg-gray-800/40"
+                        >
+                          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-gray-100 text-[10px] font-semibold text-gray-500 transition group-hover:bg-gray-900 group-hover:text-white dark:bg-gray-800 dark:text-gray-400 dark:group-hover:bg-gray-200 dark:group-hover:text-gray-900">
                             {r.host ? r.host[0].toUpperCase() : "W"}
                           </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-semibold text-gray-800 group-hover:text-blue-600 dark:text-gray-100 dark:group-hover:text-blue-400">
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-xs font-medium text-gray-700 group-hover:text-gray-900 dark:text-gray-300 dark:group-hover:text-gray-100">
                               {r.title || r.href}
-                            </p>
-                            {r.desc && (
-                              <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-                                {r.desc}
-                              </p>
-                            )}
-                            <p className="mt-1.5 truncate text-[10px] text-gray-400">
-                              {r.href}
-                            </p>
-                          </div>
+                            </span>
+                            <span className="block truncate text-[10px] text-gray-400 dark:text-gray-500">
+                              {r.host || r.href}
+                            </span>
+                          </span>
                           <svg
-                            className="mt-1 h-3.5 w-3.5 shrink-0 text-gray-300 transition group-hover:text-blue-500 dark:text-gray-600"
+                            className="h-3 w-3 shrink-0 text-gray-300 transition group-hover:text-gray-500 dark:text-gray-600 dark:group-hover:text-gray-400"
                             viewBox="0 0 24 24"
                             fill="none"
                             stroke="currentColor"
@@ -889,15 +934,15 @@ export function AgentPanel({
                               d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6v6m-11 5L20 4"
                             />
                           </svg>
-                        </div>
-                      </a>
-                    ))}
+                        </a>
+                      ))}
+                    </div>
                   </div>
                 )}
                 {/* 来源内容折叠 */}
                 {parseBrowseContent(webContent).sourcesText && (
-                  <details className="group rounded-2xl border border-gray-100 bg-white dark:border-gray-800 dark:bg-gray-900">
-                    <summary className="flex cursor-pointer select-none items-center gap-1.5 px-3 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400">
+                  <details className="group overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                    <summary className="flex cursor-pointer select-none items-center gap-1.5 px-3.5 py-2.5 text-[11px] font-medium text-gray-400 transition hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
                       <svg
                         className="h-3.5 w-3.5 text-gray-400"
                         viewBox="0 0 24 24"
@@ -911,7 +956,7 @@ export function AgentPanel({
                           d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
                         />
                       </svg>
-                      来源内容
+                      抓取正文
                       <svg
                         className="h-3 w-3 text-gray-400 transition group-open:rotate-90"
                         viewBox="0 0 24 24"
@@ -922,71 +967,20 @@ export function AgentPanel({
                         <path strokeLinecap="round" d="M9 5l7 7-7 7" />
                       </svg>
                     </summary>
-                    <div className="max-h-56 overflow-y-auto whitespace-pre-wrap border-t border-gray-100 px-3 py-2.5 text-xs leading-relaxed text-gray-600 dark:border-gray-800 dark:text-gray-300">
+                    <div className="max-h-56 overflow-y-auto whitespace-pre-wrap border-t border-gray-100 px-3.5 py-3 text-[11px] leading-relaxed text-gray-500 dark:border-gray-800 dark:text-gray-400">
                       {parseBrowseContent(webContent).sourcesText}
                     </div>
                   </details>
                 )}
                 {/* 兜底：普通文本 */}
                 {parseBrowseContent(webContent).results.length === 0 && (
-                  <div className="whitespace-pre-wrap break-words rounded-2xl border border-gray-100 bg-white p-3 text-sm leading-relaxed text-gray-600 shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300">
+                  <div className="whitespace-pre-wrap break-words rounded-2xl border border-gray-100 bg-white p-4 text-xs leading-relaxed text-gray-500 shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400">
                     {webContent}
                   </div>
                 )}
               </div>
             )}
           </div>
-
-          {/* AI 综合文章（标准 markdown，含图片/分节/来源） */}
-          {(articleMd || articleLoading) && !webLoading && (
-            <div className="shrink-0 border-t border-gray-100 px-3 py-3 dark:border-gray-800">
-              <div className="mb-2 flex items-center gap-1.5">
-                <svg
-                  className="h-4 w-4 text-gray-400"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"
-                  />
-                </svg>
-                <span className="text-xs font-semibold text-gray-500">
-                  AI 综合文章
-                </span>
-                <div className="flex-1" />
-                {articleMd && (
-                  <button
-                    onClick={() => {
-                      setMdContent(articleMd);
-                      setActiveEntry(null);
-                      setTab("edit");
-                    }}
-                    className="rounded-full bg-gray-900 px-2.5 py-1 text-[10px] font-medium text-white transition hover:bg-gray-700 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
-                  >
-                    在编辑器中打开
-                  </button>
-                )}
-              </div>
-              {articleLoading ? (
-                <div className="flex items-center gap-2 rounded-xl bg-gray-50 px-3 py-4 text-xs text-gray-400 dark:bg-gray-800/40">
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-gray-400" />
-                  AI 正在筛选资料并生成文章…
-                </div>
-              ) : (
-                articleMd && (
-                  <div className="chat-md max-h-[50vh] overflow-y-auto rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {articleMd}
-                    </ReactMarkdown>
-                  </div>
-                )
-              )}
-            </div>
-          )}
         </div>
       )}
 
@@ -997,11 +991,12 @@ export function AgentPanel({
           <div className="shrink-0 border-b border-gray-50 dark:border-gray-800">
             <button
               onClick={() => setKbSiteOpen(!kbSiteOpen)}
-              className="flex w-full items-center gap-2 px-3 py-2 text-xs text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"
+              className="flex w-full items-center gap-2 px-3.5 py-2.5 text-xs text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"
             >
               <svg
                 className={
-                  "h-3 w-3 transition " + (kbSiteOpen ? "rotate-90" : "")
+                  "h-3.5 w-3.5 text-gray-400 transition " +
+                  (kbSiteOpen ? "rotate-90" : "")
                 }
                 viewBox="0 0 24 24"
                 fill="none"
@@ -1010,11 +1005,25 @@ export function AgentPanel({
               >
                 <path strokeLinecap="round" d="M9 5l7 7-7 7" />
               </svg>
-              {"站点内容源 (文章" +
-                sel.articleIds.length +
-                " · 分类" +
-                sel.categoryIds.length +
-                ")"}
+              <span className="flex items-center gap-1.5 font-medium">
+                <svg
+                  className="h-3.5 w-3.5 text-gray-400"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"
+                  />
+                </svg>
+                知识源
+                <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-normal text-gray-400 dark:bg-gray-800 dark:text-gray-500">
+                  文章 {sel.articleIds.length} · 分类 {sel.categoryIds.length}
+                </span>
+              </span>
             </button>
             {kbSiteOpen && (
               <div className="px-3 pb-2 max-h-40 overflow-y-auto">
@@ -1128,19 +1137,126 @@ export function AgentPanel({
           )}
           {/* Entries */}
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-gray-50 bg-white px-3 py-2 dark:border-gray-800 dark:bg-gray-900">
-              <div className="flex items-center gap-2">
+            {/* 工具栏 */}
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-gray-100 bg-white px-3.5 py-2 dark:border-gray-800 dark:bg-gray-900">
+              <div className="flex items-center gap-1.5">
+                <svg
+                  className="h-3.5 w-3.5 text-gray-400"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"
+                  />
+                </svg>
                 <span className="text-[11px] font-semibold text-gray-500">
-                  知识条目 · {entries.length}条
+                  知识条目
                 </span>
+                <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-normal text-gray-400 dark:bg-gray-800 dark:text-gray-500">
+                  {entries.length}
+                </span>
+              </div>
+              <div className="flex items-center gap-0.5">
+                <button
+                  onClick={() => {
+                    setTab("web");
+                    setWebContent("");
+                  }}
+                  title="浏览网页"
+                  className="grid h-7 w-7 place-items-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+                >
+                  <svg
+                    className="h-3.5 w-3.5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M2 12h20M12 2a15.3 15.3 0 014 10" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => {
+                    const v = !kbAiReadAll;
+                    setKbAiReadAll(v);
+                    localStorage.setItem("kimo_kb_ai_read_all", v ? "1" : "0");
+                    onKbChanged?.();
+                  }}
+                  title={kbAiReadAll ? "AI 读取全部知识" : "AI 不读取知识库"}
+                  className={
+                    "flex items-center gap-1 rounded-full px-2 py-1 text-[10px] transition " +
+                    (kbAiReadAll
+                      ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                      : "bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500")
+                  }
+                >
+                  <span
+                    className={
+                      "h-1.5 w-1.5 rounded-full " +
+                      (kbAiReadAll ? "bg-green-500" : "bg-gray-400")
+                    }
+                  />
+                  AI
+                </button>
+                <div className="relative" ref={exportRef}>
+                  <button
+                    onClick={() => setShowExportMenu(!showExportMenu)}
+                    title="导出 / 导入"
+                    className="grid h-7 w-7 place-items-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+                  >
+                    <svg
+                      className="h-3.5 w-3.5"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+                      />
+                    </svg>
+                  </button>
+                  {showExportMenu && (
+                    <div className="absolute right-0 top-full z-20 mt-1 w-40 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+                      <button
+                        onClick={exportJSON}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                      >
+                        JSON
+                      </button>
+                      <button
+                        onClick={exportMD}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                      >
+                        Markdown
+                      </button>
+                      <div className="border-t border-gray-100 dark:border-gray-800" />
+                      <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800">
+                        导入 JSON
+                        <input
+                          type="file"
+                          accept=".json"
+                          onChange={importJSON}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
                 <button
                   onClick={() => {
                     setActiveEntry(null);
                     setMdContent("");
                     setTab("edit");
                   }}
-                  className="flex items-center gap-1 rounded-full bg-gray-900 px-2 py-0.5 text-[10px] font-medium text-white transition hover:bg-gray-700 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
-                  title="新建知识条目"
+                  className="ml-1 flex items-center gap-1 rounded-full bg-gray-900 px-2.5 py-1 text-[10px] font-medium text-white transition hover:bg-gray-700 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
                 >
                   <svg
                     className="h-3 w-3"
@@ -1153,158 +1269,100 @@ export function AgentPanel({
                   </svg>
                   新建
                 </button>
-                <button
-                  onClick={() => {
-                    setTab("web");
-                    setWebContent("");
-                  }}
-                  className="flex items-center gap-1 rounded-full border border-gray-200 px-2 py-0.5 text-[10px] font-medium text-gray-500 transition hover:border-gray-400 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-                  title="浏览网页"
-                >
-                  <svg
-                    className="h-3 w-3"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <circle cx="12" cy="12" r="10" />
-                    <path d="M2 12h20M12 2a15.3 15.3 0 014 10" />
-                  </svg>
-                  浏览
-                </button>
-                <button
-                  onClick={() => {
-                    const v = !kbAiReadAll;
-                    setKbAiReadAll(v);
-                    localStorage.setItem("kimo_kb_ai_read_all", v ? "1" : "0");
-                    onKbChanged?.();
-                  }}
-                  className={
-                    "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] transition " +
-                    (kbAiReadAll
-                      ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                      : "bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500")
-                  }
-                  title={
-                    kbAiReadAll ? "AI 正在读取全部知识" : "AI 不读取知识库"
-                  }
-                >
-                  <span
-                    className={
-                      "h-1.5 w-1.5 rounded-full " +
-                      (kbAiReadAll ? "bg-green-500" : "bg-gray-400")
-                    }
-                  />
-                  AI读取{kbAiReadAll ? "中" : "关"}
-                </button>
-              </div>
-              <div className="relative" ref={exportRef}>
-                <button
-                  onClick={() => setShowExportMenu(!showExportMenu)}
-                  className="text-[10px] text-gray-400 hover:text-gray-600"
-                >
-                  <svg
-                    className="inline h-3 w-3 mr-1"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
-                    />
-                  </svg>
-                  导出/导入
-                </button>
-                {showExportMenu && (
-                  <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-gray-700 dark:bg-gray-900">
-                    <button
-                      onClick={exportJSON}
-                      className="flex w-full px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-                    >
-                      JSON
-                    </button>
-                    <button
-                      onClick={exportMD}
-                      className="flex w-full px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-                    >
-                      Markdown
-                    </button>
-                    <div className="border-t border-gray-100 dark:border-gray-800" />
-                    <label className="flex cursor-pointer px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800">
-                      导入JSON
-                      <input
-                        type="file"
-                        accept=".json"
-                        onChange={importJSON}
-                        className="hidden"
-                      />
-                    </label>
-                  </div>
-                )}
               </div>
             </div>
+            {/* 条目卡片 */}
             {entries.length === 0 ? (
-              <p className="px-4 py-8 text-center text-xs text-gray-400">
-                在编辑器中编写内容后点击"存为知识"
-              </p>
-            ) : (
-              entries.map((entry) => (
-                <div
-                  key={entry.id}
-                  onClick={() => {
-                    setActiveEntry(entry);
-                    setMdContent("");
-                    setTab("edit");
-                  }}
-                  className={
-                    "group flex cursor-pointer items-center gap-2 border-b border-gray-50 px-3 py-2.5 text-xs hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 " +
-                    (activeEntry?.id === entry.id
-                      ? "bg-gray-100 dark:bg-gray-800/70"
-                      : "")
-                  }
-                >
+              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+                <div className="grid h-11 w-11 place-items-center rounded-2xl bg-gray-100 dark:bg-gray-800">
                   <svg
-                    className="h-3.5 w-3.5 shrink-0 text-gray-400"
+                    className="h-5 w-5 text-gray-400"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
-                    strokeWidth="2"
+                    strokeWidth="1.5"
                   >
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+                      d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"
                     />
                   </svg>
-                  <span className="min-w-0 flex-1 truncate text-gray-700 dark:text-gray-300">
-                    {entry.name}
-                  </span>
-                  <span className="shrink-0 text-[10px] text-gray-400">
-                    {new Date(entry.createdAt).toLocaleDateString("zh-CN")}
-                  </span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteEntry(entry.id);
-                    }}
-                    className="shrink-0 rounded p-0.5 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-red-500"
-                  >
-                    <svg
-                      className="h-3.5 w-3.5"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
                 </div>
-              ))
+                <p className="text-xs text-gray-400">
+                  在编辑器中编写内容后「存为知识」
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1.5 p-2.5">
+                {entries.map((entry) => (
+                  <div
+                    key={entry.id}
+                    onClick={() => {
+                      setActiveEntry(entry);
+                      setMdContent("");
+                      setTab("edit");
+                    }}
+                    className={
+                      "group flex cursor-pointer items-start gap-2.5 rounded-xl border bg-white p-2.5 shadow-sm transition hover:border-gray-200 hover:shadow-md dark:bg-gray-900 dark:hover:border-gray-700 " +
+                      (activeEntry?.id === entry.id
+                        ? "border-gray-300 ring-1 ring-gray-200 dark:border-gray-600 dark:ring-gray-700"
+                        : "border-gray-100 dark:border-gray-800")
+                    }
+                  >
+                    <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                      <svg
+                        className="h-3.5 w-3.5"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+                        />
+                      </svg>
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-medium text-gray-700 dark:text-gray-200">
+                        {entry.name}
+                      </span>
+                      <span className="mt-0.5 line-clamp-2 block text-[10px] leading-relaxed text-gray-400 dark:text-gray-500">
+                        {entry.content.slice(0, 90)}
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 flex-col items-end gap-1">
+                      <span className="text-[9px] text-gray-300 dark:text-gray-600">
+                        {new Date(entry.createdAt).toLocaleDateString("zh-CN")}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteEntry(entry.id);
+                        }}
+                        title="删除"
+                        className="rounded p-0.5 text-gray-300 opacity-0 transition group-hover:opacity-100 hover:text-red-500 dark:text-gray-600"
+                      >
+                        <svg
+                          className="h-3 w-3"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
+                          />
+                        </svg>
+                      </button>
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>

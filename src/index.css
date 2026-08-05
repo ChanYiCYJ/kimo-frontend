@@ -396,6 +396,24 @@ body {
   margin-right: 0.5em;
 }
 
+/* ===== 面板内综合文章（Kimo×Shiro：缩小适配侧栏） ===== */
+.markdown-body.kimo-panel {
+  font-size: 15px;
+  line-height: 1.75;
+}
+.markdown-body.kimo-panel h1 {
+  font-size: 1.45em;
+}
+.markdown-body.kimo-panel h2 {
+  font-size: 1.22em;
+}
+.markdown-body.kimo-panel h3 {
+  font-size: 1.08em;
+}
+.markdown-body.kimo-panel p {
+  margin: 0.7em 0;
+}
+
 /* ===== 代码高亮 ===== */
 .hljs {
   background: transparent;

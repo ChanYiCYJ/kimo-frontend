@@ -32,7 +32,11 @@ export default {
             "Access-Control-Allow-Origin": "*",
           },
         });
-      const want = (e) => engines.split(",").map((s) => s.trim()).includes(e);
+      const want = (e) =>
+        engines
+          .split(",")
+          .map((s) => s.trim())
+          .includes(e);
       const out = [];
       const seen = new Set();
       const push = (r) => {
@@ -46,10 +50,15 @@ export default {
       if (want("bing")) {
         try {
           const res = await fetch(
-            "https://www.bing.com/search?q=" + encodeURIComponent(query) + "&count=" + Math.min(20, limit) + "&mkt=zh-CN",
+            "https://www.bing.com/search?q=" +
+              encodeURIComponent(query) +
+              "&count=" +
+              Math.min(20, limit) +
+              "&mkt=zh-CN",
             {
               headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "User-Agent":
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
               },
               redirect: "follow",
@@ -58,12 +67,17 @@ export default {
           if (res.ok) {
             const html = await res.text();
             // 标准 b_algo 块
-            const blocks = html.match(/<li class="b_algo[^"]*"[\s\S]*?<\/li>/g) || [];
+            const blocks =
+              html.match(/<li class="b_algo[^"]*"[\s\S]*?<\/li>/g) || [];
             for (const block of blocks) {
               if (out.length >= limit) break;
               const hrefM = block.match(/<h2[^>]*>\s*<a[^>]*href="([^"]+)"/);
-              const titleM = block.match(/<h2[^>]*>\s*<a[^>]*href="[^"]*"[^>]*>([\s\S]*?)<\/a>/);
-              const snipM = block.match(/<p[^>]*class="b_lineclamp[^"]*"[^>]*>([\s\S]*?)<\/p>/);
+              const titleM = block.match(
+                /<h2[^>]*>\s*<a[^>]*href="[^"]*"[^>]*>([\s\S]*?)<\/a>/,
+              );
+              const snipM = block.match(
+                /<p[^>]*class="b_lineclamp[^"]*"[^>]*>([\s\S]*?)<\/p>/,
+              );
               if (hrefM && titleM) {
                 let source = "";
                 try {
@@ -72,7 +86,9 @@ export default {
                 push({
                   title: titleM[1].replace(/<[^>]+>/g, "").trim(),
                   url: hrefM[1],
-                  description: (snipM ? snipM[1] : "").replace(/<[^>]+>/g, "").trim(),
+                  description: (snipM ? snipM[1] : "")
+                    .replace(/<[^>]+>/g, "")
+                    .trim(),
                   source,
                   engine: "bing",
                 });
@@ -80,10 +96,15 @@ export default {
             }
             // 降级页：无 b_algo 时宽松匹配 h2>a 结果链接
             if (out.length === 0) {
-              const altBlocks = html.match(/<h2[^>]*>\s*<a[^>]*href="(https?:\/\/[^"]+)"[^>]*>([\s\S]*?)<\/a><\/h2>/g) || [];
+              const altBlocks =
+                html.match(
+                  /<h2[^>]*>\s*<a[^>]*href="(https?:\/\/[^"]+)"[^>]*>([\s\S]*?)<\/a><\/h2>/g,
+                ) || [];
               for (const block of altBlocks) {
                 if (out.length >= limit) break;
-                const m = block.match(/<h2[^>]*>\s*<a[^>]*href="(https?:\/\/[^"]+)"[^>]*>([\s\S]*?)<\/a><\/h2>/);
+                const m = block.match(
+                  /<h2[^>]*>\s*<a[^>]*href="(https?:\/\/[^"]+)"[^>]*>([\s\S]*?)<\/a><\/h2>/,
+                );
                 if (m) {
                   let source = "";
                   try {
@@ -106,16 +127,28 @@ export default {
       // DuckDuckGo HTML（202 验证页则跳过）
       if (want("duckduckgo")) {
         try {
-          const res = await fetch("https://html.duckduckgo.com/html/?q=" + encodeURIComponent(query), {
-            headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          const res = await fetch(
+            "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(query),
+            {
+              headers: {
+                "User-Agent":
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              },
+              redirect: "follow",
             },
-            redirect: "follow",
-          });
+          );
           if (res.ok) {
             const html = await res.text();
-            const links = [...html.matchAll(/<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g)];
-            const snips = [...html.matchAll(/<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g)];
+            const links = [
+              ...html.matchAll(
+                /<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g,
+              ),
+            ];
+            const snips = [
+              ...html.matchAll(
+                /<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g,
+              ),
+            ];
             for (let i = 0; i < links.length && out.length < limit; i++) {
               const raw = links[i][1] || "";
               let target = raw;
@@ -129,7 +162,9 @@ export default {
               push({
                 title: (links[i][2] || "").replace(/<[^>]+>/g, "").trim(),
                 url: target,
-                description: (snips[i]?.[1] || "").replace(/<[^>]+>/g, "").trim(),
+                description: (snips[i]?.[1] || "")
+                  .replace(/<[^>]+>/g, "")
+                  .trim(),
                 source,
                 engine: "duckduckgo",
               });
@@ -141,26 +176,40 @@ export default {
       // Brave（抓 HTML 结果）
       if (want("brave") && out.length < limit) {
         try {
-          const res = await fetch("https://search.brave.com/search?q=" + encodeURIComponent(query) + "&source=web", {
-            headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          const res = await fetch(
+            "https://search.brave.com/search?q=" +
+              encodeURIComponent(query) +
+              "&source=web",
+            {
+              headers: {
+                "User-Agent":
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              },
+              redirect: "follow",
             },
-            redirect: "follow",
-          });
+          );
           if (res.ok) {
             const html = await res.text();
-            const blocks = html.match(/<div[^>]*class="[^"]*snippet[^"]*"[^>]*>[\s\S]*?<\/div>/g) || [];
+            const blocks =
+              html.match(
+                /<div[^>]*class="[^"]*snippet[^"]*"[^>]*>[\s\S]*?<\/div>/g,
+              ) || [];
             for (const block of blocks) {
               if (out.length >= limit) break;
               const hrefM = block.match(/<a[^>]*href="(https?:\/\/[^"]+)"/);
-              const titleM = block.match(/<a[^>]*href="https?:\/\/[^"]+"[^>]*>\s*<[^>]*>([\s\S]*?)<\/[^>]+>\s*<\/a>/);
+              const titleM = block.match(
+                /<a[^>]*href="https?:\/\/[^"]+"[^>]*>\s*<[^>]*>([\s\S]*?)<\/[^>]+>\s*<\/a>/,
+              );
               if (hrefM && titleM) {
                 let source = "";
                 try {
                   source = new URL(hrefM[1]).hostname;
                 } catch {}
                 push({
-                  title: titleM[1].replace(/<[^>]+>/g, "").trim().slice(0, 120),
+                  title: titleM[1]
+                    .replace(/<[^>]+>/g, "")
+                    .trim()
+                    .slice(0, 120),
                   url: hrefM[1],
                   description: "",
                   source,

@@ -813,15 +813,21 @@ export async function webSearchWithContent(
 /** 从网页 HTML 提取 og:image 封面图 */
 async function extractOgImage(url: string): Promise<string> {
   try {
-    const res = await fetchWithTimeout(url, {
-      headers: { Accept: "text/html" },
-    }, 6000);
-    const html = await res.text();
-    const m = html.match(
-      /<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i,
-    ) || html.match(
-      /<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i,
+    const res = await fetchWithTimeout(
+      url,
+      {
+        headers: { Accept: "text/html" },
+      },
+      6000,
     );
+    const html = await res.text();
+    const m =
+      html.match(
+        /<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i,
+      ) ||
+      html.match(
+        /<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i,
+      );
     return m ? m[1].trim() : "";
   } catch {
     return "";
@@ -864,7 +870,9 @@ export async function webSearchToArticle(
   const fetched = await Promise.allSettled(
     targets.map(async (t) => {
       const [content, image] = await Promise.all([
-        fetchWebContent(t.url, 2500).then((c) => c.content).catch(() => ""),
+        fetchWebContent(t.url, 2500)
+          .then((c) => c.content)
+          .catch(() => ""),
         extractOgImage(t.url),
       ]);
       return { url: t.url, title: t.title, content, image };
@@ -891,9 +899,15 @@ export async function webSearchToArticle(
     "- 如有来源图片，用 `![配图](图片URL)` 插入合适位置（无图片则省略）\n" +
     "- 引用事实时用 `> 引用` 块，末尾附「参考来源」列表（Markdown 链接）\n" +
     "- 只输出文章正文，不要额外说明";
-  const userMsg = `查询主题：${query}\n\n【搜索结果】\n${
-    results.slice(0, 10).map((r, i) => `${i + 1}. ${r.title} (${r.url})\n   ${r.description?.slice(0, 200)}`).join("\n")
-  }\n\n【来源内容】\n${sourcesBlock || "(抓取失败，仅凭搜索结果)"}`;
+  const userMsg = `查询主题：${query}\n\n【搜索结果】\n${results
+    .slice(0, 10)
+    .map(
+      (r, i) =>
+        `${i + 1}. ${r.title} (${r.url})\n   ${r.description?.slice(0, 200)}`,
+    )
+    .join(
+      "\n",
+    )}\n\n【来源内容】\n${sourcesBlock || "(抓取失败，仅凭搜索结果)"}`;
 
   try {
     const res = await fetchWithTimeout(
@@ -1041,7 +1055,11 @@ export async function searchWithCache(
   try {
     // 并行：搜索+抓取内容 & AI 文章
     const [content, articleRes] = await Promise.all([
-      webSearchWithContent(query, opts.maxSources ?? 3, opts.perSourceChars ?? 2500),
+      webSearchWithContent(
+        query,
+        opts.maxSources ?? 3,
+        opts.perSourceChars ?? 2500,
+      ),
       webSearchToArticle(query, opts.maxSources ?? 4),
     ]);
     const entry: SearchCacheEntry = {
