@@ -1693,26 +1693,31 @@ export function AIChat({
 
   // Agent 面板宽度拖拽
   const resizeRef = useRef<{ startX: number; startW: number } | null>(null);
-  const onResizeDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    resizeRef.current = { startX: e.clientX, startW: agentWidth };
-    const onMove = (ev: MouseEvent) => {
-      if (!resizeRef.current) return;
-      const d = resizeRef.current.startX - ev.clientX;
-      setAgentWidth(Math.min(560, Math.max(300, resizeRef.current.startW + d)));
-    };
-    const onUp = () => {
-      resizeRef.current = null;
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, [agentWidth]);
+  const onResizeDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      resizeRef.current = { startX: e.clientX, startW: agentWidth };
+      const onMove = (ev: MouseEvent) => {
+        if (!resizeRef.current) return;
+        const d = resizeRef.current.startX - ev.clientX;
+        setAgentWidth(
+          Math.min(560, Math.max(300, resizeRef.current.startW + d)),
+        );
+      };
+      const onUp = () => {
+        resizeRef.current = null;
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [agentWidth],
+  );
 
   const lastAssistant = [...messages]
     .reverse()
@@ -1749,14 +1754,21 @@ export function AIChat({
                 lastAssistantContent={lastAssistant?.content}
                 onExport={exportChat}
                 onUpload={() => fileRef.current?.click()}
-                onArticle={enableArticles ? () => setArticleOpen(true) : undefined}
+                onArticle={
+                  enableArticles ? () => setArticleOpen(true) : undefined
+                }
                 enableArticles={enableArticles}
                 messagesLength={messages.length}
                 pageId={pageId}
                 memory={memory}
                 onMemoryChange={(m) => {
                   setMemory(m);
-                  try { localStorage.setItem(STORAGE_PREFIX + "memory_" + pageId, m); } catch {}
+                  try {
+                    localStorage.setItem(
+                      STORAGE_PREFIX + "memory_" + pageId,
+                      m,
+                    );
+                  } catch {}
                 }}
               />
             </div>
@@ -1765,43 +1777,45 @@ export function AIChat({
       </div>
       {/* 移动端：全屏 overlay */}
       {agentOpen && (
-      <div className="fixed inset-0 z-50 lg:hidden">
-        <div
-          className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-          onClick={() => {
-            refreshKb();
-            setAgentOpen(false);
-          }}
-        />
-        <div className="absolute inset-y-0 right-0 w-full max-w-sm shadow-2xl">
-          <AgentPanel
-            onClose={() => {
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => {
               refreshKb();
               setAgentOpen(false);
             }}
-            onInsertMessage={(t: string) => {
-              setInput((prev: string) => (prev ? prev + "\n\n" + t : t));
-              setAgentOpen(false);
-            }}
-            initUrl={agentInitUrl}
-            lastAssistantContent={lastAssistant?.content}
-            onExport={exportChat}
-            onUpload={() => fileRef.current?.click()}
-            onArticle={enableArticles ? () => setArticleOpen(true) : undefined}
-            enableArticles={enableArticles}
-            messagesLength={messages.length}
-            pageId={pageId}
-            memory={memory}
-            onMemoryChange={(m) => {
-              setMemory(m);
-              try {
-                localStorage.setItem(STORAGE_PREFIX + "memory_" + pageId, m);
-              } catch {}
-            }}
-            onKbChanged={refreshKb}
           />
+          <div className="absolute inset-y-0 right-0 w-full max-w-sm shadow-2xl">
+            <AgentPanel
+              onClose={() => {
+                refreshKb();
+                setAgentOpen(false);
+              }}
+              onInsertMessage={(t: string) => {
+                setInput((prev: string) => (prev ? prev + "\n\n" + t : t));
+                setAgentOpen(false);
+              }}
+              initUrl={agentInitUrl}
+              lastAssistantContent={lastAssistant?.content}
+              onExport={exportChat}
+              onUpload={() => fileRef.current?.click()}
+              onArticle={
+                enableArticles ? () => setArticleOpen(true) : undefined
+              }
+              enableArticles={enableArticles}
+              messagesLength={messages.length}
+              pageId={pageId}
+              memory={memory}
+              onMemoryChange={(m) => {
+                setMemory(m);
+                try {
+                  localStorage.setItem(STORAGE_PREFIX + "memory_" + pageId, m);
+                } catch {}
+              }}
+              onKbChanged={refreshKb}
+            />
+          </div>
         </div>
-      </div>
       )}
     </>
   );

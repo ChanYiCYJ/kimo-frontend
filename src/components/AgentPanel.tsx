@@ -192,6 +192,8 @@ export function AgentPanel({
   const persist = (next: KbSelections) => {
     setSel(next);
     saveKbSelections(pageId, next);
+    saveKbNotes(entries.map((x) => ({ id: x.id, title: x.name, content: x.content, createdAt: x.createdAt })));
+    onKbChanged?.();
   };
   const toggleArticle = (id: number) =>
     persist({
@@ -220,6 +222,8 @@ export function AgentPanel({
     setEntries((prev) => {
       const nx = [e, ...prev];
       persistEntries(nx);
+      // 直接同步到 kbNotes，不等 useEffect（时序问题）
+      saveKbNotes(nx.map((x) => ({ id: x.id, title: x.name, content: x.content, createdAt: x.createdAt })));
       return nx;
     });
     onKbChanged?.();
@@ -230,6 +234,7 @@ export function AgentPanel({
     setEntries((prev) => {
       const nx = prev.filter((x) => x.id !== id);
       persistEntries(nx);
+      saveKbNotes(nx.map((x) => ({ id: x.id, title: x.name, content: x.content, createdAt: x.createdAt })));
       return nx;
     });
     if (activeEntry?.id === id) {
@@ -320,36 +325,71 @@ export function AgentPanel({
     if (e.target) e.target.value = "";
   };
 
-  // ---- Browser: proxy fetch (no iframe, sites block it) ----
+  // ---- Browser: smart URL handling ----
   const browse = () => {
     const u = webUrl.trim(); if (!u) return;
-    const full = u.startsWith("http") ? u : "https://" + u;
+    let full: string;
+    if (/^https?:\/\//i.test(u)) {
+      full = u;
+    } else if (/^[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}/.test(u)) {
+      full = "https://" + u;
+    } else {
+      full = "https://www.google.com/search?q=" + encodeURIComponent(u);
+    }
     setWebUrl(full); setWebContent(""); setWebLoading(true);
-    fetchWebpage(full).then(t => {
-      setWebContent(t || "无法获取内容（目标网站拒绝访问或网络不通）");
-    }).catch(() => {
-      setWebContent("获取失败，请检查网址是否正确");
-    }).finally(() => { setWebLoading(false); });
+    fetchWebpage(full)
+      .then((t) => {
+        setWebContent(t || "无法获取内容（目标网站拒绝访问或网络不通）");
+      })
+      .catch(() => {
+        setWebContent("获取失败，请检查网址是否正确");
+      })
+      .finally(() => {
+        setWebLoading(false);
+      });
   };
 
   // ---- Drag-drop: document-level (MdEditor consumes element events) ----
   const dragCounter = useRef(0);
   useEffect(() => {
-    const onDragEnter = (e: DragEvent) => { e.preventDefault(); dragCounter.current++; if (dragCounter.current === 1) setDragOver(true); };
-    const onDragOver = (e: DragEvent) => { e.preventDefault(); };
-    const onDragLeave = () => { dragCounter.current--; if (dragCounter.current <= 0) { dragCounter.current = 0; setDragOver(false); } };
+    const onDragEnter = (e: DragEvent) => {
+      e.preventDefault();
+      dragCounter.current++;
+      if (dragCounter.current === 1) setDragOver(true);
+    };
+    const onDragOver = (e: DragEvent) => {
+      e.preventDefault();
+    };
+    const onDragLeave = () => {
+      dragCounter.current--;
+      if (dragCounter.current <= 0) {
+        dragCounter.current = 0;
+        setDragOver(false);
+      }
+    };
     const onDrop = (e: DragEvent) => {
-      e.preventDefault(); dragCounter.current = 0; setDragOver(false);
-      const f = e.dataTransfer?.files?.[0]; if (!f) return;
+      e.preventDefault();
+      dragCounter.current = 0;
+      setDragOver(false);
+      const f = e.dataTransfer?.files?.[0];
+      if (!f) return;
       const r = new FileReader();
-      r.onload = () => { setMdContent((p) => (p ? p + "\n\n" + String(r.result || "") : String(r.result || ""))); };
+      r.onload = () => {
+        setMdContent((p) =>
+          p ? p + "\n\n" + String(r.result || "") : String(r.result || ""),
+        );
+      };
       r.readAsText(f);
     };
-    document.addEventListener("dragenter", onDragEnter); document.addEventListener("dragover", onDragOver);
-    document.addEventListener("dragleave", onDragLeave); document.addEventListener("drop", onDrop);
+    document.addEventListener("dragenter", onDragEnter);
+    document.addEventListener("dragover", onDragOver);
+    document.addEventListener("dragleave", onDragLeave);
+    document.addEventListener("drop", onDrop);
     return () => {
-      document.removeEventListener("dragenter", onDragEnter); document.removeEventListener("dragover", onDragOver);
-      document.removeEventListener("dragleave", onDragLeave); document.removeEventListener("drop", onDrop);
+      document.removeEventListener("dragenter", onDragEnter);
+      document.removeEventListener("dragover", onDragOver);
+      document.removeEventListener("dragleave", onDragLeave);
+      document.removeEventListener("drop", onDrop);
     };
   }, []);
 
@@ -433,13 +473,23 @@ export function AgentPanel({
         {tab === "web" && (
           <div className="flex h-full flex-col">
             <div className="flex shrink-0 gap-1.5 p-2">
-              <input value={webUrl}
-                onChange={(e) => { setWebUrl(e.target.value); setWebContent(""); }}
-                onKeyDown={(e) => { if (e.key === "Enter") browse(); }}
+              <input
+                value={webUrl}
+                onChange={(e) => {
+                  setWebUrl(e.target.value);
+                  setWebContent("");
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") browse();
+                }}
                 placeholder="输入网址或关键词搜索…"
-                className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" />
-              <button onClick={browse} disabled={webLoading}
-                className="shrink-0 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-700 disabled:opacity-50 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300">
+                className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+              />
+              <button
+                onClick={browse}
+                disabled={webLoading}
+                className="shrink-0 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-700 disabled:opacity-50 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
+              >
                 {webLoading ? "搜索中…" : "搜索"}
               </button>
             </div>
@@ -448,8 +498,14 @@ export function AgentPanel({
                 <div className="flex items-center justify-center py-12">
                   <div className="flex gap-1.5">
                     <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" />
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: "0.15s" }} />
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: "0.3s" }} />
+                    <span
+                      className="h-2 w-2 animate-bounce rounded-full bg-gray-400"
+                      style={{ animationDelay: "0.15s" }}
+                    />
+                    <span
+                      className="h-2 w-2 animate-bounce rounded-full bg-gray-400"
+                      style={{ animationDelay: "0.3s" }}
+                    />
                   </div>
                 </div>
               )}
@@ -457,11 +513,18 @@ export function AgentPanel({
                 <div className="p-4">
                   <div className="mb-2 flex items-center gap-2 text-xs text-gray-400">
                     <span>{webContent.length.toLocaleString()} 字符</span>
-                    <button onClick={() => onInsertMessage(webContent)}
-                      className="rounded-md bg-gray-100 px-2 py-0.5 text-gray-600 transition hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300">
+                    <button
+                      onClick={() => onInsertMessage(webContent)}
+                      className="rounded-md bg-gray-100 px-2 py-0.5 text-gray-600 transition hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
+                    >
                       发送到对话
                     </button>
-                    <button onClick={() => setWebContent("")} className="rounded-md px-2 py-0.5 text-gray-400 hover:text-gray-600">清除</button>
+                    <button
+                      onClick={() => setWebContent("")}
+                      className="rounded-md px-2 py-0.5 text-gray-400 hover:text-gray-600"
+                    >
+                      清除
+                    </button>
                   </div>
                   <div className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-700 dark:text-gray-300">
                     {webContent.slice(0, 50000)}
@@ -470,11 +533,22 @@ export function AgentPanel({
               )}
               {!webContent && !webLoading && (
                 <div className="flex flex-col items-center justify-center gap-3 py-16 px-4 text-center">
-                  <svg className="h-10 w-10 text-gray-300 dark:text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+                  <svg
+                    className="h-10 w-10 text-gray-300 dark:text-gray-600"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                  >
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="M21 21l-4.35-4.35" />
                   </svg>
-                  <p className="text-sm text-gray-400">输入网址获取网页内容，或输入关键词进行网络搜索</p>
-                  <p className="text-xs text-gray-400">AI 将根据搜索结果回答你的问题</p>
+                  <p className="text-sm text-gray-400">
+                    输入网址获取网页内容，或输入关键词进行网络搜索
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    AI 将根据搜索结果回答你的问题
+                  </p>
                 </div>
               )}
             </div>
@@ -544,95 +618,47 @@ export function AgentPanel({
                 }
                 disabled={!mdContent.trim() && !activeEntry?.content?.trim()}
                 className={`${btn} bg-gray-900 text-white hover:bg-gray-700 disabled:opacity-30 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300`}
-              >
-                <svg
-                  className="h-3.5 w-3.5"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                >
-                  <path d="M3.478 2.404a.75.75 0 00-.926.941l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.404z" />
-                </svg>
-                发送
+              ><svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M3.478 2.404a.75.75 0 00-.926.941l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.404z" /></svg>发送
               </button>
               {!activeEntry && (
-                <button
-                  onClick={saveEntry}
-                  disabled={!mdContent.trim()}
-                  className={`${btn} border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800`}
-                >
-                  <svg
-                    className="h-3.5 w-3.5"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M12 4.5v15m7.5-7.5h-15"
-                    />
-                  </svg>
-                  存为条目
+                <button onClick={saveEntry} disabled={!mdContent.trim()}
+                  className={`${btn} border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800`}>
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>存为条目
+                </button>
+              )}
+              {onUpload && (
+                <button onClick={onUpload}
+                  className={`${btn} border border-gray-200 text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800`}>
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>上传
+                </button>
+              )}
+              {enableArticles && onArticle && (
+                <button onClick={onArticle}
+                  className={`${btn} border border-gray-200 text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800`}>
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"/></svg>写文章
                 </button>
               )}
               <div className="flex-1" />
               <div className="relative" ref={exportRef}>
-                <button
-                  onClick={() => setShowExportMenu(!showExportMenu)}
-                  className={`${btn} border border-gray-200 text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800`}
-                >
-                  <svg
-                    className="h-3.5 w-3.5"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
-                    />
-                  </svg>
-                  导出
+                <button onClick={() => setShowExportMenu(!showExportMenu)}
+                  className={`${btn} border border-gray-200 text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800`}>
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>导出
                 </button>
                 {showExportMenu && (
                   <div className="absolute bottom-full right-0 mb-1 w-44 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-gray-700 dark:bg-gray-900">
-                    <button
-                      onClick={exportAsJSON}
-                      className="flex w-full items-center gap-2 px-3 py-2 text-xs text-gray-600 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-                    >
-                      JSON（可再导入）
-                    </button>
-                    <button
-                      onClick={exportAsMarkdown}
-                      className="flex w-full items-center gap-2 px-3 py-2 text-xs text-gray-600 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-                    >
-                      Markdown
-                    </button>
+                    <button onClick={exportAsJSON} className="flex w-full items-center gap-2 px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800">JSON（可再导入）</button>
+                    <button onClick={exportAsMarkdown} className="flex w-full items-center gap-2 px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800">Markdown</button>
+                    {onExport && (messagesLength ?? 0) > 0 && (
+                      <>
+                        <div className="border-t border-gray-100 dark:border-gray-800" />
+                        <button onClick={onExport} className="flex w-full items-center gap-2 px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800">导出对话</button>
+                      </>
+                    )}
                     <div className="border-t border-gray-100 dark:border-gray-800" />
-                    <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs text-gray-600 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800">
-                      <svg
-                        className="h-3.5 w-3.5"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
-                        />
-                      </svg>
+                    <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800">
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
                       导入 JSON
-                      <input
-                        type="file"
-                        accept=".json"
-                        onChange={importEntries}
-                        className="hidden"
-                      />
+                      <input type="file" accept=".json" onChange={importEntries} className="hidden" />
                     </label>
                   </div>
                 )}
@@ -777,11 +803,17 @@ export function AgentPanel({
             {/* Saved entries list */}
             <div className="shrink-0 border-t border-gray-50 max-h-52 overflow-y-auto dark:border-gray-800">
               <div className="flex items-center justify-between px-3 py-2">
-                <span className="text-[11px] font-medium text-gray-400">知识条目</span>
+                <span className="text-[11px] font-medium text-gray-400">
+                  知识条目
+                </span>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-gray-400">{entries.length} 条</span>
-                  <button onClick={() => setKbExpanded(!kbExpanded)}
-                    className={`text-[10px] transition ${kbExpanded ? "text-gray-700 dark:text-gray-300" : "text-gray-400 hover:text-gray-600"}`}>
+                  <span className="text-[10px] text-gray-400">
+                    {entries.length} 条
+                  </span>
+                  <button
+                    onClick={() => setKbExpanded(!kbExpanded)}
+                    className={`text-[10px] transition ${kbExpanded ? "text-gray-700 dark:text-gray-300" : "text-gray-400 hover:text-gray-600"}`}
+                  >
                     {kbExpanded ? "隐藏站点源" : "站点源"}
                   </button>
                 </div>
@@ -841,73 +873,6 @@ export function AgentPanel({
               )}
             </div>
           </div>
-        )}
-      </div>
-
-      {/* Bottom bar (no "应用" - auto-save) */}
-      <div className="flex shrink-0 items-center gap-1.5 border-t border-gray-100 bg-white px-3 py-2 dark:border-gray-800 dark:bg-gray-900">
-        {onUpload && (
-          <button
-            onClick={onUpload}
-            className={`${btn} border border-gray-200 text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800`}
-          >
-            <svg
-              className="h-3.5 w-3.5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
-              />
-            </svg>
-            上传
-          </button>
-        )}
-        {enableArticles && onArticle && (
-          <button
-            onClick={onArticle}
-            className={`${btn} border border-gray-200 text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800`}
-          >
-            <svg
-              className="h-3.5 w-3.5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125"
-              />
-            </svg>
-            写文章
-          </button>
-        )}
-        {onExport && (messagesLength ?? 0) > 0 && (
-          <button
-            onClick={onExport}
-            className={`${btn} border border-gray-200 text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800`}
-          >
-            <svg
-              className="h-3.5 w-3.5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
-              />
-            </svg>
-            导出对话
-          </button>
         )}
       </div>
     </div>
