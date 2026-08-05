@@ -24,7 +24,14 @@ function getAICfg() {
     const botCfg = JSON.parse(
       localStorage.getItem("kimo_ai_bot_config") || "null",
     );
-    if (botCfg?.endpoint) return botCfg;
+    if (botCfg?.endpoint) return botCfg; // 回退：本机自定义 API（kimo_ai_local_{pageId}，与聊天实际生效配置一致）
+    for (const k of Object.keys(localStorage)) {
+      if (!k.startsWith("kimo_ai_local_")) continue;
+      const lc = JSON.parse(localStorage.getItem(k) || "null");
+      if (lc?.endpoint && lc?.apiKey && lc?.model) {
+        return { endpoint: lc.endpoint, apiKey: lc.apiKey, model: lc.model };
+      }
+    }
   } catch {}
   return null;
 }
@@ -175,11 +182,74 @@ async function ddgLite(query: string): Promise<string> {
   }
 }
 
+/** 中文维基优先，回退英文维基（CORS origin=*，无需 key，海外可直连） */
+async function wikiSearch(query: string): Promise<string> {
+  const zh = await wikiLang(query, "zh");
+  if (zh) return zh;
+  return wikiLang(query, "en");
+}
+
+/** 维基百科 opensearch + 批量条目简介 */
+async function wikiLang(query: string, lang: string): Promise<string> {
+  const api = `https://${lang}.wikipedia.org/w/api.php`;
+  try {
+    const res = await fetch(
+      api +
+        "?action=opensearch&format=json&origin=*&limit=6&namespace=0&search=" +
+        encodeURIComponent(query),
+    );
+    if (!res.ok) return "";
+    const d = (await res.json()) as [string, string[], string[], string[]];
+    const titles = (d[1] || []).filter(Boolean);
+    const descs = d[2] || [];
+    const urls = d[3] || [];
+    if (!titles.length) return "";
+    // 批量拉取条目简介（一条请求，intro 摘要）
+    const extracts: Record<string, string> = {};
+    try {
+      const r2 = await fetch(
+        api +
+          "?action=query&prop=extracts&exintro&explaintext&redirects=1&format=json&origin=*&titles=" +
+          encodeURIComponent(titles.join("|")),
+      );
+      if (r2.ok) {
+        const j2 = (await r2.json()) as {
+          query?: {
+            pages?: Record<string, { title?: string; extract?: string }>;
+          };
+        };
+        for (const p of Object.values(j2.query?.pages || {})) {
+          if (p.title && p.extract) extracts[p.title] = p.extract;
+        }
+      }
+    } catch {}
+    const out: string[] = [];
+    titles.forEach((title, i) => {
+      const url = urls[i] || "";
+      const desc = (extracts[title] || descs[i] || "")
+        .trim()
+        .replace(/\s+/g, " ");
+      if (title)
+        out.push(
+          "- " +
+            title +
+            (url ? " (" + url + ")" : "") +
+            (desc ? "\n  " + desc.slice(0, 300) : ""),
+        );
+    });
+    return out.join("\n");
+  } catch {
+    return "";
+  }
+}
+
 export async function webSearch(query: string): Promise<string> {
   const b = await backendSearch(query);
   if (b) return b;
   const a = await aiSearch(query);
   if (a) return a;
+  const w = await wikiSearch(query);
+  if (w) return w;
   const l = await ddgLite(query);
   if (l) return l;
   return "- 未找到结果\n  请确保AI已配置，或尝试输入完整网址直接访问";
