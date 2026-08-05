@@ -54,6 +54,8 @@ interface MdEditorProps {
   aiPolish?: boolean;
   /** AI 指令生成回调（提供时在工具栏显示内联输入框） */
   aiCommand?: (prompt: string) => Promise<void>;
+  /** 是否显示底部状态栏（默认 true） */
+  showStatusBar?: boolean;
 }
 
 /** 编辑器崩溃时的兜底：降级为纯文本 textarea，避免整页空白 */
@@ -98,6 +100,7 @@ export function MdEditor({
   placeholder = "在这里输入 Markdown 内容...",
   aiPolish = true,
   aiCommand,
+  showStatusBar = true,
 }: MdEditorProps) {
   const editor = useEditor();
   const toolbar = useEditorState(editor);
@@ -460,6 +463,7 @@ export function MdEditor({
       </div>
 
       {/* 底部状态栏 */}
+      {showStatusBar && (
       <div className="flex flex-none items-center justify-between gap-3 border-t border-gray-100 bg-gray-50/60 px-3 py-1.5 text-xs text-gray-400">
         <span>支持 Markdown · 图片可直接粘贴</span>
         <span className="flex items-center gap-3">
@@ -488,6 +492,7 @@ export function MdEditor({
           </span>
         </span>
       </div>
+      )}
     </div>
   );
 }

@@ -845,7 +845,7 @@ export function AgentPanel({
                   onChange={updateEntry}
                   height={h}
                   placeholder="编辑知识条目..."
-                  aiPolish={false}
+                  aiPolish={false} showStatusBar={false}
                 />
               </>
             ) : (
@@ -854,7 +854,7 @@ export function AgentPanel({
                 onChange={setMdContent}
                 height={h}
                 placeholder="编写内容..."
-                aiPolish={false}
+                aiPolish={false} showStatusBar={false}
               />
             )}
           </div>
