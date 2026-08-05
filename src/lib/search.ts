@@ -627,7 +627,8 @@ export async function fetchWebContent(
             ogImage: j.ogImage || "",
             images: Array.isArray(j.images)
               ? j.images.filter(
-                  (im: string) => /^https?:\/\//i.test(im) && !im.includes("data:"),
+                  (im: string) =>
+                    /^https?:\/\//i.test(im) && !im.includes("data:"),
                 )
               : [],
             retrievalMethod: "proxy",
@@ -1025,7 +1026,9 @@ export async function webSearchToArticle(
           : f.value.image
             ? [f.value.image]
             : []
-        ).filter((u: string) => /^https?:\/\//i.test(u) && !u.includes("data:")),
+        ).filter(
+          (u: string) => /^https?:\/\//i.test(u) && !u.includes("data:"),
+        ),
       )
       .filter((u, i, a) => a.indexOf(u) === i)
       .slice(0, 4);

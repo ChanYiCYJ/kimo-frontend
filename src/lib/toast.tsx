@@ -6,30 +6,30 @@ import {
   useRef,
   useState,
   type ReactNode,
-} from 'react'
+} from "react";
 
-type ToastKind = 'success' | 'error' | 'info'
+type ToastKind = "success" | "error" | "info";
 
 interface Toast {
-  id: number
-  kind: ToastKind
-  message: string
+  id: number;
+  kind: ToastKind;
+  message: string;
 }
 
 interface ToastContextValue {
-  toast: (message: string, kind?: ToastKind) => void
-  success: (message: string) => void
-  error: (message: string) => void
-  info: (message: string) => void
+  toast: (message: string, kind?: ToastKind) => void;
+  success: (message: string) => void;
+  error: (message: string) => void;
+  info: (message: string) => void;
 }
 
-const ToastContext = createContext<ToastContextValue | null>(null)
+const ToastContext = createContext<ToastContextValue | null>(null);
 
 const KIND_STYLES: Record<ToastKind, string> = {
-  success: 'border-gray-200 bg-white text-gray-700',
-  error: 'border-red-200 bg-red-50 text-red-700',
-  info: 'border-gray-200 bg-white text-gray-700',
-}
+  success: "border-gray-200 bg-white text-gray-700",
+  error: "border-red-200 bg-red-50 text-red-700",
+  info: "border-gray-200 bg-white text-gray-700",
+};
 
 const KIND_ICON: Record<ToastKind, ReactNode> = {
   success: (
@@ -59,34 +59,34 @@ const KIND_ICON: Record<ToastKind, ReactNode> = {
       />
     </svg>
   ),
-}
+};
 
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [toasts, setToasts] = useState<Toast[]>([])
-  const idRef = useRef(0)
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const idRef = useRef(0);
 
   const dismiss = useCallback((id: number) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id))
-  }, [])
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
 
   const toast = useCallback(
-    (message: string, kind: ToastKind = 'info') => {
-      const id = ++idRef.current
-      setToasts((prev) => [...prev, { id, kind, message }])
-      window.setTimeout(() => dismiss(id), 3000)
+    (message: string, kind: ToastKind = "info") => {
+      const id = ++idRef.current;
+      setToasts((prev) => [...prev, { id, kind, message }]);
+      window.setTimeout(() => dismiss(id), 3000);
     },
     [dismiss],
-  )
+  );
 
   const value = useMemo<ToastContextValue>(
     () => ({
       toast,
-      success: (m: string) => toast(m, 'success'),
-      error: (m: string) => toast(m, 'error'),
-      info: (m: string) => toast(m, 'info'),
+      success: (m: string) => toast(m, "success"),
+      error: (m: string) => toast(m, "error"),
+      info: (m: string) => toast(m, "info"),
     }),
     [toast],
-  )
+  );
 
   return (
     <ToastContext.Provider value={value}>
@@ -114,11 +114,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         ))}
       </div>
     </ToastContext.Provider>
-  )
+  );
 }
 
 export function useToast(): ToastContextValue {
-  const ctx = useContext(ToastContext)
-  if (!ctx) throw new Error('useToast 必须在 ToastProvider 内使用')
-  return ctx
+  const ctx = useContext(ToastContext);
+  if (!ctx) throw new Error("useToast 必须在 ToastProvider 内使用");
+  return ctx;
 }
