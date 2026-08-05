@@ -984,10 +984,13 @@ export function AIChat({
     <div className="flex h-full min-h-0 flex-col bg-white dark:bg-gray-900">
       {/* 顶栏：左侧历史+机器人，右侧Agent+主题 */}
       <div className="flex shrink-0 items-center gap-1.5 border-b border-gray-100 px-3 py-2 dark:border-gray-700 sm:px-4">
-        {/* 左侧：历史按钮 */}
+        {/* 左侧：历史按钮（桌面切换侧边栏收起/展开，移动端打开抽屉） */}
         <button
-          onClick={() => setSidebarOpen(true)}
-          className={iconBtn}
+          onClick={() => {
+            if (window.innerWidth >= 1024) setSidebarCollapsed((v) => !v);
+            else setSidebarOpen(true);
+          }}
+          className={iconBtn + (sidebarCollapsed ? " text-gray-600 dark:text-gray-300" : "")}
           title="会话列表"
           aria-label="会话列表"
         >
@@ -1844,7 +1847,7 @@ export function AIChat({
     </div>
   );
 
-  // 桌面端侧边栏（可折叠，折叠后显示展开按钮）
+  // 桌面端侧边栏（可折叠）
   const desktopSidebar = (
     <div
       className={
@@ -1852,28 +1855,9 @@ export function AIChat({
         (sidebarCollapsed ? "w-0 border-r-0" : "w-64")
       }
     >
-      {sidebarCollapsed ? null : sidebar}
+      {!sidebarCollapsed && sidebar}
     </div>
   );
-
-  // 侧边栏折叠时的展开小按钮
-  const sidebarExpandBtn = sidebarCollapsed ? (
-    <button
-      onClick={() => setSidebarCollapsed(false)}
-      className="hidden shrink-0 items-center justify-center rounded-r-lg border border-l-0 border-gray-200 bg-white px-1 py-3 text-gray-400 transition hover:bg-gray-50 hover:text-gray-600 lg:flex dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-800"
-      title="展开侧边栏"
-    >
-      <svg
-        className="h-4 w-4"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-      >
-        <path strokeLinecap="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-      </svg>
-    </button>
-  ) : null;
 
   const mobileSidebar = (
     <div
@@ -1985,7 +1969,6 @@ export function AIChat({
   const layout = (
     <div className="flex h-full min-h-0 overflow-hidden bg-white dark:bg-gray-900">
       {desktopSidebar}
-      {sidebarExpandBtn}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">{chatBody}</div>
       {agentSidebar}
       {mobileSidebar}

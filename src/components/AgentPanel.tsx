@@ -105,7 +105,9 @@ export function AgentPanel({
   });
   const [draftWordCount, setDraftWordCount] = useState(0);
   const [draftSaved, setDraftSaved] = useState(true);
-  const draftTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const draftTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
   const draftContentRef = useRef("");
   const draftKey = "kimo_editor_draft";
 
@@ -126,7 +128,9 @@ export function AgentPanel({
   }, []);
 
   // 同步 mdContent 到 ref（避免 beforeunload 重复注册）
-  useEffect(() => { draftContentRef.current = mdContent; }, [mdContent]);
+  useEffect(() => {
+    draftContentRef.current = mdContent;
+  }, [mdContent]);
 
   // 自动保存草稿（1.5s 防抖）
   useEffect(() => {
