@@ -21,6 +21,12 @@ html {
   scrollbar-width: none;
 }
 
+/* 内容淡入（AI 对话消息等，配合 animate-[kfade_...] 使用） */
+@keyframes kfade {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 body {
   font-family: 'Noto Serif SC', 'SimSun', '宋体', serif;
   -webkit-font-smoothing: antialiased;

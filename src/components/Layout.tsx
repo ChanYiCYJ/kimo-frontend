@@ -7,7 +7,7 @@ import { pageApi, resolveAsset } from '../lib/api'
 import { AI_CHAT_MARKER } from '../lib/types'
 
 export function Layout() {
-  const { settings } = useSite()
+  const { settings, loaded } = useSite()
   const location = useLocation()
   const navigate = useNavigate()
   const [isAIChat, setIsAIChat] = useState(false)
@@ -73,6 +73,21 @@ export function Layout() {
         <main className="min-h-0 flex-1">
           <Outlet />
         </main>
+      </div>
+    )
+  }
+
+  // 首页落地页重定向：等待站点设置加载完成再渲染，避免海外站先闪现博客首页再跳转 /ai
+  if (location.pathname === '/' && !loaded) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="flex items-center gap-2 text-sm text-gray-400">
+          <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          加载中…
+        </div>
       </div>
     )
   }
