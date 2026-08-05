@@ -436,7 +436,12 @@ export function AgentPanel({
         setWebUrl(u);
         const text = await fetchWebpage(u);
         setWebContent(text || "无法获取内容");
-      } else if (/^[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}/.test(u)) {
+      } else if (
+        /^[a-zA-Z0-9][-a-zA-Z0-9]*(\.[a-zA-Z0-9][-a-zA-Z0-9]*)+\.?$/.test(
+          u,
+        )
+      ) {
+        // 纯域名（不含空格）才按网址抓取，否则按关键词搜索
         const full = "https://" + u;
         setWebUrl(full);
         const text = await fetchWebpage(full);
