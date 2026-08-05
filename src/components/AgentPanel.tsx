@@ -96,7 +96,53 @@ export function AgentPanel({
   >([]);
   const [kbSiteLoading, setKbSiteLoading] = useState(true);
   const [kbSiteOpen, setKbSiteOpen] = useState(false);
-  const [kbAiReadAll, setKbAiReadAll] = useState(() => { try { return localStorage.getItem("kimo_kb_ai_read_all") !== "0"; } catch { return true; } });
+  const [kbAiReadAll, setKbAiReadAll] = useState(() => {
+    try {
+      return localStorage.getItem("kimo_kb_ai_read_all") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const [draftWordCount, setDraftWordCount] = useState(0);
+  const [draftSaved, setDraftSaved] = useState(true);
+  const draftTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const draftContentRef = useRef("");
+  const draftKey = "kimo_editor_draft";
+
+  // 恢复草稿 + beforeunload 防丢失
+  useEffect(() => {
+    try {
+      const d = localStorage.getItem(draftKey);
+      if (d && !mdContent) setMdContent(d);
+    } catch {}
+    const onBefore = () => {
+      try {
+        if (draftContentRef.current.trim())
+          localStorage.setItem(draftKey, draftContentRef.current);
+      } catch {}
+    };
+    window.addEventListener("beforeunload", onBefore);
+    return () => window.removeEventListener("beforeunload", onBefore);
+  }, []);
+
+  // 同步 mdContent 到 ref（避免 beforeunload 重复注册）
+  useEffect(() => { draftContentRef.current = mdContent; }, [mdContent]);
+
+  // 自动保存草稿（1.5s 防抖）
+  useEffect(() => {
+    if (draftTimer.current) clearTimeout(draftTimer.current);
+    setDraftSaved(false);
+    setDraftWordCount(mdContent.replace(/\s/g, "").length);
+    draftTimer.current = setTimeout(() => {
+      try {
+        localStorage.setItem(draftKey, mdContent);
+      } catch {}
+      setDraftSaved(true);
+    }, 1500);
+    return () => {
+      if (draftTimer.current) clearTimeout(draftTimer.current);
+    };
+  }, [mdContent]);
   const [activeEntry, setActiveEntry] = useState<KbEntry | null>(null);
 
   // Memory
@@ -775,11 +821,28 @@ export function AgentPanel({
                   知识条目 · {entries.length}条
                 </span>
                 <button
-                  onClick={() => { const v = !kbAiReadAll; setKbAiReadAll(v); localStorage.setItem("kimo_kb_ai_read_all", v ? "1" : "0"); onKbChanged?.(); }}
-                  className={"flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] transition " + (kbAiReadAll ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500")}
-                  title={kbAiReadAll ? "AI 正在读取全部知识" : "AI 不读取知识库"}
+                  onClick={() => {
+                    const v = !kbAiReadAll;
+                    setKbAiReadAll(v);
+                    localStorage.setItem("kimo_kb_ai_read_all", v ? "1" : "0");
+                    onKbChanged?.();
+                  }}
+                  className={
+                    "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] transition " +
+                    (kbAiReadAll
+                      ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                      : "bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500")
+                  }
+                  title={
+                    kbAiReadAll ? "AI 正在读取全部知识" : "AI 不读取知识库"
+                  }
                 >
-                  <span className={"h-1.5 w-1.5 rounded-full " + (kbAiReadAll ? "bg-green-500" : "bg-gray-400")} />
+                  <span
+                    className={
+                      "h-1.5 w-1.5 rounded-full " +
+                      (kbAiReadAll ? "bg-green-500" : "bg-gray-400")
+                    }
+                  />
                   AI读取{kbAiReadAll ? "中" : "关"}
                 </button>
               </div>
@@ -833,7 +896,7 @@ export function AgentPanel({
             </div>
             {entries.length === 0 ? (
               <p className="px-4 py-8 text-center text-xs text-gray-400">
-                在编辑器中编写内容后点击"存为条目"
+                在编辑器中编写内容后点击"存为知识"
               </p>
             ) : (
               entries.map((entry) => (
@@ -929,6 +992,7 @@ export function AgentPanel({
                   placeholder="编辑知识条目..."
                   aiPolish={false}
                   showStatusBar={false}
+                  rounded={false}
                 />
               </>
             ) : (
@@ -939,54 +1003,63 @@ export function AgentPanel({
                 placeholder="编写内容..."
                 aiPolish={false}
                 showStatusBar={false}
+                rounded={false}
               />
             )}
           </div>
-          <div className="flex shrink-0 items-center gap-1.5 border-t border-gray-100 px-3 py-2 dark:border-gray-800">
+          <div className="flex shrink-0 items-center justify-between border-t border-gray-100 px-3 py-2 dark:border-gray-800">
+            <span className="text-[10px] text-gray-400">
+              {mdContent ? `${draftWordCount} 字` : "Markdown 格式"}
+              <span className="ml-1.5 inline-flex items-center gap-1">
+                {draftSaved ? (
+                  <span className="text-green-500">● 已保存</span>
+                ) : (
+                  <span className="text-amber-400">○ 保存中</span>
+                )}
+              </span>
+            </span>
             {!activeEntry && (
-              <>
-                <button
-                  onClick={saveEntry}
-                  disabled={!mdContent.trim() || saving}
-                  className={
-                    btn +
-                    " bg-gray-900 text-white hover:bg-gray-700 disabled:opacity-30 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
-                  }
-                >
-                  {saving ? (
-                    <svg
-                      className="h-3.5 w-3.5 animate-spin"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                      />
-                    </svg>
-                  ) : (
-                    <svg
-                      className="h-3.5 w-3.5"
-                      viewBox="0 0 24 24"
-                      fill="none"
+              <button
+                onClick={saveEntry}
+                disabled={!mdContent.trim() || saving}
+                className={
+                  btn +
+                  " bg-gray-900 text-white hover:bg-gray-700 disabled:opacity-30 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
+                }
+              >
+                {saving ? (
+                  <svg
+                    className="h-3.5 w-3.5 animate-spin"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
                       stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path strokeLinecap="round" d="M12 4.5v15m7.5-7.5h-15" />
-                    </svg>
-                  )}
-                  {saving ? "保存中" : "存为条目"}
-                </button>
-              </>
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                    />
+                  </svg>
+                ) : (
+                  <svg
+                    className="h-3.5 w-3.5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path strokeLinecap="round" d="M12 4.5v15m7.5-7.5h-15" />
+                  </svg>
+                )}
+                {saving ? "保存中" : "存为知识"}
+              </button>
             )}
           </div>
         </div>

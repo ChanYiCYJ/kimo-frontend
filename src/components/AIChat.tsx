@@ -692,12 +692,23 @@ export function AIChat({
         try {
           const aiReadAll = localStorage.getItem("kimo_kb_ai_read_all") !== "0";
           const notes = aiReadAll ? getKbNotes() : [];
-          const attachNotes = kbAttachments.map((a: { title: string; content: string }) => ({ title: a.title, content: a.content }));
+          const attachNotes = kbAttachments.map(
+            (a: { title: string; content: string }) => ({
+              title: a.title,
+              content: a.content,
+            }),
+          );
           const all = aiReadAll ? [...attachNotes, ...notes] : attachNotes;
           const unique = new Map<string, { title: string; content: string }>();
-          for (const n of all) { if (n.content && !unique.has(n.content)) unique.set(n.content, n); }
+          for (const n of all) {
+            if (n.content && !unique.has(n.content)) unique.set(n.content, n);
+          }
           const valid = [...unique.values()];
-          if (valid.length) return "【知识库条目】\n" + valid.map((n) => "- " + n.title + "：" + n.content).join("\n");
+          if (valid.length)
+            return (
+              "【知识库条目】\n" +
+              valid.map((n) => "- " + n.title + "：" + n.content).join("\n")
+            );
         } catch {}
         return "";
       })();
@@ -1833,7 +1844,7 @@ export function AIChat({
     </div>
   );
 
-  // 桌面端侧边栏（可折叠）
+  // 桌面端侧边栏（可折叠，折叠后显示展开按钮）
   const desktopSidebar = (
     <div
       className={
@@ -1841,9 +1852,28 @@ export function AIChat({
         (sidebarCollapsed ? "w-0 border-r-0" : "w-64")
       }
     >
-      {!sidebarCollapsed && sidebar}
+      {sidebarCollapsed ? null : sidebar}
     </div>
   );
+
+  // 侧边栏折叠时的展开小按钮
+  const sidebarExpandBtn = sidebarCollapsed ? (
+    <button
+      onClick={() => setSidebarCollapsed(false)}
+      className="hidden shrink-0 items-center justify-center rounded-r-lg border border-l-0 border-gray-200 bg-white px-1 py-3 text-gray-400 transition hover:bg-gray-50 hover:text-gray-600 lg:flex dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-800"
+      title="展开侧边栏"
+    >
+      <svg
+        className="h-4 w-4"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+      >
+        <path strokeLinecap="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+      </svg>
+    </button>
+  ) : null;
 
   const mobileSidebar = (
     <div
@@ -1955,6 +1985,7 @@ export function AIChat({
   const layout = (
     <div className="flex h-full min-h-0 overflow-hidden bg-white dark:bg-gray-900">
       {desktopSidebar}
+      {sidebarExpandBtn}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">{chatBody}</div>
       {agentSidebar}
       {mobileSidebar}

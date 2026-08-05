@@ -56,6 +56,8 @@ interface MdEditorProps {
   aiCommand?: (prompt: string) => Promise<void>;
   /** 是否显示底部状态栏（默认 true） */
   showStatusBar?: boolean;
+  /** 是否圆角（默认 true） */
+  rounded?: boolean;
 }
 
 /** 编辑器崩溃时的兜底：降级为纯文本 textarea，避免整页空白 */
@@ -101,6 +103,7 @@ export function MdEditor({
   aiPolish = true,
   aiCommand,
   showStatusBar = true,
+  rounded = true,
 }: MdEditorProps) {
   const editor = useEditor();
   const toolbar = useEditorState(editor);
@@ -211,7 +214,10 @@ export function MdEditor({
 
   return (
     <div
-      className="flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white"
+      className={
+        "flex flex-col overflow-hidden border border-gray-200 bg-white" +
+        (rounded ? " rounded-2xl" : "")
+      }
       style={{ height }}
     >
       {/* 工具栏 */}
