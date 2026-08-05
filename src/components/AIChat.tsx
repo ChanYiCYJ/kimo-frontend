@@ -644,8 +644,19 @@ export function AIChat({
       const kbKnowledge = (() => {
         try {
           const notes = getKbNotes();
-          const valid = notes.filter((n: { title?: string; content?: string }) => n.title || n.content);
-          if (valid.length) return "【知识库条目】\n" + valid.map((n: { title?: string; content?: string }) => `- ${n.title}：${n.content}`).join("\n");
+          const valid = notes.filter(
+            (n: { title?: string; content?: string }) => n.title || n.content,
+          );
+          if (valid.length)
+            return (
+              "【知识库条目】\n" +
+              valid
+                .map(
+                  (n: { title?: string; content?: string }) =>
+                    `- ${n.title}：${n.content}`,
+                )
+                .join("\n")
+            );
         } catch {}
         return "";
       })();
