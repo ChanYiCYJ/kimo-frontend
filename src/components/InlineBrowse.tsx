@@ -2,143 +2,120 @@ import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { searchWithCache } from "../lib/search";
+import { saveKbEntry } from "../lib/kb";
 import { TypeWriter } from "./Spinner";
-
-interface Source {
-  title: string;
-  href: string;
-  host: string;
-}
-
-function parseSources(content: string): { results: Source[]; sourcesText: string } {
-  const srcIdx = content.indexOf("【来源内容");
-  const resultsText = srcIdx >= 0 ? content.slice(0, srcIdx) : content;
-  const sourcesText = srcIdx >= 0 ? content.slice(srcIdx) : "";
-  const results = resultsText
-    .split(/\n(?=(?:-\s|\d+[.、)]\s))/)
-    .map((s) => s.trim())
-    .filter((s) => s && !/^【[^】]*】\s*$/.test(s))
-    .map((line) => {
-      const urlM = line.match(/https?:\/\/[^\s)\]】>]+/);
-      const href = urlM ? urlM[0].replace(/[)\]】>]+$/, "") : "";
-      const title = line
-        .replace(/^(?:-\s|\d+[.、)]\s+)/, "")
-        .replace(/\*\*/g, "")
-        .replace(/\s*https?:\/\/[^\s)\]】>]+/, " ")
-        .split("\n")[0]
-        .trim()
-        .replace(/[\s()）【】]+$/g, "");
-      let host = "";
-      try {
-        host = href ? new URL(href).hostname.replace(/^www\./i, "") : "";
-      } catch {}
-      return { title, href, host };
-    })
-    .filter((r) => r.href && /^https?:\/\//i.test(r.href) && r.title);
-  return { results, sourcesText };
-}
+import { useToast } from "../lib/toast";
 
 /**
- * 内嵌浏览：移动端搜索时直接嵌在对话里（站点式 Think Different 加载 + AI 文章 + 来源）。
+ * 浏览结果底部面板（移动端）：搜索后从底部滑出，不内嵌进对话流、也不自动弹 Agent 面板。
+ * 只保留 AI 文章 + 保存文章（无来源卡/抓取正文卡）。
  */
 export function InlineBrowse({
   query,
-  onOpenPanel,
+  onClose,
 }: {
   query: string;
-  onOpenPanel?: () => void;
+  onClose: () => void;
 }) {
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
-  const [content, setContent] = useState("");
   const [article, setArticle] = useState("");
+  const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    setContent("");
     setArticle("");
     searchWithCache(query, { maxSources: 3, perSourceChars: 2500 }).then(
       (r) => {
         if (!alive) return;
         setLoading(false);
-        setContent(r.content || "未找到结果");
         setArticle(r.article || "");
       },
     );
     return () => {
       alive = false;
     };
-  }, [query]);
+  }, [query, nonce]);
 
-  const { results } = parseSources(content);
+  const save = () => {
+    const title = (
+      article.match(/^#\s+(.+)$/m)?.[1] || query
+    )
+      .trim()
+      .slice(0, 60);
+    saveKbEntry(title, article);
+    toast("已保存到知识库");
+  };
 
   return (
-    <div className="mt-2 overflow-hidden rounded-2xl border border-gray-100 bg-white dark:border-gray-800 dark:bg-gray-900">
-      {loading ? (
-        <div className="flex flex-col items-center justify-center gap-3 px-4 py-8">
-          <TypeWriter
-            text="Think Different"
-            className="text-base font-medium tracking-[0.2em] text-gray-500 dark:text-gray-400"
-          />
-          <p className="font-mono text-[11px] text-gray-300 dark:text-gray-600">
-            $ loading ...
-          </p>
+    <div className="fixed inset-x-0 bottom-0 z-[100] lg:hidden">
+      {/* 遮罩：点击关闭 */}
+      <div
+        className="absolute inset-0 bg-black/30"
+        onClick={onClose}
+      />
+      <div className="relative mx-auto max-w-2xl animate-[kslideUp_0.3s_ease-out] rounded-t-2xl border-t border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+        <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2.5 dark:border-gray-800">
+          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+            浏览结果
+          </span>
+          <button
+            onClick={onClose}
+            title="关闭"
+            className="grid h-7 w-7 place-items-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+          >
+            <svg
+              className="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
-      ) : (
-        <div className="p-3">
-          {article ? (
+        <div className="max-h-[60vh] overflow-y-auto p-4">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-10">
+              <TypeWriter
+                text="Think Different"
+                className="text-base font-medium tracking-[0.2em] text-gray-500 dark:text-gray-400"
+              />
+              <p className="font-mono text-[11px] text-gray-300 dark:text-gray-600">
+                $ loading ...
+              </p>
+            </div>
+          ) : article ? (
             <div className="markdown-body kimo-panel">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{article}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {article}
+              </ReactMarkdown>
             </div>
           ) : (
-            content && (
-              <p className="whitespace-pre-wrap text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-                {content}
-              </p>
-            )
-          )}
-          {results.length > 0 && (
-            <div className="mt-3 border-t border-gray-50 pt-2 dark:border-gray-800">
-              <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">
-                来源 · {results.length}
-              </p>
-              <div className="mt-1 space-y-0.5">
-                {results.map((r, i) => (
-                  <a
-                    key={i}
-                    href={r.href}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-1.5 text-[11px] text-gray-500 transition hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400"
-                  >
-                    <span className="truncate">{r.title}</span>
-                    <span className="shrink-0 text-[10px] text-gray-300 dark:text-gray-600">
-                      {r.host}
-                    </span>
-                  </a>
-                ))}
-              </div>
+            <div className="flex flex-col items-center gap-2 py-6">
+              <p className="text-xs text-gray-400">文章生成失败</p>
+              <button
+                onClick={() => setNonce((n) => n + 1)}
+                className="rounded-full border border-gray-200 px-3 py-1.5 text-xs text-gray-500 transition hover:border-gray-900 hover:text-gray-900 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-200 dark:hover:text-gray-100"
+              >
+                重新生成
+              </button>
             </div>
           )}
-          {onOpenPanel && (
-            <button
-              onClick={onOpenPanel}
-              className="mt-2 flex items-center gap-1 text-[11px] text-gray-400 transition hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
-            >
-              在 Agent 中查看
-              <svg
-                className="h-3 w-3"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          )}
         </div>
-      )}
+        {!loading && article && (
+          <div className="flex justify-end border-t border-gray-100 px-4 py-2.5 dark:border-gray-800">
+            <button
+              onClick={save}
+              className="rounded-full bg-gray-900 px-4 py-1.5 text-xs font-medium text-white transition hover:bg-gray-700 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300"
+            >
+              保存文章
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

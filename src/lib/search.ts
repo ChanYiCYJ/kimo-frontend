@@ -878,7 +878,13 @@ export async function webSearchToArticle(
     } catch {
       host = u;
     }
-    return { title: host, url: u, description: "", source: host, engine: "seed" };
+    return {
+      title: host,
+      url: u,
+      description: "",
+      source: host,
+      engine: "seed",
+    };
   });
   if (!results.length) {
     const multi = await searchMulti(

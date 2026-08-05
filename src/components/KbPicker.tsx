@@ -13,7 +13,6 @@ export function KbPicker({
   onToggle,
   onInsert,
   onClose,
-  onOpenAgent,
   webSearchOn,
   onToggleWebSearch,
   browseAgentOn,
@@ -23,7 +22,6 @@ export function KbPicker({
   onToggle: (id: string) => void;
   onInsert: (notes: KbNote[]) => void;
   onClose: () => void;
-  onOpenAgent: () => void;
   webSearchOn: boolean;
   onToggleWebSearch: () => void;
   browseAgentOn: boolean;
@@ -37,123 +35,69 @@ export function KbPicker({
     }
   });
   const [listOpen, setListOpen] = useState(false);
-  const picked = notes.filter((n) => selected.includes(n.id));
+
+  // 点条目 = 直接选中并插入（不再需要「插入选中」按钮）
+  const handlePick = (n: KbNote) => {
+    onToggle(n.id);
+    onInsert([n]);
+  };
+
   return createPortal(
-    <div className="fixed bottom-20 left-4 right-4 z-[100] mx-auto max-w-lg overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900 sm:left-16 sm:right-auto sm:w-96">
+    <div className="fixed bottom-20 left-4 right-4 z-[100] mx-auto max-w-lg animate-[kslideUp_0.25s_ease-out] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900 sm:left-16 sm:right-auto sm:w-96">
+      {/* 头部：标题 + 关闭 */}
+      <div className="flex items-center justify-between border-b border-gray-100 px-3.5 py-2.5 dark:border-gray-800">
+        <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+          添加
+        </span>
+        <button
+          onClick={onClose}
+          title="关闭"
+          className="grid h-7 w-7 place-items-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+        >
+          <svg
+            className="h-4 w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
       <div className="px-3 py-2.5">
-        {/* 网络搜索开关（点击直接切换） */}
-        <button
-          onClick={onToggleWebSearch}
-          className={
-            "flex w-full items-center justify-between rounded-xl px-3 py-2.5 transition " +
-            (webSearchOn
-              ? "bg-blue-50 dark:bg-blue-900/30"
-              : "hover:bg-gray-100 dark:hover:bg-gray-800")
-          }
-        >
-          <span
+        {/* 网络访问：网络搜索 / 浏览 Agent 互斥切换（都是联网，二选一） */}
+        <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-gray-400">
+          网络访问
+        </p>
+        <div className="flex items-center gap-1 rounded-xl bg-gray-100 p-1 dark:bg-gray-800">
+          <button
+            onClick={onToggleWebSearch}
             className={
-              "flex items-center gap-2.5 text-sm font-medium " +
+              "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium transition " +
               (webSearchOn
-                ? "text-blue-600 dark:text-blue-400"
-                : "text-gray-600 dark:text-gray-300")
+                ? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100"
+                : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200")
             }
           >
-            <span
-              className={
-                "grid h-7 w-7 place-items-center rounded-lg " +
-                (webSearchOn
-                  ? "bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400"
-                  : "bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500")
-              }
-            >
-              <svg
-                className="h-4 w-4"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <circle cx="11" cy="11" r="7" />
-                <path strokeLinecap="round" d="M21 21l-4.35-4.35" />
-              </svg>
-            </span>
             网络搜索
-          </span>
-          <span
+          </button>
+          <button
+            onClick={onToggleBrowseAgent}
             className={
-              "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition " +
-              (webSearchOn ? "bg-blue-500" : "bg-gray-300 dark:bg-gray-600")
-            }
-          >
-            <span
-              className={
-                "inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition " +
-                (webSearchOn ? "translate-x-[18px]" : "translate-x-1")
-              }
-            />
-          </span>
-        </button>
-        {/* 浏览 Agent 开关（开启后搜索自动生成综合文章） */}
-        <button
-          onClick={onToggleBrowseAgent}
-          className={
-            "mt-1 flex w-full items-center justify-between rounded-xl px-3 py-2.5 transition " +
-            (browseAgentOn
-              ? "bg-violet-50 dark:bg-violet-900/30"
-              : "hover:bg-gray-100 dark:hover:bg-gray-800")
-          }
-        >
-          <span
-            className={
-              "flex items-center gap-2.5 text-sm font-medium " +
+              "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium transition " +
               (browseAgentOn
-                ? "text-violet-600 dark:text-violet-400"
-                : "text-gray-600 dark:text-gray-300")
+                ? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100"
+                : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200")
             }
           >
-            <span
-              className={
-                "grid h-7 w-7 place-items-center rounded-lg " +
-                (browseAgentOn
-                  ? "bg-violet-100 text-violet-600 dark:bg-violet-900/50 dark:text-violet-400"
-                  : "bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500")
-              }
-            >
-              <svg
-                className="h-4 w-4"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"
-                />
-              </svg>
-            </span>
             浏览 Agent
-          </span>
-          <span
-            className={
-              "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition " +
-              (browseAgentOn ? "bg-violet-500" : "bg-gray-300 dark:bg-gray-600")
-            }
-          >
-            <span
-              className={
-                "inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition " +
-                (browseAgentOn ? "translate-x-[18px]" : "translate-x-1")
-              }
-            />
-          </span>
-        </button>
-        {/* 知识库条目：可展开/收起 */}
+          </button>
+        </div>
+        {/* 知识库条目：点击即选中插入 */}
         <button
           onClick={() => setListOpen(!listOpen)}
-          className="mt-1 flex w-full items-center justify-between rounded-xl px-3 py-2.5 transition hover:bg-gray-100 dark:hover:bg-gray-800"
+          className="mt-2 flex w-full items-center justify-between rounded-xl px-2 py-2 transition hover:bg-gray-100 dark:hover:bg-gray-800"
         >
           <span className="flex items-center gap-2.5 text-sm font-medium text-gray-600 dark:text-gray-300">
             <span className="grid h-7 w-7 place-items-center rounded-lg bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500">
@@ -197,21 +141,22 @@ export function KbPicker({
               </p>
             ) : (
               notes.map((n) => (
-                <label
+                <button
                   key={n.id}
-                  className="group flex cursor-pointer items-start gap-2.5 rounded-xl px-3 py-2 transition hover:bg-gray-50 dark:hover:bg-gray-800"
+                  onClick={() => handlePick(n)}
+                  className="group flex w-full items-start gap-2.5 rounded-xl px-3 py-2 text-left transition hover:bg-gray-50 dark:hover:bg-gray-800"
                 >
                   <span
                     className={
                       "mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded border transition " +
                       (selected.includes(n.id)
-                        ? "border-blue-500 bg-blue-500 dark:border-blue-400 dark:bg-blue-400"
+                        ? "border-gray-900 bg-gray-900 dark:border-gray-200 dark:bg-gray-200"
                         : "border-gray-300 dark:border-gray-600")
                     }
                   >
                     {selected.includes(n.id) && (
                       <svg
-                        className="h-3 w-3 text-white"
+                        className="h-3 w-3 text-white dark:text-gray-900"
                         viewBox="0 0 24 24"
                         fill="none"
                         stroke="currentColor"
@@ -225,56 +170,26 @@ export function KbPicker({
                       </svg>
                     )}
                   </span>
-                  <input
-                    type="checkbox"
-                    checked={selected.includes(n.id)}
-                    onChange={() => onToggle(n.id)}
-                    className="sr-only"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p
+                  <span className="min-w-0 flex-1">
+                    <span
                       className={
-                        "truncate text-sm font-medium " +
+                        "block truncate text-sm font-medium " +
                         (selected.includes(n.id)
                           ? "text-gray-900 dark:text-gray-100"
                           : "text-gray-700 dark:text-gray-200")
                       }
                     >
                       {n.title}
-                    </p>
-                    <p className="line-clamp-1 text-xs text-gray-400">
+                    </span>
+                    <span className="line-clamp-1 block text-xs text-gray-400">
                       {n.content.slice(0, 80)}
-                    </p>
-                  </div>
-                </label>
+                    </span>
+                  </span>
+                </button>
               ))
             )}
           </div>
         )}
-      </div>
-      {/* 底部 */}
-      <div className="flex items-center justify-between border-t border-gray-100 bg-gray-50/60 px-3 py-2 dark:border-gray-800 dark:bg-gray-800/40">
-        <button
-          onClick={() => {
-            onOpenAgent();
-            onClose();
-          }}
-          className="rounded-lg px-2.5 py-1.5 text-xs text-gray-500 transition hover:bg-gray-200/60 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
-        >
-          打开完整面板
-        </button>
-        <button
-          onClick={() => onInsert(picked)}
-          disabled={picked.length === 0}
-          className={
-            "rounded-lg px-4 py-1.5 text-xs font-medium transition " +
-            (picked.length
-              ? "bg-blue-500 text-white hover:bg-blue-600 dark:bg-blue-500 dark:text-white dark:hover:bg-blue-600"
-              : "cursor-not-allowed bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-600")
-          }
-        >
-          插入选中{picked.length ? ` (${picked.length})` : ""}
-        </button>
       </div>
     </div>,
     document.body,

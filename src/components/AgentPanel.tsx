@@ -4,10 +4,12 @@ import remarkGfm from "remark-gfm";
 import { MdEditor } from "./MdEditor";
 import { TypeWriter } from "./Spinner";
 import { fetchWebpage, searchWithCache } from "../lib/search";
+import { useToast } from "../lib/toast";
 import { SettingsTab, type AgentSettingsProps } from "./SettingsTab";
 import {
   saveKbNotes,
   saveKbSelections,
+  saveKbEntry,
   getKbSelections,
   loadKbOptions,
   downloadText,
@@ -113,6 +115,7 @@ export function AgentPanel({
   const [mdContent, setMdContent] = useState(initEditContent || "");
   const [dragOver, setDragOver] = useState(false);
   const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
 
   // KB
   const [entries, setEntries] = useState<KbEntry[]>(loadEntries);
@@ -607,43 +610,16 @@ export function AgentPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initUrl, searchNonce]);
 
-  /** 解析浏览结果：拆分为「搜索结果」列表与「来源内容」块 */
-  const parseBrowseContent = (content: string) => {
-    const srcIdx = content.indexOf("【来源内容");
-    const resultsText = srcIdx >= 0 ? content.slice(0, srcIdx) : content;
-    const sourcesText = srcIdx >= 0 ? content.slice(srcIdx) : "";
-    // 解析搜索结果行
-    const results = resultsText
-      .split(/\n(?=(?:-\s|\d+[.、)]\s))/)
-      .map((s) => s.trim())
-      .filter((s) => s && !/^【[^】]*】\s*$/.test(s))
-      .map((line) => {
-        const urlM = line.match(/https?:\/\/[^\s)\]】>]+/);
-        const href = urlM ? urlM[0].replace(/[)\]】>]+$/, "") : "";
-        const title = line
-          .replace(/^(?:-\s|\d+[.、)]\s+)/, "")
-          .replace(/\*\*/g, "")
-          .replace(/\s*https?:\/\/[^\s)\]】>]+/, " ")
-          .split("\n")[0]
-          .trim()
-          .replace(/[\s()）【】]+$/g, "");
-        const desc = line
-          .split("\n")
-          .slice(1)
-          .join(" ")
-          .replace(/\*\*/g, "")
-          .replace(/\s+/g, " ")
-          .trim();
-        let host = "";
-        try {
-          host = href ? new URL(href).hostname.replace(/^www\./i, "") : "";
-        } catch {}
-        return { title, href, desc, host };
-      })
-      .filter(
-        (r) => r.href && /^https?:\/\//i.test(r.href) && (r.title || r.desc),
-      );
-    return { results, sourcesText };
+  /** 保存 AI 文章到知识库（标题取 H1，缺省用搜索词） */
+  const saveArticle = () => {
+    if (!articleMd) return;
+    const title = (
+      articleMd.match(/^#\s+(.+)$/m)?.[1] || webUrl || "浏览文章"
+    )
+      .trim()
+      .slice(0, 60);
+    saveKbEntry(title, articleMd);
+    toast("已保存到知识库");
   };
 
   const btn =
@@ -802,14 +778,10 @@ export function AgentPanel({
                       <div className="flex-1" />
                       {articleMd && (
                         <button
-                          onClick={() => {
-                            setMdContent(articleMd);
-                            setActiveEntry(null);
-                            setTab("edit");
-                          }}
-                          className="rounded-full border border-gray-200 px-2.5 py-1 text-[10px] text-gray-500 transition hover:border-gray-900 hover:text-gray-900 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-200 dark:hover:text-gray-100"
+                          onClick={saveArticle}
+                          className="rounded-full bg-gray-900 px-3 py-1 text-[10px] font-medium text-white transition hover:bg-gray-700 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300"
                         >
-                          在编辑器中打开
+                          保存文章
                         </button>
                       )}
                     </div>
@@ -831,107 +803,14 @@ export function AgentPanel({
                     </div>
                   </article>
                 )}
-                {/* 搜索结果（紧凑来源列表） */}
-                {parseBrowseContent(webContent).results.length > 0 && (
-                  <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                    <div className="flex items-center justify-between px-3.5 py-2">
-                      <span className="text-[10px] font-medium uppercase tracking-wider text-gray-400">
-                        来源
-                      </span>
-                      <span className="text-[10px] text-gray-300 dark:text-gray-600">
-                        {parseBrowseContent(webContent).results.length}
-                      </span>
-                    </div>
-                    <div className="divide-y divide-gray-50 dark:divide-gray-800/60">
-                      {parseBrowseContent(webContent).results.map((r, i) => (
-                        <a
-                          key={i}
-                          href={r.href || "#"}
-                          target="_blank"
-                          rel="noreferrer"
-                          onClick={(e) => {
-                            if (!r.href) e.preventDefault();
-                          }}
-                          className="group flex items-center gap-2.5 px-3.5 py-2 transition hover:bg-gray-50 dark:hover:bg-gray-800/40"
-                        >
-                          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-gray-100 text-[10px] font-semibold text-gray-500 transition group-hover:bg-gray-900 group-hover:text-white dark:bg-gray-800 dark:text-gray-400 dark:group-hover:bg-gray-200 dark:group-hover:text-gray-900">
-                            {r.host ? r.host[0].toUpperCase() : "W"}
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-xs font-medium text-gray-700 group-hover:text-gray-900 dark:text-gray-300 dark:group-hover:text-gray-100">
-                              {r.title || r.href}
-                            </span>
-                            <span className="block truncate text-[10px] text-gray-400 dark:text-gray-500">
-                              {r.host || r.href}
-                            </span>
-                          </span>
-                          <svg
-                            className="h-3 w-3 shrink-0 text-gray-300 transition group-hover:text-gray-500 dark:text-gray-600 dark:group-hover:text-gray-400"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6v6m-11 5L20 4"
-                            />
-                          </svg>
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {/* 来源内容折叠 */}
-                {parseBrowseContent(webContent).sourcesText && (
-                  <details className="group overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                    <summary className="flex cursor-pointer select-none items-center gap-1.5 px-3.5 py-2.5 text-[11px] font-medium text-gray-400 transition hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
-                      <svg
-                        className="h-3.5 w-3.5 text-gray-400"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
-                        />
-                      </svg>
-                      抓取正文
-                      <svg
-                        className="h-3 w-3 text-gray-400 transition group-open:rotate-90"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <path strokeLinecap="round" d="M9 5l7 7-7 7" />
-                      </svg>
-                    </summary>
-                    <div className="max-h-56 overflow-y-auto whitespace-pre-wrap border-t border-gray-100 px-3.5 py-3 text-[11px] leading-relaxed text-gray-500 dark:border-gray-800 dark:text-gray-400">
-                      {parseBrowseContent(webContent).sourcesText}
-                    </div>
-                  </details>
-                )}
-                {/* 文章生成失败兜底：内容在但 AI 文章为空时，提供重试 */}
-                {parseBrowseContent(webContent).results.length > 0 &&
-                  !articleMd &&
-                  !articleLoading && (
-                    <button
-                      onClick={() => browse(webUrl)}
-                      className="w-full rounded-2xl border border-dashed border-gray-200 bg-white/50 px-3.5 py-2.5 text-center text-[11px] text-gray-400 transition hover:border-gray-300 hover:text-gray-600 dark:border-gray-700 dark:bg-gray-900/50 dark:text-gray-500 dark:hover:border-gray-500 dark:hover:text-gray-300"
-                    >
-                      AI 文章生成失败，点击重新生成
-                    </button>
-                  )}
-                {/* 兜底：普通文本 */}
-                {parseBrowseContent(webContent).results.length === 0 && (
-                  <div className="whitespace-pre-wrap break-words rounded-2xl border border-gray-100 bg-white p-4 text-xs leading-relaxed text-gray-500 shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400">
-                    {webContent}
-                  </div>
+                {/* 文章生成失败兜底：重试 */}
+                {!articleMd && !articleLoading && (
+                  <button
+                    onClick={() => browse(webUrl)}
+                    className="w-full rounded-2xl border border-dashed border-gray-200 bg-white/50 px-3.5 py-2.5 text-center text-[11px] text-gray-400 transition hover:border-gray-300 hover:text-gray-600 dark:border-gray-700 dark:bg-gray-900/50 dark:text-gray-500 dark:hover:border-gray-500 dark:hover:text-gray-300"
+                  >
+                    AI 文章生成失败，点击重新生成
+                  </button>
                 )}
               </div>
             )}

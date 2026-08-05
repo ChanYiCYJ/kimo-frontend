@@ -271,9 +271,7 @@ export function AIChat({
         : "text-[15px]";
   const [webSearchOn, setWebSearchOn] = useState(() => loadWebSearchOn());
   /** 浏览 Agent：开启后搜索自动生成综合文章（默认开） */
-  const [browseAgentOn, setBrowseAgentOn] = useState(() =>
-    loadBrowseAgentOn(),
-  );
+  const [browseAgentOn, setBrowseAgentOn] = useState(() => loadBrowseAgentOn());
   /** AI 读取知识库开关（默认开，设置里可关） */
   const [kbAiReadAll, setKbAiReadAll] = useState(() => {
     try {
@@ -301,7 +299,6 @@ export function AIChat({
   /** 手机端：搜索/浏览结果内嵌对话显示（不强制弹面板） */
   const [inlineBrowse, setInlineBrowse] = useState<{
     query: string;
-    msgIdx: number;
     nonce: number;
   } | null>(null);
   const clearMemory = useCallback(() => {
@@ -444,6 +441,14 @@ export function AIChat({
     setStick(true);
     setSidebarOpen(false);
     setLimitReached(false);
+    // 新建会话：清空上一会话遗留的工具卡/内嵌浏览等临时状态
+    setToolCalls([]);
+    setInlineBrowse(null);
+    setAgentKbOpen(undefined);
+    setAgentEditContent(undefined);
+    setAgentInitUrl(undefined);
+    setAgentSearchNonce((n) => n + 1);
+    setKbPickerOpen(false);
   }, [sessions, saveSessions]);
 
   const selectSession = useCallback((id: string) => {
@@ -562,21 +567,26 @@ export function AIChat({
     refreshKb();
   }, [refreshKb]);
 
+  // 网络搜索 / 浏览 Agent 互斥（都是网络访问的一环，开启一个自动关闭另一个）
   const toggleWebSearch = useCallback(() => {
-    setWebSearchOn((prev) => {
-      const n = !prev;
-      saveWebSearchOn(n);
-      return n;
-    });
-  }, []);
+    const n = !webSearchOn;
+    setWebSearchOn(n);
+    saveWebSearchOn(n);
+    if (n) {
+      setBrowseAgentOn(false);
+      saveBrowseAgentOn(false);
+    }
+  }, [webSearchOn]);
 
   const toggleBrowseAgent = useCallback(() => {
-    setBrowseAgentOn((prev) => {
-      const n = !prev;
-      saveBrowseAgentOn(n);
-      return n;
-    });
-  }, []);
+    const n = !browseAgentOn;
+    setBrowseAgentOn(n);
+    saveBrowseAgentOn(n);
+    if (n) {
+      setWebSearchOn(false);
+      saveWebSearchOn(false);
+    }
+  }, [browseAgentOn]);
 
   // 会话重命名
   const startRename = useCallback((e: React.MouseEvent, s: Session) => {
@@ -815,7 +825,8 @@ export function AIChat({
     const editCmd = editClosed || editOpen;
     const kbCmd = reply.match(/\[(?:KB|OPEN_KB|知识库)(?::\s*([^\]]+))?\]/);
     const kbSaveCmd = parseKbTool(reply);
-    const msgIdx = messages.length;
+    // 工具卡/内嵌浏览挂到 AI 消息底部（messages 是发送前的快照：用户消息在 messages.length，AI 回复在 +1）
+    const msgIdx = messages.length + 1;
     // 电脑端工具触发后自动打开 Agent 面板；手机端仅展示小卡片，用户点击卡片才打开
     const autoOpenAgent = () => {
       if (window.innerWidth >= 1024) setAgentOpen(true);
@@ -838,7 +849,7 @@ export function AIChat({
       ]);
     } else if (browseCmd) {
       if (window.innerWidth < 1024) {
-        setInlineBrowse({ query: browseCmd[1], msgIdx, nonce: Date.now() });
+        setInlineBrowse({ query: browseCmd[1], nonce: Date.now() });
       } else {
         setAgentTab("web");
         setAgentInitUrl(browseCmd[1]);
@@ -861,7 +872,6 @@ export function AIChat({
         if (window.innerWidth < 1024) {
           setInlineBrowse({
             query: searchCmd[1].trim(),
-            msgIdx,
             nonce: Date.now(),
           });
         } else {
@@ -908,7 +918,7 @@ export function AIChat({
       const q = es?.[1]?.trim().slice(0, 60);
       if (q) {
         if (window.innerWidth < 1024) {
-          setInlineBrowse({ query: q, msgIdx, nonce: Date.now() });
+          setInlineBrowse({ query: q, nonce: Date.now() });
         } else {
           setAgentTab("web");
           setAgentInitUrl(q);
@@ -1588,10 +1598,9 @@ export function AIChat({
                                       q &&
                                       window.innerWidth < 1024
                                     ) {
-                                      // 手机端：内嵌到对话显示结果
+                                      // 手机端：底部滑出浏览结果（不自动弹 Agent 面板）
                                       setInlineBrowse({
                                         query: q,
-                                        msgIdx: i,
                                         nonce: Date.now(),
                                       });
                                       return;
@@ -1642,14 +1651,7 @@ export function AIChat({
                             })}
                         </div>
                       )}
-                      {/* 手机端：搜索/浏览结果内嵌对话 */}
-                      {inlineBrowse && inlineBrowse.msgIdx === i && (
-                        <InlineBrowse
-                          key={inlineBrowse.nonce}
-                          query={inlineBrowse.query}
-                          onOpenPanel={() => setAgentOpen(true)}
-                        />
-                      )}
+
                       {m.role === "assistant" && (
                         <div
                           className={`mt-1 flex items-center gap-1 opacity-0 transition group-hover:opacity-100 ${speakingIdx === i ? "opacity-100" : ""}`}
@@ -1895,25 +1897,12 @@ export function AIChat({
                           (n) => !prev.find((x) => x.id === n.id),
                         ),
                       ]);
-                      setKbPickerOpen(false);
                     }}
                     onClose={() => setKbPickerOpen(false)}
-                    onOpenAgent={() => {
-                      setAgentTab("kb");
-                      setAgentInitUrl(undefined);
-                      setAgentEditContent(undefined);
-                      setAgentOpen(true);
-                    }}
                     webSearchOn={webSearchOn}
-                    onToggleWebSearch={() => {
-                      toggleWebSearch();
-                      setKbPickerOpen(false);
-                    }}
+                    onToggleWebSearch={toggleWebSearch}
                     browseAgentOn={browseAgentOn}
-                    onToggleBrowseAgent={() => {
-                      toggleBrowseAgent();
-                      setKbPickerOpen(false);
-                    }}
+                    onToggleBrowseAgent={toggleBrowseAgent}
                   />
                 </>
               )}
@@ -2233,6 +2222,14 @@ export function AIChat({
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">{chatBody}</div>
       {agentSidebar}
       {mobileSidebar}
+      {/* 手机端浏览结果：底部滑出面板（非内嵌对话） */}
+      {inlineBrowse && (
+        <InlineBrowse
+          key={inlineBrowse.nonce}
+          query={inlineBrowse.query}
+          onClose={() => setInlineBrowse(null)}
+        />
+      )}
     </div>
   );
 
