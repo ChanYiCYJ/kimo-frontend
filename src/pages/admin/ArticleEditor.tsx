@@ -127,7 +127,7 @@ export function ArticleEditor() {
   return (
     <div className="fade-up">
       {/* 顶栏：返回 + 标题 + 发布（紧凑） */}
-      <div className="sticky top-14 z-20 -mx-4 -mt-4 mb-3 flex items-center gap-2 border-b border-gray-200/70 bg-white/80 px-4 py-2 backdrop-blur sm:px-6">
+      <div className="sticky top-0 z-20 -mx-4 mb-4 flex items-center gap-2 border-b border-gray-200/70 bg-white/80 px-3 py-2.5 backdrop-blur sm:px-5 lg:top-14 lg:-mx-6 lg:-mt-4 lg:px-6 lg:py-2.5">
         <button
           onClick={() => navigate("/dashboard/articles")}
           title="返回"
