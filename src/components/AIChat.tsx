@@ -1523,7 +1523,8 @@ export function AIChat({
           <div className="flex items-center gap-0.5 rounded-[26px] border border-gray-200 bg-white p-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition focus-within:border-gray-400 focus-within:shadow-[0_0_0_3px_rgba(156,163,175,0.15)] dark:border-gray-600 dark:bg-gray-800">
             {/* + 按钮：打开知识库 */}
             <button
-              onClick={() => setAgentOpen(true)}
+              onClick={() => { setAgentOpen(true); }}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
               className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
               title="知识库条目"
               aria-label="知识库条目"

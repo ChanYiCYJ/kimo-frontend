@@ -78,7 +78,7 @@ export function AgentPanel({
   onKbChanged?: () => void;
 }) {
   const [tab, setTab] = useState<"web" | "kb" | "edit">(
-    initUrl ? "web" : "edit",
+    initUrl ? "web" : "kb",
   );
   const [webUrl, setWebUrl] = useState(initUrl || "");
   const [webLoading, setWebLoading] = useState(false);
@@ -920,64 +920,13 @@ export function AgentPanel({
             )}
           </div>
           <div className="flex shrink-0 items-center gap-1.5 border-t border-gray-100 px-3 py-2 dark:border-gray-800">
-            <button
-              onClick={() =>
-                onInsertMessage(mdContent || activeEntry?.content || "")
-              }
-              disabled={!(mdContent.trim() || activeEntry?.content?.trim())}
-              className={
-                btn +
-                " bg-gray-900 text-white hover:bg-gray-700 disabled:opacity-30 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
-              }
-            >
-              <svg
-                className="h-3.5 w-3.5"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <path d="M3.478 2.404a.75.75 0 00-.926.941l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.404z" />
-              </svg>
-              发送
-            </button>
             {!activeEntry && (
-              <button
-                onClick={saveEntry}
-                disabled={!mdContent.trim() || saving}
-                className={
-                  btn +
-                  " border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-                }
-              >
+              <button onClick={saveEntry} disabled={!mdContent.trim() || saving}
+                className={btn + " bg-gray-900 text-white hover:bg-gray-700 disabled:opacity-30 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"}>
                 {saving ? (
-                  <svg
-                    className="h-3.5 w-3.5 animate-spin"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                    />
-                  </svg>
+                  <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
                 ) : (
-                  <svg
-                    className="h-3.5 w-3.5"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path strokeLinecap="round" d="M12 4.5v15m7.5-7.5h-15" />
-                  </svg>
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
                 )}
                 {saving ? "保存中" : "存为条目"}
               </button>
