@@ -146,3 +146,139 @@ export function downloadText(filename: string, text: string): void {
   a.click()
   URL.revokeObjectURL(a.href)
 }
+
+// ================= AI 工具调用解析：创建/编辑知识库 =================
+// AI 回复格式：
+//   [KB-SAVE:标题]内容[/KB-SAVE]   —— 新建或按标题更新一条知识库
+//   [KB-EDIT:标题]新内容[/KB-EDIT] —— 修改已有知识库条目（按标题匹配）
+export interface KbToolCmd {
+  mode: 'save' | 'edit'
+  title: string
+  content: string
+}
+
+export function parseKbTool(reply: string): KbToolCmd | null {
+  const saveM = reply.match(
+    /\[KB-SAVE:\s*([^\]]+)\]\s*([\s\S]*?)\s*\[\/KB-SAVE\]/,
+  )
+  if (saveM) {
+    return { mode: 'save', title: saveM[1].trim(), content: saveM[2].trim() }
+  }
+  const editM = reply.match(
+    /\[KB-EDIT:\s*([^\]]+)\]\s*([\s\S]*?)\s*\[\/KB-EDIT\]/,
+  )
+  if (editM) {
+    return { mode: 'edit', title: editM[1].trim(), content: editM[2].trim() }
+  }
+  return null
+}
+
+/** 按标题（忽略大小写/首尾空格）在笔记列表中找到条目 */
+export function findKbNoteByTitle(
+  notes: KbNote[],
+  title: string,
+): KbNote | undefined {
+  const t = title.trim().toLowerCase()
+  return notes.find((n) => n.title.trim().toLowerCase() === t)
+}
+
+// ---- 知识条目存储（与 AgentPanel 同构：kimo_kb_entries 为准 + 同步 kimo_kb_notes）----
+export interface KbEntryRecord {
+  id: string
+  name: string
+  content: string
+  createdAt: number
+}
+
+const ENTRIES_KEY = 'kimo_kb_entries'
+
+export function loadKbEntries(): KbEntryRecord[] {
+  try {
+    const r = JSON.parse(localStorage.getItem(ENTRIES_KEY) || '[]')
+    return Array.isArray(r) ? r : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * AI 创建/编辑知识库条目（按标题匹配，命中则更新，否则新建）。
+ * 同步写 kimo_kb_entries 与 kimo_kb_notes，返回目标条目。
+ */
+export function saveKbEntry(
+  title: string,
+  content: string,
+): KbEntryRecord {
+  const entries = loadKbEntries()
+  const t = title.trim()
+  const existing = entries.find(
+    (e) => e.name.trim().toLowerCase() === t.toLowerCase(),
+  )
+  let entry: KbEntryRecord
+  let next: KbEntryRecord[]
+  if (existing) {
+    entry = { ...existing, content }
+    next = entries.map((e) => (e.id === existing.id ? entry : e))
+  } else {
+    entry = { id: uid(), name: t, content, createdAt: Date.now() }
+    next = [entry, ...entries]
+  }
+  try {
+    localStorage.setItem(ENTRIES_KEY, JSON.stringify(next))
+  } catch {
+    /* 忽略 */
+  }
+  saveKbNotes(
+    next.map((e) => ({
+      id: e.id,
+      title: e.name,
+      content: e.content,
+      createdAt: e.createdAt,
+    })),
+  )
+  return entry
+}
+
+// ================= 编辑器临时草稿（本机存储，非知识条目） =================
+export interface KbDraft {
+  id: string
+  name: string
+  content: string
+  createdAt: number
+}
+
+const DRAFTS_KEY = 'kimo_editor_drafts'
+
+export function loadEditorDrafts(): KbDraft[] {
+  try {
+    const r = JSON.parse(localStorage.getItem(DRAFTS_KEY) || '[]')
+    return Array.isArray(r) ? r : []
+  } catch {
+    return []
+  }
+}
+
+/** 保存一份临时草稿（同一名字会覆盖），返回最新列表 */
+export function addEditorDraft(content: string, name?: string): KbDraft[] {
+  const draft: KbDraft = {
+    id: uid(),
+    name:
+      (name && name.trim()) ||
+      '草稿 ' + new Date().toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+    content,
+    createdAt: Date.now(),
+  }
+  const next = [draft, ...loadEditorDrafts()].slice(0, 20)
+  try {
+    localStorage.setItem(DRAFTS_KEY, JSON.stringify(next))
+  } catch { /* 忽略 */ }
+  return next
+}
+
+export function removeEditorDraft(id: string): KbDraft[] {
+  const next = loadEditorDrafts().filter((d) => d.id !== id)
+  try {
+    localStorage.setItem(DRAFTS_KEY, JSON.stringify(next))
+  } catch { /* 忽略 */ }
+  return next
+}

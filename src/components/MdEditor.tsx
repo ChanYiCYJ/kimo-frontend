@@ -111,7 +111,10 @@ export function MdEditor({
   const toolbar = useEditorState(editor);
   const [cmdInput, setCmdInput] = useState("");
   const [cmdLoading, setCmdLoading] = useState(false);
-  const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
+  // 移动端默认收起 markdown 快捷工具栏（手机布局不显示，需要时点开）
+  const [toolbarCollapsed, setToolbarCollapsed] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < 640,
+  );
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const lastMdRef = useRef<string>("");

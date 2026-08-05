@@ -8,7 +8,11 @@ import {
   getKbSelections,
   loadKbOptions,
   downloadText,
+  loadEditorDrafts,
+  addEditorDraft,
+  removeEditorDraft,
   type KbSelections,
+  type KbDraft,
 } from "../lib/kb";
 
 // ===== Types =====
@@ -70,6 +74,8 @@ export function AgentPanel({
   onMemoryChange,
   onKbChanged,
   settings,
+  kbOpen,
+  onKbOpenConsumed,
 }: {
   onClose: () => void;
   initUrl?: string;
@@ -81,6 +87,11 @@ export function AgentPanel({
   onMemoryChange?: (m: string) => void;
   onKbChanged?: () => void;
   settings?: AgentSettingsProps;
+  kbOpen?: {
+    nonce: number;
+    entry: { id: string; name: string; content: string; createdAt: number };
+  };
+  onKbOpenConsumed?: () => void;
 }) {
   const [tab, setTab] = useState<"web" | "kb" | "edit" | "settings">(
     initTab || (initUrl ? "web" : "kb"),
@@ -156,6 +167,11 @@ export function AgentPanel({
   }, [mdContent]);
   const [activeEntry, setActiveEntry] = useState<KbEntry | null>(null);
 
+  // 编辑器临时草稿（存草稿/恢复/删除）
+  const [drafts, setDrafts] = useState<KbDraft[]>(loadEditorDrafts);
+  const [showDraftMenu, setShowDraftMenu] = useState(false);
+  const draftMenuRef = useRef<HTMLDivElement>(null);
+
   // Memory
   const [editingMemory, setEditingMemory] = useState(false);
   const [memoryDraft, setMemoryDraft] = useState("");
@@ -186,6 +202,38 @@ export function AgentPanel({
       setActiveEntry(null);
     }
   }, [initTab, initEditContent]);
+
+  // AI 创建/编辑知识库：AIChat 已通过 kb.ts 写入存储，这里仅展示到编辑器并刷新列表
+  useEffect(() => {
+    if (!kbOpen) return;
+    setEntries(loadEntries());
+    const { entry } = kbOpen;
+    if (entry && (entry.name.trim() || entry.content.trim())) {
+      setActiveEntry({
+        id: entry.id,
+        name: entry.name,
+        content: entry.content,
+        createdAt: entry.createdAt,
+      });
+      setMdContent(entry.content);
+      setTab("edit");
+    }
+    onKbOpenConsumed?.();
+  }, [kbOpen]);
+
+  // 草稿菜单点击外部关闭
+  useEffect(() => {
+    if (!showDraftMenu) return;
+    const h = (e: MouseEvent) => {
+      if (
+        draftMenuRef.current &&
+        !draftMenuRef.current.contains(e.target as Node)
+      )
+        setShowDraftMenu(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [showDraftMenu]);
 
   // KB site load
   useEffect(() => {
@@ -387,6 +435,30 @@ export function AgentPanel({
       return nx;
     });
     onKbChanged?.();
+  };
+
+  // ---- 编辑器临时草稿 / 清空 ----
+  const saveDraft = () => {
+    if (!mdContent.trim()) return;
+    setDrafts(addEditorDraft(mdContent));
+    setShowDraftMenu(false);
+  };
+  const restoreDraft = (d: KbDraft) => {
+    setActiveEntry(null);
+    setMdContent(d.content);
+    setTab("edit");
+    setShowDraftMenu(false);
+  };
+  const deleteDraft = (id: string) => {
+    setDrafts(removeEditorDraft(id));
+  };
+  const clearEditor = () => {
+    const hasContent =
+      (mdContent || "").trim() || (activeEntry?.content || "").trim();
+    if (!hasContent) return;
+    if (!window.confirm("确定清空当前编辑内容？")) return;
+    if (activeEntry) updateEntry("");
+    else setMdContent("");
   };
 
   // ---- Export/Import ----
@@ -1134,60 +1206,152 @@ export function AgentPanel({
               />
             )}
           </div>
-          <div className="flex shrink-0 items-center justify-between border-t border-gray-100 px-3 py-2 dark:border-gray-800">
-            <span className="text-[10px] text-gray-400">
-              {mdContent ? `${draftWordCount} 字` : "Markdown 格式"}
-              <span className="ml-1.5 inline-flex items-center gap-1">
-                {draftSaved ? (
-                  <span className="text-green-500">● 已保存</span>
-                ) : (
-                  <span className="text-amber-400">○ 保存中</span>
-                )}
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-gray-100 px-3 py-2 dark:border-gray-800">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <span className="text-[10px] text-gray-400">
+                {mdContent ? `${draftWordCount} 字` : "Markdown 格式"}
+                <span className="ml-1.5 inline-flex items-center gap-1">
+                  {draftSaved ? (
+                    <span className="text-green-500">● 已保存</span>
+                  ) : (
+                    <span className="text-amber-400">○ 保存中</span>
+                  )}
+                </span>
               </span>
-            </span>
-            {!activeEntry && (
+              {/* 临时草稿菜单 */}
+              <div className="relative" ref={draftMenuRef}>
+                <button
+                  onClick={() => setShowDraftMenu((v) => !v)}
+                  className="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-[10px] text-gray-500 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+                  title="临时草稿（存草稿后可恢复）"
+                >
+                  📄 草稿{drafts.length ? `(${drafts.length})` : ""}
+                </button>
+                {showDraftMenu && (
+                  <div className="absolute bottom-full left-0 z-20 mb-1 max-h-52 w-56 overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+                    {drafts.length === 0 ? (
+                      <p className="px-3 py-2 text-[11px] text-gray-400">
+                        暂无草稿
+                      </p>
+                    ) : (
+                      drafts.map((d) => (
+                        <div
+                          key={d.id}
+                          className="group flex items-center gap-1 px-1.5 py-0.5"
+                        >
+                          <button
+                            onClick={() => restoreDraft(d)}
+                            className="min-w-0 flex-1 truncate px-1.5 py-1 text-left text-[11px] text-gray-600 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                            title={d.content.slice(0, 80)}
+                          >
+                            {d.name}
+                          </button>
+                          <button
+                            onClick={() => deleteDraft(d.id)}
+                            className="shrink-0 rounded p-1 text-gray-400 opacity-0 transition hover:text-red-500 group-hover:opacity-100"
+                            title="删除草稿"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5">
               <button
-                onClick={saveEntry}
-                disabled={!mdContent.trim() || saving}
+                onClick={saveDraft}
+                disabled={!mdContent.trim()}
                 className={
                   btn +
-                  " bg-gray-900 text-white hover:bg-gray-700 disabled:opacity-30 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
+                  " text-gray-500 hover:bg-gray-100 disabled:opacity-30 dark:text-gray-400 dark:hover:bg-gray-800"
                 }
+                title="保存为临时草稿"
               >
-                {saving ? (
-                  <svg
-                    className="h-3.5 w-3.5 animate-spin"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                    />
-                  </svg>
-                ) : (
-                  <svg
-                    className="h-3.5 w-3.5"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path strokeLinecap="round" d="M12 4.5v15m7.5-7.5h-15" />
-                  </svg>
-                )}
-                {saving ? "保存中" : "存为知识"}
+                <svg
+                  className="h-3.5 w-3.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z"
+                  />
+                </svg>
+                存草稿
               </button>
-            )}
+              <button
+                onClick={clearEditor}
+                className={
+                  btn +
+                  " text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+                }
+                title="清空当前内容"
+              >
+                <svg
+                  className="h-3.5 w-3.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
+                  />
+                </svg>
+                清空
+              </button>
+              {!activeEntry && (
+                <button
+                  onClick={saveEntry}
+                  disabled={!mdContent.trim() || saving}
+                  className={
+                    btn +
+                    " bg-gray-900 text-white hover:bg-gray-700 disabled:opacity-30 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
+                  }
+                >
+                  {saving ? (
+                    <svg
+                      className="h-3.5 w-3.5 animate-spin"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
+                    </svg>
+                  ) : (
+                    <svg
+                      className="h-3.5 w-3.5"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path strokeLinecap="round" d="M12 4.5v15m7.5-7.5h-15" />
+                    </svg>
+                  )}
+                  {saving ? "保存中" : "存为知识"}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

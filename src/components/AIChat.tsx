@@ -6,7 +6,13 @@ import type { AIChatConfig, Page } from "../lib/types";
 import { useSite } from "../lib/site";
 import { useTheme } from "../lib/theme";
 import { webSearch, fetchWebpage } from "../lib/search";
-import { getKbSelections, getKbNotes, assembleKnowledge } from "../lib/kb";
+import {
+  getKbSelections,
+  getKbNotes,
+  assembleKnowledge,
+  parseKbTool,
+  saveKbEntry,
+} from "../lib/kb";
 import { getLocalCfg } from "../lib/localCfg";
 import {
   mergeEffCfg,
@@ -86,7 +92,7 @@ async function streamChat(
     (web
       ? `\n\n以下是来自网络的最新搜索结果，请基于它们回答（并在适当时注明来源）：\n${web}`
       : "") +
-    `\n\n工具使用说明：当用户询问实时动态、最新资讯、或不熟悉的时效性信息时，请主动联网搜索并回复 [SEARCH:关键词]（直接给出简洁关键词，不要构造或浏览搜索引擎 URL）；当用户明确给出某个网页链接并要求获取其内容时，回复 [BROWSE:url]；当需要帮你写作文档或编辑内容时，用 [EDIT:内容] 括起完整内容（必须用 ] 闭合，且编辑内容之后不要再追加其他文字）；当用户需要查看、整理或应用知识库时，回复 [KB:说明]（自动打开知识库面板）。一次只回复一个工具指令。`;
+    `\n\n工具使用说明：当用户询问实时动态、最新资讯、或不熟悉的时效性信息时，请主动联网搜索并回复 [SEARCH:关键词]（直接给出简洁关键词，不要构造或浏览搜索引擎 URL）；当用户明确给出某个网页链接并要求获取其内容时，回复 [BROWSE:url]；当需要帮你写作文档或编辑内容时，用 [EDIT:内容] 括起完整内容（必须用 ] 闭合，且编辑内容之后不要再追加其他文字）；当用户需要把内容保存到知识库（如整理要点、记笔记、沉淀知识）时，用 [KB-SAVE:标题]内容[/KB-SAVE]（新条目或按标题更新）；当需要修改已有知识库条目时，用 [KB-EDIT:标题]新内容[/KB-EDIT]（按标题匹配）；当用户需要查看、整理或应用知识库时，回复 [KB:说明]（自动打开知识库面板）。一次只回复一个工具指令。`;
   const res = await fetch(
     cfg.endpoint.replace(/\/+$/, "") + "/chat/completions",
     {
@@ -212,6 +218,13 @@ export function AIChat({
   );
   const [agentEditContent, setAgentEditContent] = useState<
     string | undefined
+  >();
+  const [agentKbOpen, setAgentKbOpen] = useState<
+    | {
+        nonce: number;
+        entry: { id: string; name: string; content: string; createdAt: number };
+      }
+    | undefined
   >();
   const [agentWidth, setAgentWidth] = useState(() => {
     if (typeof window === "undefined") return 384;
@@ -740,8 +753,24 @@ export function AIChat({
         : null;
     const editCmd = editClosed || editOpen;
     const kbCmd = reply.match(/\[(?:KB|OPEN_KB|知识库)(?::\s*([^\]]+))?\]/);
+    const kbSaveCmd = parseKbTool(reply);
     const msgIdx = messages.length;
-    if (browseCmd) {
+    if (kbSaveCmd) {
+      const entry = saveKbEntry(kbSaveCmd.title, kbSaveCmd.content);
+      setAgentKbOpen({ nonce: Date.now(), entry });
+      setAgentTab("edit");
+      setAgentInitUrl(undefined);
+      setAgentEditContent(kbSaveCmd.content);
+      setAgentOpen(true);
+      setToolCalls((prev) => [
+        ...prev,
+        {
+          msgIdx,
+          type: kbSaveCmd.mode === "edit" ? "编辑知识库" : "保存知识库",
+          detail: kbSaveCmd.title.slice(0, 60),
+        },
+      ]);
+    } else if (browseCmd) {
       setAgentTab("web");
       setAgentInitUrl(browseCmd[1]);
       setAgentEditContent(undefined);
@@ -1976,6 +2005,8 @@ export function AIChat({
                 }}
                 onKbChanged={refreshKb}
                 settings={settingsData}
+                kbOpen={agentKbOpen}
+                onKbOpenConsumed={() => setAgentKbOpen(undefined)}
               />
             </div>
           )}
@@ -2005,6 +2036,8 @@ export function AIChat({
               }}
               onKbChanged={refreshKb}
               settings={settingsData}
+              kbOpen={agentKbOpen}
+              onKbOpenConsumed={() => setAgentKbOpen(undefined)}
             />
           </div>
         </div>
