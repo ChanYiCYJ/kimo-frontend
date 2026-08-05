@@ -1534,17 +1534,70 @@ export function AIChat({
           <div className="flex items-center gap-0.5 rounded-[26px] border border-gray-200 bg-white p-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition focus-within:border-gray-400 focus-within:shadow-[0_0_0_3px_rgba(156,163,175,0.15)] dark:border-gray-600 dark:bg-gray-800">
             {/* + 按钮：知识库弹窗 */}
             <div className="relative">
-              <button onClick={() => { setKbPickerOpen(!kbPickerOpen); setKbPickerSelected([]); }}
-                className={"grid h-9 w-9 shrink-0 place-items-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300 " + (kbPickerOpen ? "bg-gray-100 text-gray-600 dark:bg-gray-800" : "")}
-                title="知识库条目" aria-label="知识库条目">
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+              <button
+                onClick={() => {
+                  setKbPickerOpen(!kbPickerOpen);
+                  setKbPickerSelected([]);
+                }}
+                className={
+                  "grid h-9 w-9 shrink-0 place-items-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300 " +
+                  (kbPickerOpen
+                    ? "bg-gray-100 text-gray-600 dark:bg-gray-800"
+                    : "")
+                }
+                title="知识库条目"
+                aria-label="知识库条目"
+              >
+                <svg
+                  className="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                >
+                  <path strokeLinecap="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
               </button>
-              {kbPickerOpen && (<>
-                <div className="fixed inset-0 z-40" onClick={() => setKbPickerOpen(false)} />
-                <KbPicker selected={kbPickerSelected} onToggle={(id: string) => setKbPickerSelected((p: string[]) => p.includes(id) ? p.filter((x: string) => x !== id) : [...p, id])}
-                  onInsert={() => { try { const notes = JSON.parse(localStorage.getItem("kimo_kb_notes") || "[]") as {id:string;content:string}[]; const texts = notes.filter((n: {id:string}) => kbPickerSelected.includes(n.id)).map((n: {content:string}) => n.content).join("\n\n"); if (texts) setInput((p: string) => (p ? p + "\n\n" : "") + texts); } catch (e) { console.error(e); } setKbPickerOpen(false); }}
-                  onClose={() => setKbPickerOpen(false)} onOpenAgent={() => setAgentOpen(true)} />
-              </>)}
+              {kbPickerOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40" style={{ bottom: "80px" }}
+                    onClick={() => setKbPickerOpen(false)}
+                  />
+                  <KbPicker
+                    selected={kbPickerSelected}
+                    onToggle={(id: string) =>
+                      setKbPickerSelected((p: string[]) =>
+                        p.includes(id)
+                          ? p.filter((x: string) => x !== id)
+                          : [...p, id],
+                      )
+                    }
+                    onInsert={() => {
+                      try {
+                        const notes = JSON.parse(
+                          localStorage.getItem("kimo_kb_notes") || "[]",
+                        ) as { id: string; content: string }[];
+                        const texts = notes
+                          .filter((n: { id: string }) =>
+                            kbPickerSelected.includes(n.id),
+                          )
+                          .map((n: { content: string }) => n.content)
+                          .join("\n\n");
+                        if (texts)
+                          setInput(
+                            (p: string) => (p ? p + "\n\n" : "") + texts,
+                          );
+                      } catch (e) {
+                        console.error(e);
+                      }
+                      setKbPickerOpen(false);
+                    }}
+                    onClose={() => setKbPickerOpen(false)}
+                    onOpenAgent={() => setAgentOpen(true)}
+                  />
+                </>
+              )}
             </div>
             <input
               ref={fileRef}
