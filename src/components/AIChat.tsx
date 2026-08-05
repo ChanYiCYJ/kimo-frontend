@@ -1696,7 +1696,7 @@ export function AIChat({
       {/* 桌面端：右侧固定面板 */}
       <div
         className="hidden shrink-0 border-l border-gray-200 lg:block dark:border-gray-700"
-        style={{ width: 22 + "rem" }}
+        style={{ width: 24 + "rem" }}
       >
         <AgentPanel
           onClose={() => {
