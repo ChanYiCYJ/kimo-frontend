@@ -1393,6 +1393,20 @@ export function AIChat({
                       <span className="ml-auto text-xs text-gray-400">✓</span>
                     )}
                   </button>
+                                    <button
+                    onClick={() => {
+                      setAgentOpen((v) => !v);
+                      setMenuOpen(false);
+                    }}
+                    className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-gray-600 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                  >
+                    <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.689-1.718-.293-2.3-2.379-1.068-3.611L5 14.5" /></svg>
+                    Agent{" "}
+                    {agentOpen && (
+                      <span className="ml-auto text-xs text-gray-400">✓</span>
+                    )}
+                  </button>
+
                   <button
                     onClick={() => {
                       setKbOpen(true);
@@ -1492,29 +1506,7 @@ export function AIChat({
               style={{ resize: "none" }}
               className="no-scrollbar max-h-40 min-h-[38px] flex-1 self-center bg-transparent px-1.5 py-2 text-sm leading-6 text-gray-800 outline-none placeholder:text-gray-400 disabled:opacity-50 sm:text-[15px] dark:text-gray-100"
             />
-            {config.autoTTS && (
-              <button
-                onClick={toggleTts}
-                className={`${iconBtn} ${ttsOn ? "text-gray-700 dark:text-gray-200" : ""}`}
-                title={ttsOn ? "关闭自动朗读" : "开启自动朗读"}
-                aria-label="自动朗读"
-              >
-                <svg
-                  className="h-5 w-5"
-                  viewBox="0 0 24 24"
-                  fill={ttsOn ? "currentColor" : "none"}
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z"
-                  />
-                </svg>
-              </button>
-            )}
-            <button
+                        <button
               onClick={send}
               disabled={loading || !input.trim() || cooldown > 0}
               className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gray-900 text-white transition hover:bg-gray-700 disabled:opacity-40 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300"

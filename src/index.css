@@ -375,7 +375,6 @@ body {
 
 /* ===== AI 对话消息内 Markdown（紧凑版） ===== */
 .chat-md {
-  font-size: 13px;
   line-height: 1.7;
   word-wrap: break-word;
 }
