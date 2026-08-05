@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { MdEditor } from "./MdEditor";
 import { fetchWebpage } from "../lib/search";
 import {
@@ -103,7 +103,6 @@ export function AgentPanel({
   const [webUrl, setWebUrl] = useState(initUrl || "");
   const [webLoading, setWebLoading] = useState(false);
   const [webContent, setWebContent] = useState("");
-  const [iframeError, setIframeError] = useState(false);
   const [mdContent, setMdContent] = useState("");
   const [dragOver, setDragOver] = useState(false);
 
@@ -317,46 +316,37 @@ export function AgentPanel({
     if (e.target) e.target.value = "";
   };
 
-  // ---- Browser ----
-  const browseUrl = () => {
-    const u = webUrl.trim();
-    if (!u) return;
-    setWebUrl(u.startsWith("http") ? u : "https://" + u);
-    setIframeError(false);
-    setWebContent("");
-  };
-  const fetchViaProxy = async () => {
-    setWebLoading(true);
-    setWebContent("");
-    try {
-      const text = await fetchWebpage(webUrl);
-      setWebContent(text || "无法获取该网页内容（可能被目标网站或网络限制）。");
-    } catch {
-      setWebContent("获取网页内容失败。");
-    } finally {
-      setWebLoading(false);
-    }
+  // ---- Browser: proxy fetch (no iframe, sites block it) ----
+  const browse = () => {
+    const u = webUrl.trim(); if (!u) return;
+    const full = u.startsWith("http") ? u : "https://" + u;
+    setWebUrl(full); setWebContent(""); setWebLoading(true);
+    fetchWebpage(full).then(t => {
+      setWebContent(t || "无法获取内容（目标网站拒绝访问或网络不通）");
+    }).catch(() => {
+      setWebContent("获取失败，请检查网址是否正确");
+    }).finally(() => { setWebLoading(false); });
   };
 
-  // ---- Drag-drop (element-level) ----
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(true);
-  }, []);
-  const handleDragLeave = useCallback(() => {
-    setDragOver(false);
-  }, []);
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const f = e.dataTransfer?.files?.[0];
-    if (!f) return;
-    const r = new FileReader();
-    r.onload = () => {
-      const t = String(r.result || "");
-      setMdContent((p) => (p ? p + "\n\n" + t : t));
+  // ---- Drag-drop: document-level (MdEditor consumes element events) ----
+  const dragCounter = useRef(0);
+  useEffect(() => {
+    const onDragEnter = (e: DragEvent) => { e.preventDefault(); dragCounter.current++; if (dragCounter.current === 1) setDragOver(true); };
+    const onDragOver = (e: DragEvent) => { e.preventDefault(); };
+    const onDragLeave = () => { dragCounter.current--; if (dragCounter.current <= 0) { dragCounter.current = 0; setDragOver(false); } };
+    const onDrop = (e: DragEvent) => {
+      e.preventDefault(); dragCounter.current = 0; setDragOver(false);
+      const f = e.dataTransfer?.files?.[0]; if (!f) return;
+      const r = new FileReader();
+      r.onload = () => { setMdContent((p) => (p ? p + "\n\n" + String(r.result || "") : String(r.result || ""))); };
+      r.readAsText(f);
     };
-    r.readAsText(f);
+    document.addEventListener("dragenter", onDragEnter); document.addEventListener("dragover", onDragOver);
+    document.addEventListener("dragleave", onDragLeave); document.addEventListener("drop", onDrop);
+    return () => {
+      document.removeEventListener("dragenter", onDragEnter); document.removeEventListener("dragover", onDragOver);
+      document.removeEventListener("dragleave", onDragLeave); document.removeEventListener("drop", onDrop);
+    };
   }, []);
 
   // ---- Helpers ----
@@ -368,17 +358,12 @@ export function AgentPanel({
     <div className="relative flex h-full flex-col bg-white dark:bg-gray-900">
       {/* Drag overlay */}
       {dragOver && (
-        <div
-          className="absolute inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-sm"
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-sm pointer-events-none">
           <div className="rounded-2xl bg-white p-6 text-center shadow-2xl dark:bg-gray-800">
             <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
-              释放文件到知识库编辑器
+              释放文件到编辑器
             </p>
-            <p className="mt-1 text-xs text-gray-400">支持 .md / .txt</p>
+            <p className="mt-1 text-xs text-gray-400">.md / .txt</p>
           </div>
         </div>
       )}
@@ -438,110 +423,53 @@ export function AgentPanel({
         </button>
       </div>
 
-      {/* KB status bar */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-gray-50 bg-white px-3 py-1.5 text-[11px] text-gray-400 dark:border-gray-800 dark:bg-gray-900">
-        <span className="flex items-center gap-1">
-          <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-          文章 {sel.articleIds.length}
-        </span>
-        <span>·</span>
-        <span>分类 {sel.categoryIds.length}</span>
-        <span>·</span>
-        <span>条目 {entries.length}</span>
-      </div>
-
       {/* Content */}
-      <div
-        className="min-h-0 flex-1 overflow-hidden"
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
+      <div className="min-h-0 flex-1 overflow-hidden">
         {/* ===== Web Tab ===== */}
         {tab === "web" && (
           <div className="flex h-full flex-col">
             <div className="flex shrink-0 gap-1.5 p-2">
-              <input
-                value={webUrl}
-                onChange={(e) => {
-                  setWebUrl(e.target.value);
-                  setIframeError(false);
-                  setWebContent("");
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") browseUrl();
-                }}
-                placeholder="输入网址…"
-                className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:focus:border-gray-500"
-              />
-              <button
-                onClick={browseUrl}
-                className="shrink-0 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-700 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
-              >
-                打开
+              <input value={webUrl}
+                onChange={(e) => { setWebUrl(e.target.value); setWebContent(""); }}
+                onKeyDown={(e) => { if (e.key === "Enter") browse(); }}
+                placeholder="输入网址，按回车获取内容…"
+                className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" />
+              <button onClick={browse} disabled={webLoading}
+                className="shrink-0 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-700 disabled:opacity-50 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300">
+                {webLoading ? "获取中…" : "获取"}
               </button>
-              {webUrl && (
-                <button
-                  onClick={fetchViaProxy}
-                  disabled={webLoading}
-                  className="shrink-0 rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-600 transition hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-                >
-                  {webLoading ? "获取中…" : "抓取"}
-                </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {webLoading && (
+                <div className="flex items-center justify-center py-12">
+                  <div className="flex gap-1.5">
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: "0.15s" }} />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: "0.3s" }} />
+                  </div>
+                </div>
+              )}
+              {webContent && !webLoading && (
+                <div className="p-4">
+                  <div className="mb-2 flex items-center gap-2 text-xs text-gray-400">
+                    <span>{webContent.length.toLocaleString()} 字符</span>
+                    <button onClick={() => onInsertMessage(webContent)}
+                      className="rounded-md bg-gray-100 px-2 py-0.5 text-gray-600 transition hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300">
+                      发送到对话
+                    </button>
+                    <button onClick={() => setWebContent("")} className="rounded-md px-2 py-0.5 text-gray-400 hover:text-gray-600">清除</button>
+                  </div>
+                  <pre className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-700 dark:text-gray-300">
+                    {webContent.slice(0, 50000)}
+                  </pre>
+                </div>
+              )}
+              {!webContent && !webLoading && (
+                <div className="flex flex-1 items-center justify-center py-16">
+                  <p className="text-sm text-gray-400">输入网址获取网页内容</p>
+                </div>
               )}
             </div>
-            {webUrl ? (
-              <div className="min-h-0 flex-1">
-                {!iframeError && !webContent && (
-                  <iframe
-                    src={webUrl}
-                    className="h-full w-full border-0"
-                    title="web"
-                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-                    onError={() => setIframeError(true)}
-                  />
-                )}
-                {webContent && (
-                  <div className="h-full overflow-y-auto p-4">
-                    <div className="mb-3 flex items-center gap-2">
-                      <span className="text-xs text-gray-400">
-                        通过代理获取的文本内容
-                      </span>
-                      <button
-                        onClick={() => setWebContent("")}
-                        className="text-xs text-gray-400 underline hover:text-gray-600"
-                      >
-                        返回 iframe
-                      </button>
-                    </div>
-                    <pre className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-700 dark:text-gray-300">
-                      {webContent.slice(0, 50000)}
-                    </pre>
-                  </div>
-                )}
-                {iframeError && !webContent && (
-                  <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      该网站拒绝在 iframe 中显示
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      点击「抓取」按钮通过代理获取文本内容
-                    </p>
-                    <button
-                      onClick={fetchViaProxy}
-                      disabled={webLoading}
-                      className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-700 dark:bg-gray-200 dark:text-gray-900"
-                    >
-                      {webLoading ? "获取中…" : "抓取网页内容"}
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="flex flex-1 items-center justify-center">
-                <p className="text-sm text-gray-400">输入网址浏览网页</p>
-              </div>
-            )}
           </div>
         )}
 
