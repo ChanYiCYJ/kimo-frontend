@@ -284,31 +284,64 @@ export default {
         if (ct.includes("text/html") || raw.includes("<html")) {
           const titleMatch = raw.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
           title = titleMatch ? titleMatch[1].trim() : "";
-          // og:image 封面（供 AI 文章插图）
+          // og:image 封面（含 secure_url/url 变体；供 AI 文章插图）
           const ogMatch =
             raw.match(
-              /<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i,
+              /<meta[^>]*property=["']og:image(?:[:]?(?:secure_url|url))?["'][^>]*content=["']([^"']+)["']/i,
             ) ||
             raw.match(
-              /<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i,
+              /<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image(?:[:]?(?:secure_url|url))?["']/i,
             );
           ogImage = ogMatch ? ogMatch[1].trim() : "";
-          // 正文图片：收集 og:image 之外的 <img> src（供 AI 文章多图）
-          const imgRe = /<img[^>]+src=["']([^"']+)["']/gi;
-          let im;
-          while ((im = imgRe.exec(raw)) && images.length < 6) {
-            const src = im[1].trim();
-            if (!src || src.startsWith("data:")) continue;
-            if (src.startsWith("//")) images.push("https:" + src);
-            else if (/^https?:\/\//i.test(src)) images.push(src);
-            else if (src.startsWith("/")) {
-              try {
-                images.push(new URL(src, finalUrl).href);
-              } catch {}
-            }
+          if (!ogImage) {
+            // twitter:image 兜底
+            const twMatch =
+              raw.match(
+                /<meta[^>]*name=["']twitter:image["'][^>]*content=["']([^"']+)["']/i,
+              ) ||
+              raw.match(
+                /<meta[^>]*content=["']([^"']+)["'][^>]*name=["']twitter:image["']/i,
+              );
+            ogImage = twMatch ? twMatch[1].trim() : "";
           }
-          if (ogImage) images.unshift(ogImage);
-          images = [...new Set(images)].slice(0, 6);
+          // 正文图片：兼容 src/data-src/data-lazy-src/data-original/srcset（供 AI 文章多图）
+          const rawImgAttrs = raw.match(/<img[^>]*>/gi) || [];
+          const NOISE =
+            /icon|logo|spacer|badge|avatar|sprite|pixel|blank|\.svg|\.ico|1x1|placeholder|loading\.gif|emoji|favicon|vip|heart|collect|tobar|share|qrcode|qr_|btn_|button|nav_|head_|arrow|dots|comment|thumb|zan|gif_|img_btn|lock\.png|like|unlike|toolbar/i;
+          for (const tag of rawImgAttrs) {
+            if (images.length >= 8) break;
+            const srcMatch =
+              tag.match(
+                /(?:src|data-src|data-lazy-src|data-original|data-url|data-srcset)=["']([^"']+)["']/i,
+              ) ||
+              tag.match(/srcset=["']([^"']+)["']/i);
+            let src = srcMatch
+              ? srcMatch[1]
+                  .trim()
+                  .split(",")
+                  .map((p) => p.trim().split(/\s+/)[0])
+                  .filter(Boolean)
+                  .sort(
+                    (a, b) =>
+                      (b.match(/\d{2,}w/) ? Number(b.match(/\d{2,}w/)[0]) : 0) -
+                      (a.match(/\d{2,}w/) ? Number(a.match(/\d{2,}w/)[0]) : 0),
+                  )[0] || ""
+              : "";
+            if (!src || src.startsWith("data:") || NOISE.test(src)) continue;
+            if (src.startsWith("//")) src = "https:" + src;
+            else if (!/^https?:\/\//i.test(src)) {
+              if (!src.startsWith("/")) continue;
+              try {
+                src = new URL(src, finalUrl).href;
+              } catch {
+                continue;
+              }
+            }
+            if (images.includes(src)) continue;
+            images.push(src);
+          }
+          if (ogImage && !images.includes(ogImage)) images.unshift(ogImage);
+          images = [...new Set(images)].slice(0, 8);
           // 简单 HTML → 文本
           text = raw
             .replace(/<script[\s\S]*?<\/script>/gi, " ")

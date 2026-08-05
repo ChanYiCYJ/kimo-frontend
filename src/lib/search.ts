@@ -869,7 +869,7 @@ async function extractOgImage(url: string): Promise<string> {
  */
 export async function webSearchToArticle(
   query: string,
-  maxSources: number = 4,
+  maxSources: number = 6,
   seedUrls: string[] = [],
 ): Promise<{ article: string; sources: SearchResult[] }> {
   const cfg = getAICfg();
@@ -918,7 +918,7 @@ export async function webSearchToArticle(
       let image = "";
       let images: string[] = [];
       try {
-        const c = await fetchWebContent(t.url, 2500);
+        const c = await fetchWebContent(t.url, 2200);
         content = c.content;
         image = c.ogImage || "";
         images = (c.images || [])
@@ -939,10 +939,10 @@ export async function webSearchToArticle(
       const f = s.value;
       const imgs = (f.images || [])
         .filter((u: string) => /^https?:\/\//i.test(u) && !u.includes("data:"))
-        .slice(0, 4)
+        .slice(0, 5)
         .map((u: string) => `\n[图片]: ${u}`)
         .join("");
-      return `来源${i + 1} (${f.url} | ${f.title})${imgs}：\n${(f.content || "").slice(0, 2500)}`;
+      return `来源${i + 1} (${f.url} | ${f.title})${imgs}：\n${(f.content || "").slice(0, 2200)}`;
     })
     .filter(Boolean)
     .join("\n\n");
@@ -954,6 +954,7 @@ export async function webSearchToArticle(
     "- 首行 H1 标题（中文，概括主题）\n" +
     "- 开头 2-3 句引言摘要（加粗要点）\n" +
     "- 用 H2 分节（3-5 节），每节用有序/无序列表或短段落呈现关键信息\n" +
+    "- 尽量引用具体数据/版本号/日期/数字/案例，内容充实有料，避免空泛套话\n" +
     "- 若提供了来源图片（[图片]: URL），请把多张图片分布到文章各处（封面放 H1 标题后，其余每节各插 1 张），用 `![配图](图片URL)` 插入\n" +
     "- 引用事实时用 `> 引用` 块，末尾附「参考来源」列表（Markdown 链接）\n" +
     "- 安全合规：若主题涉及成人/敏感/争议内容，仅做客观克制的信息介绍，绝不输出露骨、色情、暴力、仇恨或违法违规内容；资料不足时如实说明\n" +
@@ -1031,7 +1032,7 @@ export async function webSearchToArticle(
         ),
       )
       .filter((u, i, a) => a.indexOf(u) === i)
-      .slice(0, 4);
+      .slice(0, 5);
     if (imgs.length) {
       // 1) 封面：H1 标题后（若文章还没有任何图）
       if (!article.includes("![") && /^#/.test(article)) {
@@ -1051,7 +1052,7 @@ export async function webSearchToArticle(
       let added = 0;
       for (
         let k = h2s.length - 1;
-        k >= 1 && added < 2 && used + added < imgs.length;
+        k >= 1 && added < 3 && used + added < imgs.length;
         k--
       ) {
         const img = imgs[used + added];
@@ -1196,8 +1197,8 @@ export async function searchWithCache(
     try {
       const articleRes = await webSearchToArticle(
         query,
-        opts.maxSources ?? 4,
-        extractSourceUrls(hit.content, opts.maxSources ?? 4),
+        opts.maxSources ?? 6,
+        extractSourceUrls(hit.content, opts.maxSources ?? 6),
       );
       const entry: SearchCacheEntry = {
         content: hit.content,
@@ -1222,13 +1223,13 @@ export async function searchWithCache(
     // 先抓内容，再复用其来源生成文章（串行：避免并发重复搜索被限流导致文章为空）
     const content = await webSearchWithContent(
       query,
-      opts.maxSources ?? 3,
-      opts.perSourceChars ?? 2500,
+      opts.maxSources ?? 5,
+      opts.perSourceChars ?? 2200,
     );
     const articleRes = await webSearchToArticle(
       query,
-      opts.maxSources ?? 4,
-      extractSourceUrls(content, opts.maxSources ?? 4),
+      opts.maxSources ?? 6,
+      extractSourceUrls(content, opts.maxSources ?? 6),
     );
     const entry: SearchCacheEntry = {
       content: content || "",

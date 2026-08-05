@@ -871,9 +871,8 @@ export function AIChat({
     const autoOpenAgent = () => {
       if (window.innerWidth >= 1024) setAgentOpen(true);
     };
-    // 浏览 Agent 接管：把 AI 的长篇回答替换为简短引导语（详细文章由浏览面板承载）
+    // 浏览 Agent 接管：让对话回复自然——AI 已给简短回复则保留；长篇则取其开头自然引语
     const setBrowseNote = (q: string) => {
-      const note = `好的，已为你联网搜索「${q}」，正在生成综合文章，结果请看浏览面板。`;
       updateActive((prev) => {
         let lastAsstIdx = -1;
         for (let i = prev.length - 1; i >= 0; i--) {
@@ -883,8 +882,24 @@ export function AIChat({
           }
         }
         if (lastAsstIdx < 0) return prev;
+        const c = (prev[lastAsstIdx].content || "").trim();
+        // 已给出简短自然的回复（≤200 字，如“好的，我去搜一下”）→ 保留，不替换
+        if (c.length <= 200) return prev;
+        // 长篇全问答 → 取其第一句自然引语作为简短回复，其余交给浏览文章
+        const firstLine =
+          c
+            .split("\n")
+            .map((s) => s.trim())
+            .filter((s) => s && !/^[#>-]/.test(s))[0] || "";
+        let short = "";
+        if (firstLine) {
+          const sent = firstLine.slice(0, 100);
+          if (sent.length >= 6) short = sent;
+        }
+        if (!short)
+          short = `好的，已为你联网搜索「${q}」，正在生成综合文章，结果请看浏览面板。`;
         return prev.map((m, i) =>
-          i === lastAsstIdx ? { ...m, content: note } : m,
+          i === lastAsstIdx ? { ...m, content: short } : m,
         );
       });
     };
@@ -910,7 +925,7 @@ export function AIChat({
           sessionId: activeId,
         },
       ]);
-      searchWithCache(q, { maxSources: 3, perSourceChars: 2500 })
+      searchWithCache(q, { maxSources: 5, perSourceChars: 2200 })
         .catch(() => null)
         .then(() => {
           setToolCalls((prev) =>
