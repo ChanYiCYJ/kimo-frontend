@@ -6,7 +6,7 @@ import { MdEditor } from '../../components/MdEditor'
 import { PageSpinner } from '../../components/Spinner'
 import { useToast } from '../../lib/toast'
 import { readingTime } from '../../lib/format'
-import { aiWrite, polishMarkdown, getAIConfig } from '../../lib/ai'
+import { aiWrite, getAIConfig } from '../../lib/ai'
 
 export function ArticleEditor() {
   const { id } = useParams<{ id: string }>()
@@ -102,18 +102,6 @@ export function ArticleEditor() {
 
   if (loading) return <PageSpinner />
 
-  const handleAiPolish = async () => {
-    if (!content.trim()) { error('请先输入文章内容'); return }
-    setAiLoading(true)
-    try {
-      const result = await polishMarkdown(content)
-      setContent(result)
-      success('AI 改写完成')
-    } catch (e) {
-      error(e instanceof Error ? e.message : 'AI 请求失败')
-    } finally { setAiLoading(false) }
-  }
-
   const handleAiGenerate = async () => {
     const prompt = aiPrompt.trim()
     if (!prompt) { error('请输入 AI 指令'); return }
@@ -170,38 +158,11 @@ export function ArticleEditor() {
 
       {/* 主体：编辑器 + 右侧元信息面板 */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        {/* 正文编辑器 */}
-        <div>
-          <MdEditor value={content} onChange={setContent} height={560} />
-
-          {/* AI 协助工具栏 */}
-          {aiEnabled && (
-            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-gray-200 bg-gray-50/50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
-              <button
-                onClick={handleAiPolish}
-                disabled={aiLoading || !content.trim()}
-                className="flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-gray-700 disabled:opacity-50 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
-              >
-                {aiLoading ? '处理中...' : '✨ AI 改写'}
-              </button>
-              <span className="text-xs text-gray-400">或输入指令：</span>
-              <input
-                value={aiPrompt}
-                onChange={(e) => setAiPrompt(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAiGenerate()}
-                placeholder="如：续写一段总结"
-                disabled={aiLoading}
-                className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs outline-none transition focus:border-gray-400 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-              />
-              <button
-                onClick={handleAiGenerate}
-                disabled={aiLoading || !aiPrompt.trim()}
-                className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-gray-700 disabled:opacity-50 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
-              >
-                生成
-              </button>
-            </div>
-          )}
+        {/* 正文编辑器：限宽居中，像写作产品（不撑满整页，避免“很长一条”） */}
+        <div className="min-w-0">
+          <div className="mx-auto w-full max-w-[760px]">
+            <MdEditor value={content} onChange={setContent} height={560} />
+          </div>
         </div>
 
         {/* 元信息面板（右侧 sticky） */}
@@ -277,7 +238,31 @@ export function ArticleEditor() {
               </div>
             </div>
 
-            <div className="border-t border-gray-100 pt-3 text-xs text-gray-400">
+            {aiEnabled && (
+              <div className="space-y-2 border-t border-gray-100 pt-4 dark:border-gray-800">
+                <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">AI 辅助</p>
+                <div className="flex gap-1.5">
+                  <input
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAiGenerate()}
+                    placeholder="AI 指令，如：续写总结"
+                    disabled={aiLoading}
+                    className="min-w-0 flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs outline-none transition placeholder:text-gray-400 focus:border-gray-400 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                  />
+                  <button
+                    onClick={handleAiGenerate}
+                    disabled={aiLoading || !aiPrompt.trim()}
+                    className="shrink-0 rounded-xl bg-gray-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-gray-700 disabled:opacity-50 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
+                  >
+                    生成
+                  </button>
+                </div>
+                <p className="text-[11px] text-gray-400">AI 内容由第三方模型生成，仅供参考；全文改写请用编辑器工具栏「AI 润色」。</p>
+              </div>
+            )}
+
+            <div className="border-t border-gray-100 pt-3 text-xs text-gray-400 dark:border-gray-800">
               正文 {content.length} 字 · 约 {readingTime(content)} 分钟
             </div>
           </div>

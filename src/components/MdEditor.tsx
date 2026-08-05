@@ -250,7 +250,7 @@ export function MdEditor({
           <ImageIcon className="h-4 w-4" />
         </button>
 
-        {/* AI 润色（右对齐） */}
+        {/* AI 润色（右对齐，低调灰字，与工具栏图标风格协调，不突兀） */}
         {aiPolish && (
           <>
             <Divider />
@@ -258,7 +258,7 @@ export function MdEditor({
               onClick={runPolish}
               disabled={aiState === 'loading'}
               title="使用 AI 润色正文"
-              className="ml-auto flex h-8 items-center gap-1.5 rounded-lg bg-gray-900 px-3 text-xs font-medium text-white transition hover:bg-gray-700 active:scale-[0.98] disabled:opacity-60"
+              className="ml-auto flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {aiState === 'loading' ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />

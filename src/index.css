@@ -1,4 +1,4 @@
-@import 'tailwindcss';
+@import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -23,12 +23,18 @@ html {
 
 /* 内容淡入（AI 对话消息等，配合 animate-[kfade_...] 使用） */
 @keyframes kfade {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 body {
-  font-family: 'Noto Serif SC', 'SimSun', '宋体', serif;
+  font-family: "Noto Serif SC", "SimSun", "宋体", serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color: #1f2937;
@@ -51,22 +57,44 @@ body {
 
 /* ===== 暗色模式 — 全局文字色 ===== */
 .dark .text-gray-900,
-.dark .text-gray-800 { color: #f3f4f6; }
+.dark .text-gray-800 {
+  color: #f3f4f6;
+}
 .dark .text-gray-700,
-.dark .text-gray-600 { color: #d1d5db; }
-.dark .text-gray-500 { color: #9ca3af; }
-.dark .text-gray-400 { color: #6b7280; }
-.dark .text-gray-300 { color: #4b5563; }
+.dark .text-gray-600 {
+  color: #d1d5db;
+}
+.dark .text-gray-500 {
+  color: #9ca3af;
+}
+.dark .text-gray-400 {
+  color: #6b7280;
+}
+.dark .text-gray-300 {
+  color: #4b5563;
+}
 
 /* 暗色 — 背景色 */
-.dark .bg-white { background-color: #1f2937; }
-.dark .bg-gray-50 { background-color: #111827; }
-.dark .bg-gray-100 { background-color: #1f2937; }
+.dark .bg-white {
+  background-color: #1f2937;
+}
+.dark .bg-gray-50 {
+  background-color: #111827;
+}
+.dark .bg-gray-100 {
+  background-color: #1f2937;
+}
 
 /* 暗色 — 边框 */
-.dark .border-gray-100 { border-color: #1f2937; }
-.dark .border-gray-200 { border-color: #374151; }
-.dark .border-gray-300 { border-color: #4b5563; }
+.dark .border-gray-100 {
+  border-color: #1f2937;
+}
+.dark .border-gray-200 {
+  border-color: #374151;
+}
+.dark .border-gray-300 {
+  border-color: #4b5563;
+}
 
 /* 暗色 — 输入框 / 选择框 */
 .dark input:not([type="checkbox"]):not([type="radio"]),
@@ -77,17 +105,31 @@ body {
   border-color: #374151;
 }
 .dark input::placeholder,
-.dark textarea::placeholder { color: #6b7280; }
+.dark textarea::placeholder {
+  color: #6b7280;
+}
 
 /* 暗色 — hover 背景 */
-.dark .hover\:bg-gray-50:hover { background-color: #1f2937; }
-.dark .hover\:bg-gray-100:hover { background-color: #374151; }
+.dark .hover\:bg-gray-50:hover {
+  background-color: #1f2937;
+}
+.dark .hover\:bg-gray-100:hover {
+  background-color: #374151;
+}
 
 /* 暗色 — 分隔线 */
-.dark .border-t { border-top-color: #374151; }
-.dark .border-b { border-bottom-color: #374151; }
-.dark .border-l { border-left-color: #374151; }
-.dark .border-r { border-right-color: #374151; }
+.dark .border-t {
+  border-top-color: #374151;
+}
+.dark .border-b {
+  border-bottom-color: #374151;
+}
+.dark .border-l {
+  border-left-color: #374151;
+}
+.dark .border-r {
+  border-right-color: #374151;
+}
 
 /* ===== 暗色模式 — 标签徽标 ===== */
 .dark .pill-primary {
@@ -95,18 +137,26 @@ body {
   background: rgba(156, 163, 175, 0.15);
   border-color: rgba(156, 163, 175, 0.3);
 }
-.dark .rounded-full.bg-gray-100 { background-color: #1f2937; }
+.dark .rounded-full.bg-gray-100 {
+  background-color: #1f2937;
+}
 .dark .rounded-full.bg-gray-100.text-gray-500,
-.dark .rounded-full.bg-gray-100.text-gray-600 { color: #9ca3af; }
+.dark .rounded-full.bg-gray-100.text-gray-600 {
+  color: #9ca3af;
+}
 
 .dark .card {
   background: rgba(31, 41, 55, 0.85);
   border-color: rgba(55, 65, 81, 0.6);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 4px 16px -8px rgba(0, 0, 0, 0.3);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.2),
+    0 4px 16px -8px rgba(0, 0, 0, 0.3);
 }
 
 .dark .card-hover:hover {
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3), 0 16px 32px -12px rgba(0, 0, 0, 0.4);
+  box-shadow:
+    0 4px 6px rgba(0, 0, 0, 0.3),
+    0 16px 32px -12px rgba(0, 0, 0, 0.4);
   border-color: #4b5563;
 }
 
@@ -119,7 +169,7 @@ body {
   background-position: center;
   /* 图片加载失败时回退到中性底色 */
   background-color: #f3f4f6;
-  background-image: url('https://api.1314.cool/bingimg');
+  background-image: url("https://api.1314.cool/bingimg");
 }
 
 .bg-blur-overlay {
@@ -138,7 +188,9 @@ body {
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(243, 244, 246, 1);
   border-radius: var(--card-radius);
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 4px 16px -8px rgba(16, 24, 40, 0.06);
+  box-shadow:
+    0 1px 2px rgba(16, 24, 40, 0.04),
+    0 4px 16px -8px rgba(16, 24, 40, 0.06);
   transition:
     transform 0.2s ease,
     box-shadow 0.2s ease,
@@ -147,7 +199,9 @@ body {
 
 .card-hover:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 6px rgba(16, 24, 40, 0.05), 0 16px 32px -12px rgba(16, 24, 40, 0.12);
+  box-shadow:
+    0 4px 6px rgba(16, 24, 40, 0.05),
+    0 16px 32px -12px rgba(16, 24, 40, 0.12);
   border-color: #e5e7eb;
 }
 
@@ -309,7 +363,7 @@ body {
   border-top: 1px solid #e5e7eb;
   margin: 2em 0;
 }
-.markdown-body input[type='checkbox'] {
+.markdown-body input[type="checkbox"] {
   margin-right: 0.5em;
 }
 
@@ -325,21 +379,49 @@ body {
   line-height: 1.7;
   word-wrap: break-word;
 }
-.chat-md > *:first-child { margin-top: 0; }
-.chat-md > *:last-child { margin-bottom: 0; }
-.chat-md p { margin: 0.5em 0; }
-.chat-md h1, .chat-md h2, .chat-md h3, .chat-md h4 {
+.chat-md > *:first-child {
+  margin-top: 0;
+}
+.chat-md > *:last-child {
+  margin-bottom: 0;
+}
+.chat-md p {
+  margin: 0.5em 0;
+}
+.chat-md h1,
+.chat-md h2,
+.chat-md h3,
+.chat-md h4 {
   font-weight: 600;
   margin: 0.8em 0 0.4em;
   color: #111827;
 }
-.chat-md h1 { font-size: 1.25em; }
-.chat-md h2 { font-size: 1.15em; }
-.chat-md h3 { font-size: 1.05em; }
-.chat-md ul, .chat-md ol { margin: 0.4em 0; padding-left: 1.4em; }
-.chat-md li { margin: 0.2em 0; }
-.chat-md a { color: #2563eb; text-decoration: none; border-bottom: 1px solid rgba(37,99,235,0.25); }
-.chat-md strong { font-weight: 700; color: #111827; }
+.chat-md h1 {
+  font-size: 1.25em;
+}
+.chat-md h2 {
+  font-size: 1.15em;
+}
+.chat-md h3 {
+  font-size: 1.05em;
+}
+.chat-md ul,
+.chat-md ol {
+  margin: 0.4em 0;
+  padding-left: 1.4em;
+}
+.chat-md li {
+  margin: 0.2em 0;
+}
+.chat-md a {
+  color: #2563eb;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(37, 99, 235, 0.25);
+}
+.chat-md strong {
+  font-weight: 700;
+  color: #111827;
+}
 .chat-md code {
   background: #f3f4f6;
   color: #be185d;
@@ -358,27 +440,70 @@ body {
   font-size: 0.85em;
   line-height: 1.6;
 }
-.chat-md pre code { background: transparent; color: inherit; padding: 0; border-radius: 0; }
+.chat-md pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+}
 .chat-md blockquote {
   margin: 0.6em 0;
   padding: 0.4em 0.8em;
   border-left: 3px solid #d1d5db;
-  background: rgba(243,244,246,0.6);
+  background: rgba(243, 244, 246, 0.6);
   border-radius: 0 0.5rem 0.5rem 0;
   color: #4b5563;
 }
-.chat-md table { border-collapse: collapse; margin: 0.6em 0; font-size: 0.9em; width: 100%; }
-.chat-md th, .chat-md td { border: 1px solid #e5e7eb; padding: 0.4em 0.7em; text-align: left; }
-.chat-md th { background: #f9fafb; font-weight: 600; }
-.chat-md hr { border: 0; border-top: 1px solid #e5e7eb; margin: 1em 0; }
+.chat-md table {
+  border-collapse: collapse;
+  margin: 0.6em 0;
+  font-size: 0.9em;
+  width: 100%;
+}
+.chat-md th,
+.chat-md td {
+  border: 1px solid #e5e7eb;
+  padding: 0.4em 0.7em;
+  text-align: left;
+}
+.chat-md th {
+  background: #f9fafb;
+  font-weight: 600;
+}
+.chat-md hr {
+  border: 0;
+  border-top: 1px solid #e5e7eb;
+  margin: 1em 0;
+}
 
-.dark .chat-md h1, .dark .chat-md h2, .dark .chat-md h3, .dark .chat-md h4 { color: #f3f4f6; }
-.dark .chat-md strong { color: #f3f4f6; }
-.dark .chat-md code { background: #1f2937; color: #f472b6; }
-.dark .chat-md th, .dark .chat-md td { border-color: #374151; }
-.dark .chat-md th { background: #1f2937; }
-.dark .chat-md blockquote { border-left-color: #4b5563; background: rgba(31,41,55,0.5); color: #9ca3af; }
-.dark .chat-md hr { border-top-color: #374151; }
+.dark .chat-md h1,
+.dark .chat-md h2,
+.dark .chat-md h3,
+.dark .chat-md h4 {
+  color: #f3f4f6;
+}
+.dark .chat-md strong {
+  color: #f3f4f6;
+}
+.dark .chat-md code {
+  background: #1f2937;
+  color: #f472b6;
+}
+.dark .chat-md th,
+.dark .chat-md td {
+  border-color: #374151;
+}
+.dark .chat-md th {
+  background: #1f2937;
+}
+.dark .chat-md blockquote {
+  border-left-color: #4b5563;
+  background: rgba(31, 41, 55, 0.5);
+  color: #9ca3af;
+}
+.dark .chat-md hr {
+  border-top-color: #374151;
+}
 
 /* ===== 动画 ===== */
 @keyframes fadeUp {
