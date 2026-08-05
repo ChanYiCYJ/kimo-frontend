@@ -118,8 +118,29 @@ export function MdEditor({
   );
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
-  const lastMdRef = useRef<string>("");
+  // 记录编辑器最后输出内容（去重 + 判断外部赋值）；初始值即挂载时 content
+  const lastMdRef = useRef<string>(value);
   const imageInputRef = useRef<HTMLInputElement>(null);
+
+  // 同步外部 value 变化（恢复草稿 / 清空 / AI 填入 / 切换条目等）到编辑器
+  // 注意：lobe-editor 的 content/type 仅在挂载时生效，外部赋值必须命令式同步
+  useEffect(() => {
+    if (value.trim() === lastMdRef.current.trim()) return;
+    try {
+      if (value.trim()) editor.setDocument("markdown", value);
+      else editor.cleanDocument();
+      // 以编辑器实际输出为准，避免 markdown 规范化（如末尾换行）差异导致后续误判
+      try {
+        const md = editor.getDocument("markdown");
+        lastMdRef.current = typeof md === "string" && md ? md : value;
+      } catch {
+        lastMdRef.current = value;
+      }
+    } catch {
+      // 编辑器尚未就绪，忽略（下次 value 变化时重试）
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
 
   const [aiState, setAiState] = useState<"idle" | "loading" | "ok" | "error">(
     "idle",
