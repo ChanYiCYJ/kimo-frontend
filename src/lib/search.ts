@@ -157,17 +157,23 @@ function getAICfg() {
   return null;
 }
 
-// ======================== 引擎 1：后端搜索 ========================
+// ======================== 引擎 1：后端搜索（多引擎代理） ========================
 
+/**
+ * 通过 /api/search（Worker 多引擎代理：bing/duckduckgo/wikipedia）搜索。
+ * @param engines 逗号分隔，例如 "bing,duckduckgo"；省略走默认全引擎
+ */
 export async function searchBackend(
   query: string,
   limit: number,
+  engines?: string,
 ): Promise<SearchResult[]> {
   try {
-    const res = await fetchWithTimeout(
-      `/api/search?q=${encodeURIComponent(query)}&limit=${limit}`,
-      { headers: { Accept: "application/json" } },
-    );
+    const qs = new URLSearchParams({ q: query, limit: String(limit) });
+    if (engines) qs.set("engines", engines);
+    const res = await fetchWithTimeout(`/api/search?${qs.toString()}`, {
+      headers: { Accept: "application/json" },
+    });
     if (!res.ok) return [];
     const data = (await res.json().catch(() => null)) as
       | { items?: SearchResult[] }
@@ -183,7 +189,7 @@ export async function searchBackend(
       url: it.url || "",
       description: it.description || "",
       source: it.source || extractSource(it.url || ""),
-      engine: "backend",
+      engine: it.engine || "backend",
     }));
   } catch {
     return [];
@@ -196,6 +202,28 @@ export async function searchDuckDuckGo(
   query: string,
   limit: number,
 ): Promise<SearchResult[]> {
+  // 优先通过 Worker 代理（/api/search），解决浏览器 CORS 问题
+  try {
+    const res = await fetchWithTimeout(
+      `/api/search?q=${encodeURIComponent(query)}&limit=${limit}&engines=duckduckgo`,
+      { headers: { Accept: "application/json" } },
+    );
+    if (res.ok) {
+      const data = await res.json().catch(() => null);
+      if (Array.isArray(data) && data.length) {
+        return data.slice(0, limit).map((it: Record<string, string>) => ({
+          title: it.title || "",
+          url: it.url || "",
+          description: it.description || "",
+          source: it.source || extractSource(it.url || ""),
+          engine: it.engine || "duckduckgo",
+        }));
+      }
+    }
+  } catch {
+    /* 代理不可用，回退直连 */
+  }
+  // 直连 DuckDuckGo Lite（仅在不跨域的环境中有效）
   try {
     const res = await fetchWithTimeout(
       `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`,
@@ -411,8 +439,13 @@ export async function searchAI(
       choices?: { message?: { content?: string } }[];
     };
     const raw = j.choices?.[0]?.message?.content || "";
+    // 尝试解析 JSON 数组（兼容 AI 用 ```json 代码块包裹的情况）
     try {
-      const parsed = JSON.parse(raw);
+      const jsonText = raw
+        .replace(/```json\s*/i, "")
+        .replace(/```\s*$/i, "")
+        .trim();
+      const parsed = JSON.parse(jsonText);
       if (Array.isArray(parsed)) {
         return parsed.slice(0, limit).map((it: Record<string, string>) => ({
           title: it.title || "",
@@ -703,4 +736,194 @@ export async function fetchWebpage(url: string): Promise<string> {
 
 export function getAvailableEngines(): string[] {
   return Object.keys(SEARCH_ENGINES);
+}
+
+// ======================== 搜索 + 多结果内容抓取 ========================
+
+/**
+ * 增强搜索：获取搜索结果列表，并对前 maxSources 个来源抓取正文内容。
+ * 返回「搜索结果列表 + 各来源内容摘要」，供 AI 筛选综合多个资料后作答。
+ *
+ * 格式（供 AI 参考，标注来源便于引用）：
+ *   【搜索结果】
+ *   1. 标题 (url) — 描述
+ *   ...
+ *   【来源内容 · N 个】
+ *   来源1 (url)：正文摘要...
+ *   ...
+ */
+export async function webSearchWithContent(
+  query: string,
+  maxSources: number = 3,
+  perSourceChars: number = 2500,
+): Promise<string> {
+  // 1) 多引擎聚合搜索（backend/duckduckgo/wikipedia/brave）
+  const multi = await searchMulti(
+    query,
+    ["backend", "duckduckgo", "wikipedia"],
+    8,
+  );
+  if (!multi.results.length) {
+    // 回退 AI 生成列表
+    const ai = await searchAI(query, 6);
+    if (ai.length) multi.results.push(...ai);
+  }
+  if (!multi.results.length) return "";
+
+  const out: string[] = [];
+  out.push("【搜索结果】");
+  multi.results.slice(0, 8).forEach((r, i) => {
+    out.push(
+      `${i + 1}. ${r.title} (${r.url})\n   ${(r.description || "").slice(0, 200)}`,
+    );
+  });
+
+  // 2) 对前 maxSources 个来源抓取正文（并发，单点失败不影响整体）
+  const targets = dedupeByUrl(multi.results)
+    .filter((r) => /^https?:\/\//i.test(r.url))
+    .slice(0, maxSources);
+
+  if (targets.length) {
+    out.push(`\n【来源内容 · ${targets.length} 个】`);
+    const contents = await Promise.allSettled(
+      targets.map((t) =>
+        fetchWebContent(t.url, perSourceChars).then((c) => ({
+          url: t.url,
+          title: c.title || t.title,
+          content: c.content,
+        })),
+      ),
+    );
+    contents.forEach((s, i) => {
+      if (s.status === "fulfilled" && s.value.content.trim()) {
+        out.push(
+          `\n来源${i + 1} (${s.value.url}${s.value.title ? " | " + s.value.title : ""})：\n${s.value.content.slice(0, perSourceChars)}`,
+        );
+      } else {
+        out.push(`\n来源${i + 1} (${targets[i]?.url})：内容抓取失败或为空`);
+      }
+    });
+  }
+
+  return out.join("\n");
+}
+
+// ======================== AI 生成 markdown 文章（综合筛选） ========================
+
+/** 从网页 HTML 提取 og:image 封面图 */
+async function extractOgImage(url: string): Promise<string> {
+  try {
+    const res = await fetchWithTimeout(url, {
+      headers: { Accept: "text/html" },
+    }, 6000);
+    const html = await res.text();
+    const m = html.match(
+      /<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i,
+    ) || html.match(
+      /<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i,
+    );
+    return m ? m[1].trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * 深度搜索 + AI 综合筛选 → 标准 markdown 文章（含标题/分节/列表/引用/图片/来源）。
+ * 流程：
+ *   1. 多引擎搜索拿结果列表
+ *   2. 对前 maxSources 个来源抓取正文 + 提取 og:image 封面
+ *   3. 调用 AI 按标准格式筛选综合生成文章
+ */
+export async function webSearchToArticle(
+  query: string,
+  maxSources: number = 4,
+): Promise<{ article: string; sources: SearchResult[] }> {
+  const cfg = getAICfg();
+  if (!cfg?.endpoint || !cfg?.apiKey || !cfg?.model) {
+    return { article: "", sources: [] };
+  }
+
+  // 1) 多引擎搜索
+  const multi = await searchMulti(
+    query,
+    ["backend", "duckduckgo", "wikipedia"],
+    10,
+  );
+  let results = dedupeByUrl(multi.results);
+  if (!results.length) {
+    const ai = await searchAI(query, 6);
+    results = dedupeByUrl(ai);
+  }
+  if (!results.length) return { article: "", sources: results };
+
+  // 2) 抓取正文 + 封面图
+  const targets = results
+    .filter((r) => /^https?:\/\//i.test(r.url))
+    .slice(0, maxSources);
+  const fetched = await Promise.allSettled(
+    targets.map(async (t) => {
+      const [content, image] = await Promise.all([
+        fetchWebContent(t.url, 2500).then((c) => c.content).catch(() => ""),
+        extractOgImage(t.url),
+      ]);
+      return { url: t.url, title: t.title, content, image };
+    }),
+  );
+
+  const sourcesBlock = fetched
+    .map((s, i) => {
+      if (s.status !== "fulfilled") return "";
+      const f = s.value;
+      const img = f.image ? `\n[图片]: ${f.image}` : "";
+      return `来源${i + 1} (${f.url} | ${f.title})${img}：\n${(f.content || "").slice(0, 2500)}`;
+    })
+    .filter(Boolean)
+    .join("\n\n");
+
+  // 3) AI 综合筛选生成标准 markdown 文章
+  const sys =
+    "你是资深内容研究员。基于用户提供的【搜索结果】与【来源内容】，筛选、交叉验证并综合多个资料，" +
+    "用**标准 Markdown 格式**生成一篇结构化文章。要求：\n" +
+    "- 首行 H1 标题（中文，概括主题）\n" +
+    "- 开头 2-3 句引言摘要（加粗要点）\n" +
+    "- 用 H2 分节（3-5 节），每节用有序/无序列表或短段落呈现关键信息\n" +
+    "- 如有来源图片，用 `![配图](图片URL)` 插入合适位置（无图片则省略）\n" +
+    "- 引用事实时用 `> 引用` 块，末尾附「参考来源」列表（Markdown 链接）\n" +
+    "- 只输出文章正文，不要额外说明";
+  const userMsg = `查询主题：${query}\n\n【搜索结果】\n${
+    results.slice(0, 10).map((r, i) => `${i + 1}. ${r.title} (${r.url})\n   ${r.description?.slice(0, 200)}`).join("\n")
+  }\n\n【来源内容】\n${sourcesBlock || "(抓取失败，仅凭搜索结果)"}`;
+
+  try {
+    const res = await fetchWithTimeout(
+      cfg.endpoint.replace(/\/+$/, "") + "/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + cfg.apiKey,
+        },
+        body: JSON.stringify({
+          model: cfg.model,
+          messages: [
+            { role: "system", content: sys },
+            { role: "user", content: userMsg },
+          ],
+          temperature: 0.5,
+          max_tokens: 2000,
+          stream: false,
+        }),
+      },
+      45000,
+    );
+    if (!res.ok) return { article: "", sources: results };
+    const j = (await res.json()) as {
+      choices?: { message?: { content?: string } }[];
+    };
+    const article = j.choices?.[0]?.message?.content?.trim() || "";
+    return { article, sources: results };
+  } catch {
+    return { article: "", sources: results };
+  }
 }

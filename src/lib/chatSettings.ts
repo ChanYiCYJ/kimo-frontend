@@ -91,6 +91,58 @@ export function clearMemory(pageId: number): void {
   lsRemove(KEY_MEMORY_PREFIX + pageId);
 }
 
+// ---- 记忆自动压缩（防止 token 滥用）----
+// 记忆结构：每行一条 "- 用户问：xx → AI 答：yy"
+// 压缩策略：
+//   1. 相同「问题前段」视为同主题，合并为最新一条（避免重复积累）
+//   2. 超过 MAX_MEMORY_LINES 时只保留最新条目（丢弃最旧）
+//   3. 超长条目截断，保证总字符数可控
+const MAX_MEMORY_LINES = 10;
+const MAX_MEMORY_CHARS = 1400;
+const MAX_LINE_CHARS = 220;
+
+/** 解析记忆文本为行数组（过滤空行） */
+function memoryLines(memory: string): string[] {
+  return memory
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+}
+
+/**
+ * 压缩记忆：合并同主题 + 限制条数/长度。
+ * 输入旧记忆全文与新增 Q&A，返回压缩后的新记忆文本。
+ */
+export function compressMemory(
+  oldMemory: string,
+  question: string,
+  answer: string,
+): string {
+  const insight = `用户问：${question.slice(0, 50)} → AI 答：${answer.slice(0, 80)}${answer.length > 80 ? "…" : ""}`;
+  const lines = memoryLines(oldMemory);
+
+  // 1) 同主题合并：问题前 12 字相同视为同一主题，覆盖旧条目
+  const key = question.slice(0, 12);
+  const deduped = lines.filter(
+    (l) => !l.startsWith("- 用户问：") || !l.slice(0, 14).includes(key),
+  );
+  deduped.push(`- ${insight}`);
+
+  // 2) 只保留最新 MAX_MEMORY_LINES 条
+  const capped = deduped.slice(-MAX_MEMORY_LINES);
+
+  // 3) 逐行截断 + 总量控制
+  const truncated = capped.map((l) =>
+    l.length > MAX_LINE_CHARS ? l.slice(0, MAX_LINE_CHARS) + "…" : l,
+  );
+  let total = truncated.join("\n");
+  while (total.length > MAX_MEMORY_CHARS && truncated.length > 1) {
+    truncated.shift();
+    total = truncated.join("\n");
+  }
+  return total;
+}
+
 // ---- 自定义模型开关（默认关闭，仅控制设置面板中表单的展开）----
 export function loadCustomModelOn(): boolean {
   return lsGet(KEY_CUSTOM_MODEL) === "1";

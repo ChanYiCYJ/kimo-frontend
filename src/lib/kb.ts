@@ -201,18 +201,41 @@ export interface KbToolCmd {
 }
 
 export function parseKbTool(reply: string): KbToolCmd | null {
-  const saveM = reply.match(
-    /\[KB-SAVE:\s*([^\]]+)\]\s*([\s\S]*?)\s*\[\/KB-SAVE\]/,
-  );
-  if (saveM) {
-    return { mode: "save", title: saveM[1].trim(), content: saveM[2].trim() };
+  // 快速失败：不含标记直接返回（避免大文本正则回溯）
+  if (!reply.includes("KB-SAVE") && !reply.includes("KB-EDIT")) return null;
+
+  // 解析 [KB-SAVE:标题]内容[/KB-SAVE]
+  const saveOpen = "[KB-SAVE:";
+  const saveIdx = reply.indexOf(saveOpen);
+  if (saveIdx >= 0) {
+    const titleEnd = reply.indexOf("]", saveIdx + saveOpen.length);
+    if (titleEnd > saveIdx) {
+      const title = reply.slice(saveIdx + saveOpen.length, titleEnd).trim();
+      const closeTag = "[/KB-SAVE]";
+      const closeIdx = reply.indexOf(closeTag, titleEnd + 1);
+      if (closeIdx >= 0) {
+        const content = reply.slice(titleEnd + 1, closeIdx).trim();
+        if (title) return { mode: "save", title, content };
+      }
+    }
   }
-  const editM = reply.match(
-    /\[KB-EDIT:\s*([^\]]+)\]\s*([\s\S]*?)\s*\[\/KB-EDIT\]/,
-  );
-  if (editM) {
-    return { mode: "edit", title: editM[1].trim(), content: editM[2].trim() };
+
+  // 解析 [KB-EDIT:标题]新内容[/KB-EDIT]
+  const editOpen = "[KB-EDIT:";
+  const editIdx = reply.indexOf(editOpen);
+  if (editIdx >= 0) {
+    const titleEnd = reply.indexOf("]", editIdx + editOpen.length);
+    if (titleEnd > editIdx) {
+      const title = reply.slice(editIdx + editOpen.length, titleEnd).trim();
+      const closeTag = "[/KB-EDIT]";
+      const closeIdx = reply.indexOf(closeTag, titleEnd + 1);
+      if (closeIdx >= 0) {
+        const content = reply.slice(titleEnd + 1, closeIdx).trim();
+        if (title) return { mode: "edit", title, content };
+      }
+    }
   }
+
   return null;
 }
 

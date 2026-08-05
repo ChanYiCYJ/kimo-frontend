@@ -1,6 +1,13 @@
 import { useState, useEffect, useRef } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { MdEditor } from "./MdEditor";
-import { fetchWebpage, webSearch } from "../lib/search";
+import {
+  fetchWebpage,
+  webSearch,
+  webSearchWithContent,
+  webSearchToArticle,
+} from "../lib/search";
 import { SettingsTab, type AgentSettingsProps } from "./SettingsTab";
 import {
   saveKbNotes,
@@ -99,6 +106,9 @@ export function AgentPanel({
   const [webUrl, setWebUrl] = useState(initUrl || "");
   const [webLoading, setWebLoading] = useState(false);
   const [webContent, setWebContent] = useState("");
+  /** AI 综合筛选后生成的 markdown 文章（含图片/分节/来源） */
+  const [articleMd, setArticleMd] = useState("");
+  const [articleLoading, setArticleLoading] = useState(false);
   const [mdContent, setMdContent] = useState(initEditContent || "");
   const [dragOver, setDragOver] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -533,8 +543,9 @@ export function AgentPanel({
             const qp = new URL(u).searchParams.get("q");
             if (qp) {
               setWebUrl(qp);
-              const result = await webSearch(qp);
+              const result = await webSearchWithContent(qp, 3, 2500);
               setWebContent(result || "未找到结果");
+              if (window.innerWidth >= 1024) await generateArticle(qp);
               return;
             }
           } catch {}
@@ -570,13 +581,31 @@ export function AgentPanel({
         setWebContent(text || "无法获取内容");
       } else {
         setWebUrl(u);
-        const result = await webSearch(u);
-        setWebContent(result || "未找到结果");
+        // 关键词搜索：抓取多个结果正文，供 AI 筛选综合多个资料
+        const content = await webSearchWithContent(u, 3, 2500);
+        setWebContent(content || "未找到结果");
+        // 电脑端自动调用 AI 综合筛选生成 markdown 文章（手机端保持精简）
+        if (window.innerWidth >= 1024) {
+          await generateArticle(u);
+        }
       }
     } catch {
       setWebContent("搜索失败");
     } finally {
       setWebLoading(false);
+    }
+  };
+
+  /** AI 综合筛选搜索结果，生成标准 markdown 文章 */
+  const generateArticle = async (query: string) => {
+    setArticleLoading(true);
+    try {
+      const r = await webSearchToArticle(query, 4);
+      setArticleMd(r.article || "");
+    } catch {
+      setArticleMd("");
+    } finally {
+      setArticleLoading(false);
     }
   };
 
@@ -607,30 +636,9 @@ export function AgentPanel({
         </div>
       )}
 
-      {/* Header */}
+      {/* Header：知识库 / 设置（浏览与编辑器由 AI 指令或知识库入口进入） */}
       <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-4 py-2.5 dark:border-gray-800">
         <div className="flex gap-0.5 rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800">
-          <button
-            onClick={() => setTab("web")}
-            className={
-              "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition " +
-              (tab === "web"
-                ? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100"
-                : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300")
-            }
-          >
-            <svg
-              className="h-3.5 w-3.5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <path d="M2 12h20M12 2a15.3 15.3 0 014 10" />
-            </svg>
-            浏览
-          </button>
           <button
             onClick={() => setTab("kb")}
             className={
@@ -654,30 +662,6 @@ export function AgentPanel({
               />
             </svg>
             知识库
-          </button>
-          <button
-            onClick={() => setTab("edit")}
-            className={
-              "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition " +
-              (tab === "edit"
-                ? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100"
-                : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300")
-            }
-          >
-            <svg
-              className="h-3.5 w-3.5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"
-              />
-            </svg>
-            编辑器
           </button>
           <button
             onClick={() => setTab("settings")}
@@ -869,6 +853,56 @@ export function AgentPanel({
               </div>
             </div>
           )}
+          {/* AI 综合文章（标准 markdown，含图片/分节/来源） */}
+          {(articleMd || articleLoading) && !webLoading && (
+            <div className="mt-4 w-full border-t border-gray-100 pt-4 dark:border-gray-800">
+              <div className="mb-2 flex items-center gap-1.5">
+                <svg
+                  className="h-4 w-4 text-gray-400"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"
+                  />
+                </svg>
+                <span className="text-xs font-semibold text-gray-500">
+                  AI 综合文章
+                </span>
+                <div className="flex-1" />
+                {articleMd && (
+                  <button
+                    onClick={() => {
+                      setMdContent(articleMd);
+                      setActiveEntry(null);
+                      setTab("edit");
+                    }}
+                    className="rounded-full bg-gray-900 px-2.5 py-1 text-[10px] font-medium text-white transition hover:bg-gray-700 dark:bg-gray-200 dark:text-gray-900"
+                  >
+                    在编辑器中打开
+                  </button>
+                )}
+              </div>
+              {articleLoading ? (
+                <div className="flex items-center gap-2 rounded-xl bg-gray-50 px-3 py-4 text-xs text-gray-400 dark:bg-gray-800/40">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-gray-400" />
+                  AI 正在筛选资料并生成文章…
+                </div>
+              ) : (
+                articleMd && (
+                  <div className="card chat-md max-h-[50vh] overflow-y-auto rounded-2xl p-4">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {articleMd}
+                    </ReactMarkdown>
+                  </div>
+                )
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -1010,11 +1044,51 @@ export function AgentPanel({
           )}
           {/* Entries */}
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-50 bg-white px-3 py-2 dark:border-gray-800 dark:bg-gray-900">
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-gray-50 bg-white px-3 py-2 dark:border-gray-800 dark:bg-gray-900">
               <div className="flex items-center gap-2">
                 <span className="text-[11px] font-semibold text-gray-500">
                   知识条目 · {entries.length}条
                 </span>
+                <button
+                  onClick={() => {
+                    setActiveEntry(null);
+                    setMdContent("");
+                    setTab("edit");
+                  }}
+                  className="flex items-center gap-1 rounded-full bg-gray-900 px-2 py-0.5 text-[10px] font-medium text-white transition hover:bg-gray-700 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
+                  title="新建知识条目"
+                >
+                  <svg
+                    className="h-3 w-3"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                  >
+                    <path strokeLinecap="round" d="M12 5v14M5 12h14" />
+                  </svg>
+                  新建
+                </button>
+                <button
+                  onClick={() => {
+                    setTab("web");
+                    setWebContent("");
+                  }}
+                  className="flex items-center gap-1 rounded-full border border-gray-200 px-2 py-0.5 text-[10px] font-medium text-gray-500 transition hover:border-gray-400 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                  title="浏览网页"
+                >
+                  <svg
+                    className="h-3 w-3"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M2 12h20M12 2a15.3 15.3 0 014 10" />
+                  </svg>
+                  浏览
+                </button>
                 <button
                   onClick={() => {
                     const v = !kbAiReadAll;

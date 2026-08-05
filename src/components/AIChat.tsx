@@ -25,6 +25,7 @@ import {
   saveChatFontSize,
   saveWebSearchOn,
   saveTtsPref,
+  compressMemory,
   clearMemory as clearStoredMemory,
   type ChatFontSize,
 } from "../lib/chatSettings";
@@ -41,6 +42,12 @@ interface Message {
   /** 附加的知识库条目（对话中以卡片展示，AI 上下文仍会注入内容） */
   attachments?: { id: string; title: string; content: string }[];
 }
+
+/**
+ * 从 AI 回复显示文本中过滤工具指令（[SEARCH:] / [BROWSE:] / [EDIT:] / [KB-*] 等），
+ * 它们由 toolCalls 小卡片承载展示，避免在消息里露出原始标记。
+ */
+import { stripToolCmds } from "../lib/toolCmds";
 
 interface Session {
   id: string;
@@ -207,6 +214,22 @@ export function AIChat({
   const [docOpen, setDocOpen] = useState(false);
   const [articleOpen, setArticleOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
+  /** 移动端「工具箱」入口小提示（浏览/知识库/编辑器），首次显示几秒后消失 */
+  const [agentHint, setAgentHint] = useState(false);
+  useEffect(() => {
+    // 桌面端不需要提示；仅移动端且尚未提示过时显示
+    const shown = localStorage.getItem("kimo_agent_hint_shown") === "1";
+    if (window.innerWidth < 1024 && !shown && !agentOpen) {
+      setAgentHint(true);
+      const t = setTimeout(() => {
+        setAgentHint(false);
+        try {
+          localStorage.setItem("kimo_agent_hint_shown", "1");
+        } catch {}
+      }, 4000);
+      return () => clearTimeout(t);
+    }
+  }, [agentOpen]);
   const [kbPickerOpen, setKbPickerOpen] = useState(false);
   const [kbPickerSelected, setKbPickerSelected] = useState<string[]>([]);
   const [kbAttachments, setKbAttachments] = useState<
@@ -248,7 +271,12 @@ export function AIChat({
   const [botMenuOpen, setBotMenuOpen] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
   const [toolCalls, setToolCalls] = useState<
-    { msgIdx: number; type: string; detail: string }[]
+    {
+      msgIdx: number;
+      type: string;
+      detail: string;
+      tab?: "web" | "kb" | "edit" | "settings";
+    }[]
   >([]);
   const clearMemory = useCallback(() => {
     setMemory("");
@@ -537,11 +565,8 @@ export function AIChat({
 
   const learn = useCallback(
     (q: string, a: string) => {
-      const insight = `用户问：${q.slice(0, 50)} → AI 答：${a.slice(0, 80)}${a.length > 80 ? "…" : ""}`;
-      const lines = memory.split("\n").filter(Boolean);
-      lines.push(`- ${insight}`);
-      if (lines.length > 12) lines.shift();
-      const next = lines.join("\n");
+      // 自动压缩记忆（合并同主题 + 限制条数/长度），防止 token 滥用
+      const next = compressMemory(memory, q, a);
       setMemory(next);
       saveMemory(pageId, next);
     },
@@ -756,66 +781,87 @@ export function AIChat({
     const kbCmd = reply.match(/\[(?:KB|OPEN_KB|知识库)(?::\s*([^\]]+))?\]/);
     const kbSaveCmd = parseKbTool(reply);
     const msgIdx = messages.length;
+    // 电脑端工具触发后自动打开 Agent 面板；手机端仅展示小卡片，用户点击卡片才打开
+    const autoOpenAgent = () => {
+      if (window.innerWidth >= 1024) setAgentOpen(true);
+    };
     if (kbSaveCmd) {
       const entry = saveKbEntry(kbSaveCmd.title, kbSaveCmd.content);
       setAgentKbOpen({ nonce: Date.now(), entry });
       setAgentTab("edit");
       setAgentInitUrl(undefined);
       setAgentEditContent(kbSaveCmd.content);
-      setAgentOpen(true);
+      autoOpenAgent();
       setToolCalls((prev) => [
         ...prev,
         {
           msgIdx,
           type: kbSaveCmd.mode === "edit" ? "编辑知识库" : "保存知识库",
           detail: kbSaveCmd.title.slice(0, 60),
+          tab: "edit",
         },
       ]);
     } else if (browseCmd) {
       setAgentTab("web");
       setAgentInitUrl(browseCmd[1]);
       setAgentEditContent(undefined);
-      setAgentOpen(true);
+      autoOpenAgent();
       setToolCalls((prev) => [
         ...prev,
-        { msgIdx, type: "浏览网页", detail: browseCmd[1].slice(0, 60) },
+        {
+          msgIdx,
+          type: "浏览网页",
+          detail: browseCmd[1].slice(0, 60),
+          tab: "web",
+        },
       ]);
     } else if (searchCmd) {
       setAgentTab("web");
       setAgentInitUrl(searchCmd[1].trim());
       setAgentEditContent(undefined);
-      setAgentOpen(true);
+      autoOpenAgent();
       setToolCalls((prev) => [
         ...prev,
-        { msgIdx, type: "网络搜索", detail: searchCmd[1].trim().slice(0, 60) },
+        {
+          msgIdx,
+          type: "网络搜索",
+          detail: searchCmd[1].trim().slice(0, 60),
+          tab: "web",
+        },
       ]);
     } else if (editCmd) {
       setAgentTab("edit");
       setAgentInitUrl(undefined);
       setAgentEditContent(editCmd[1].trim());
-      setAgentOpen(true);
+      autoOpenAgent();
       setToolCalls((prev) => [
         ...prev,
-        { msgIdx, type: "编辑文档", detail: editCmd[1].trim().slice(0, 60) },
+        {
+          msgIdx,
+          type: "编辑文档",
+          detail: editCmd[1].trim().slice(0, 60),
+          tab: "edit",
+        },
       ]);
     } else if (kbCmd) {
       setAgentTab("kb");
       setAgentInitUrl(undefined);
       setAgentEditContent(undefined);
-      setAgentOpen(true);
+      autoOpenAgent();
       setToolCalls((prev) => [
         ...prev,
         {
           msgIdx,
           type: "打开知识库",
           detail: (kbCmd[1] || "查看/整理知识库条目").slice(0, 60),
+          tab: "kb",
         },
       ]);
     }
     if (web && web.trim()) {
       setToolCalls((prev) => [
         ...prev,
-        { msgIdx, type: "网络资料", detail: web.slice(0, 120) },
+        { msgIdx, type: "网络资料", detail: web.slice(0, 120), tab: "web" },
       ]);
     }
 
@@ -1209,7 +1255,7 @@ export function AIChat({
                   return !v;
                 });
               }}
-              className={`${iconBtn} ${agentOpen ? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300" : ""}`}
+              className={`relative ${iconBtn} ${agentOpen ? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300" : ""}`}
               title="Agent 工具箱"
               aria-label="Agent 工具箱"
             >
@@ -1226,6 +1272,16 @@ export function AIChat({
                   d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21"
                 />
               </svg>
+              {/* 移动端小提示：浏览/知识库/编辑器 */}
+              {agentHint && (
+                <span className="pointer-events-none absolute -bottom-9 right-0 z-30 whitespace-nowrap rounded-xl bg-gray-900 px-3 py-1.5 text-xs font-medium text-white shadow-lg animate-[kfade_0.3s_ease-out] dark:bg-gray-200 dark:text-gray-900">
+                  浏览 · 知识库 · 编辑器
+                  <span
+                    className="absolute right-3 top-0 -translate-y-1/2 rotate-45 border-l border-t border-gray-900 bg-gray-900 dark:border-gray-200 dark:bg-gray-200"
+                    style={{ width: 6, height: 6 }}
+                  />
+                </span>
+              )}
             </button>
             {canManage && (
               <button
@@ -1404,7 +1460,7 @@ export function AIChat({
                       {m.role === "assistant" ? (
                         <div className="chat-md">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {m.content}
+                            {stripToolCmds(m.content)}
                           </ReactMarkdown>
                         </div>
                       ) : (
@@ -1440,19 +1496,82 @@ export function AIChat({
                           </span>
                         </>
                       )}
-                      {/* 工具调用卡片 */}
+                      {/* 工具调用小卡片：按类型区分颜色/图标 */}
                       {toolCalls.filter((tc) => tc.msgIdx === i).length > 0 && (
                         <div className="mt-2 space-y-1.5">
                           {toolCalls
                             .filter((tc) => tc.msgIdx === i)
-                            .map((tc, j) => (
-                              <div
-                                key={j}
-                                className="rounded-xl border border-blue-200 bg-blue-50/60 px-3 py-2 dark:border-blue-800 dark:bg-blue-900/20"
-                              >
-                                <div className="flex items-center gap-1.5 text-xs">
+                            .map((tc, j) => {
+                              const styles: Record<
+                                string,
+                                { wrap: string; icon: string; text: string }
+                              > = {
+                                保存知识库: {
+                                  wrap: "border-emerald-200 bg-emerald-50/70 dark:border-emerald-800 dark:bg-emerald-900/20",
+                                  icon: "text-emerald-500",
+                                  text: "text-emerald-700 dark:text-emerald-300",
+                                },
+                                编辑知识库: {
+                                  wrap: "border-emerald-200 bg-emerald-50/70 dark:border-emerald-800 dark:bg-emerald-900/20",
+                                  icon: "text-emerald-500",
+                                  text: "text-emerald-700 dark:text-emerald-300",
+                                },
+                                浏览网页: {
+                                  wrap: "border-sky-200 bg-sky-50/70 dark:border-sky-800 dark:bg-sky-900/20",
+                                  icon: "text-sky-500",
+                                  text: "text-sky-700 dark:text-sky-300",
+                                },
+                                网络搜索: {
+                                  wrap: "border-violet-200 bg-violet-50/70 dark:border-violet-800 dark:bg-violet-900/20",
+                                  icon: "text-violet-500",
+                                  text: "text-violet-700 dark:text-violet-300",
+                                },
+                                网络资料: {
+                                  wrap: "border-amber-200 bg-amber-50/70 dark:border-amber-800 dark:bg-amber-900/20",
+                                  icon: "text-amber-500",
+                                  text: "text-amber-700 dark:text-amber-300",
+                                },
+                                编辑文档: {
+                                  wrap: "border-orange-200 bg-orange-50/70 dark:border-orange-800 dark:bg-orange-900/20",
+                                  icon: "text-orange-500",
+                                  text: "text-orange-700 dark:text-orange-300",
+                                },
+                                打开知识库: {
+                                  wrap: "border-teal-200 bg-teal-50/70 dark:border-teal-800 dark:bg-teal-900/20",
+                                  icon: "text-teal-500",
+                                  text: "text-teal-700 dark:text-teal-300",
+                                },
+                              };
+                              const s = styles[tc.type] || {
+                                wrap: "border-gray-200 bg-gray-50/70 dark:border-gray-700 dark:bg-gray-800/40",
+                                icon: "text-gray-500",
+                                text: "text-gray-600 dark:text-gray-300",
+                              };
+                              return (
+                                <button
+                                  key={j}
+                                  onClick={() => {
+                                    if (tc.tab) {
+                                      setAgentTab(tc.tab);
+                                      if (
+                                        tc.tab === "web" &&
+                                        tc.type !== "网络资料"
+                                      ) {
+                                        setAgentInitUrl(
+                                          tc.detail.split(" ")[0],
+                                        );
+                                      }
+                                      setAgentEditContent(undefined);
+                                      setAgentOpen(true);
+                                    }
+                                  }}
+                                  title={
+                                    tc.tab ? "点击打开 Agent 面板" : undefined
+                                  }
+                                  className={`inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition hover:shadow-sm ${s.wrap} ${tc.tab ? "hover:opacity-90 active:scale-[0.98]" : "cursor-default"}`}
+                                >
                                   <svg
-                                    className="h-3.5 w-3.5 text-blue-500"
+                                    className={`h-3.5 w-3.5 shrink-0 ${s.icon}`}
                                     viewBox="0 0 24 24"
                                     fill="none"
                                     stroke="currentColor"
@@ -1461,15 +1580,17 @@ export function AIChat({
                                     <circle cx="12" cy="12" r="10" />
                                     <path d="M12 16v-4m0-4h.01" />
                                   </svg>
-                                  <span className="font-medium text-blue-600 dark:text-blue-400">
+                                  <span
+                                    className={`shrink-0 font-medium ${s.text}`}
+                                  >
                                     {tc.type}
                                   </span>
-                                </div>
-                                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 truncate">
-                                  {tc.detail}
-                                </p>
-                              </div>
-                            ))}
+                                  <span className="truncate text-gray-500 dark:text-gray-400">
+                                    {tc.detail}
+                                  </span>
+                                </button>
+                              );
+                            })}
                         </div>
                       )}
                       {m.role === "assistant" && (
