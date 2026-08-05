@@ -1741,8 +1741,7 @@ const agentSidebar = agentOpen && (
         kbOn={kbOn}
         onToggleKb={toggleKb}
         onApplied={refreshKb}
-        systemPrompt={config.systemPrompt}
-        promptPreview={kbOn ? kbText : ""}
+        
       />
       <LocalApiModal
         open={apiModalOpen}
