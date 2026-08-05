@@ -134,6 +134,27 @@ function dedupeByUrl(results: SearchResult[]): SearchResult[] {
   });
 }
 
+/** 按域名多样化：每站最多 perDomain 条，让结果覆盖多个不同网站（避免只爬单一站点） */
+function diversifyByDomain(
+  results: SearchResult[],
+  max: number,
+  perDomain = 2,
+): SearchResult[] {
+  const hostCount: Record<string, number> = {};
+  const out: SearchResult[] = [];
+  for (const r of results) {
+    let host = r.source || "";
+    try {
+      host = new URL(r.url).hostname.replace(/^www\./i, "");
+    } catch {}
+    if ((hostCount[host] || 0) >= perDomain) continue;
+    hostCount[host] = (hostCount[host] || 0) + 1;
+    out.push(r);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
 // ======================== AI 配置读取 ========================
 
 function getAICfg() {
@@ -789,10 +810,12 @@ export async function webSearchWithContent(
     );
   });
 
-  // 2) 对前 maxSources 个来源抓取正文（并发，单点失败不影响整体）
-  const targets = dedupeByUrl(multi.results)
-    .filter((r) => /^https?:\/\//i.test(r.url))
-    .slice(0, maxSources);
+  // 2) 对前 maxSources 个来源抓取正文（按域名多样化，覆盖多个不同网站）
+  const targets = diversifyByDomain(
+    dedupeByUrl(multi.results).filter((r) => /^https?:\/\//i.test(r.url)),
+    maxSources,
+    2,
+  );
 
   if (targets.length) {
     out.push(`\n【来源内容 · ${targets.length} 个】`);
@@ -908,10 +931,12 @@ export async function webSearchToArticle(
   }
   if (!results.length) return { article: "", sources: results };
 
-  // 2) 抓取正文 + 封面图（og:image 经 Worker 代理提取）
-  const targets = results
-    .filter((r) => /^https?:\/\//i.test(r.url))
-    .slice(0, maxSources);
+  // 2) 抓取正文 + 封面图（按域名多样化，覆盖多个不同网站）
+  const targets = diversifyByDomain(
+    results.filter((r) => /^https?:\/\//i.test(r.url)),
+    maxSources,
+    2,
+  );
   const fetched = await Promise.allSettled(
     targets.map(async (t) => {
       let content = "";

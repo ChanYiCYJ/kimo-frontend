@@ -22,7 +22,8 @@ export default {
       const query = url.searchParams.get("q") || "";
       const limit = parseInt(url.searchParams.get("limit") || "8", 10);
       const engines =
-        url.searchParams.get("engines") || "bing,duckduckgo,wikipedia";
+        url.searchParams.get("engines") ||
+        "bing,duckduckgo,brave,wikipedia,googlenews";
       if (!query) return new Response("Missing q parameter", { status: 400 });
       const json = (data, status = 200) =>
         new Response(JSON.stringify(data), {
@@ -221,6 +222,56 @@ export default {
         } catch {}
       }
 
+      // Google News RSS（多来源新闻聚合，来源域名多样，弥补单站兜底）
+      if (want("googlenews") && out.length < limit) {
+        try {
+          const res = await fetch(
+            "https://news.google.com/rss/search?q=" +
+              encodeURIComponent(query) +
+              "&hl=zh-CN&gl=CN&ceid=CN:zh-Hans",
+            {
+              headers: {
+                "User-Agent":
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+              },
+              redirect: "follow",
+            },
+          );
+          if (res.ok) {
+            const xml = await res.text();
+            const items = xml.match(/<item>[\s\S]*?<\/item>/g) || [];
+            for (const item of items) {
+              if (out.length >= limit) break;
+              const titleM = item.match(/<title>([\s\S]*?)<\/title>/);
+              const linkM = item.match(/<link>([\s\S]*?)<\/link>/);
+              const srcM = item.match(/<source url="([^"]+)"[^>]*>/);
+              const title = titleM
+                ? titleM[1].replace(/<!\[CDATA\[|\]\]>/g, "").trim()
+                : "";
+              // 优先用真实来源站 URL（<source url>），news.google.com 重定向链接仅兜底
+              const link =
+                (srcM ? srcM[1].trim() : "") ||
+                (linkM ? linkM[1].trim() : "");
+              if (title && link) {
+                let source = "";
+                try {
+                  source = new URL(link)
+                    .hostname.replace(/^www\./i, "")
+                    .replace(/^news\./i, "");
+                } catch {}
+                push({
+                  title: title.slice(0, 120),
+                  url: link,
+                  description: "",
+                  source,
+                  engine: "googlenews",
+                });
+              }
+            }
+          }
+        } catch {}
+      }
+
       // Wikipedia opensearch（稳定兜底）
       if (want("wikipedia") && out.length < limit) {
         try {
@@ -251,7 +302,20 @@ export default {
         } catch {}
       }
 
-      return json(out);
+      // 域名多样化：让结果覆盖多个不同网站（每站最多 2 条），避免只来自单一站点
+      const hostCount = {};
+      const diverse = [];
+      for (const r of out) {
+        let host = r.source || "";
+        try {
+          host = new URL(r.url).hostname.replace(/^www\./i, "");
+        } catch {}
+        if ((hostCount[host] || 0) >= 2) continue;
+        hostCount[host] = (hostCount[host] || 0) + 1;
+        diverse.push(r);
+        if (diverse.length >= limit) break;
+      }
+      return json(diverse.length ? diverse : out);
     }
 
     // ── 2) 网页抓取代理：/api/fetch → 目标 URL ──
