@@ -361,7 +361,7 @@ export function MdEditor({
               onClick={runPolish}
               disabled={aiState === "loading"}
               title="使用 AI 润色正文"
-              className="ml-auto flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+              className="ml-auto flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-gray-700 transition hover:bg-gray-100 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-300 dark:hover:text-gray-100"
             >
               {aiState === "loading" ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />

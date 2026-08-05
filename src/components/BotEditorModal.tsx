@@ -27,6 +27,7 @@ export function BotEditorModal({ open, onClose, bot, onSaved }: BotEditorModalPr
   const [cooldown, setCooldown] = useState('')
   const [autoTTS, setAutoTTS] = useState(false)
   const [adminOnly, setAdminOnly] = useState(false)
+  const [dailyLimit, setDailyLimit] = useState("")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -46,11 +47,12 @@ export function BotEditorModal({ open, onClose, bot, onSaved }: BotEditorModalPr
       setCooldown(c.cooldown ? String(c.cooldown) : '')
       setAutoTTS(!!c.autoTTS)
       setAdminOnly(!!c.adminOnly)
+      setDailyLimit(c.dailyLimit ? String(c.dailyLimit) : "")
     } else {
       setName(''); setBotName(''); setAvatar('')
       setModel('gpt-4o-mini'); setEndpoint('https://api.openai.com/v1'); setApiKey('')
       setSystemPrompt('你是一个友好、专业的 AI 助手，请用简体中文回答。')
-      setMaxMessages(''); setCooldown(''); setAutoTTS(false); setAdminOnly(false)
+      setMaxMessages(''); setCooldown(''); setAutoTTS(false); setAdminOnly(false); setDailyLimit("")
     }
   }, [open, bot])
 
@@ -71,6 +73,7 @@ export function BotEditorModal({ open, onClose, bot, onSaved }: BotEditorModalPr
       cooldown: cooldown ? Number(cooldown) || undefined : undefined,
       autoTTS,
       adminOnly,
+      dailyLimit: dailyLimit ? Number(dailyLimit) || undefined : undefined,
     }
     const content = AI_CHAT_MARKER + JSON.stringify(cfg)
     try {
@@ -153,6 +156,10 @@ export function BotEditorModal({ open, onClose, bot, onSaved }: BotEditorModalPr
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">最大消息数（可选，超出需新建会话）</label>
             <input value={maxMessages} onChange={(e) => setMaxMessages(e.target.value)} type="number" min={0} placeholder="不限" className={inputCls} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">每日额度（0=不限，用户每天可发消息数）</label>
+            <input value={dailyLimit} onChange={(e) => setDailyLimit(e.target.value)} type="number" min={0} placeholder="不限" className={inputCls} />
           </div>
           <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
             <input type="checkbox" checked={autoTTS} onChange={(e) => setAutoTTS(e.target.checked)} className="h-4 w-4 accent-gray-900" />

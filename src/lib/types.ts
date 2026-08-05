@@ -94,6 +94,7 @@ export interface AIChatConfig {
   autoTTS?: boolean
   /** 仅管理员可使用 */
   adminOnly?: boolean
+  dailyLimit?: number
 }
 
 // API Key 简单混淆（base64，防明文泄露，非真正加密）

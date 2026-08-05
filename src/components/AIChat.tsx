@@ -186,7 +186,7 @@ export function AIChat({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [attachedFile, setAttachedFile] = useState("");
   const [searching, setSearching] = useState(false);
-  const [kbOn, setKbOn] = useState(false);
+  const [kbOn, setKbOn] = useState(true); // Coser 角色资料默认开启
   const [kbText, setKbText] = useState("");
   const [kbOpen, setKbOpen] = useState(false);
   const [webSearchOn, setWebSearchOn] = useState(() => {
@@ -201,6 +201,10 @@ export function AIChat({
   const [botMenuOpen, setBotMenuOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
+  const [dailyUsed, setDailyUsed] = useState(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    try { return Number(localStorage.getItem(STORAGE_PREFIX + "daily_" + pageId + "_" + today) || 0); } catch { return 0; }
+  });
   const [memory, setMemory] = useState(() => {
     try {
       return localStorage.getItem(STORAGE_PREFIX + "memory_" + pageId) || "";
@@ -256,6 +260,8 @@ export function AIChat({
     systemPrompt: localCfg.prompt || config.systemPrompt,
   };
   const hasCustom = !!(localCfg.endpoint || localCfg.apiKey || localCfg.model);
+  const dailyLimit = effCfg.dailyLimit || config.dailyLimit || 0;
+  const dailyRemaining = dailyLimit > 0 ? Math.max(0, dailyLimit - dailyUsed) : -1;
 
   const persistSessions = useCallback(
     (next: Session[]) => {
@@ -504,6 +510,15 @@ export function AIChat({
     if (!t || loading || cooldown > 0) return;
     // 默认服务端 API 有限制；用户自定义 API 时解除次数/冷却限制
     if (!hasCustom) {
+    if (dailyLimit > 0 && dailyUsed >= dailyLimit) {
+      const msg: Message = { role: "assistant" as const, content: `今日额度已用完（${dailyLimit} 条/天）。可使用自定义 API 解除限制，或明天再试。` };
+      updateActive((prev) => [...prev, msg]);
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const newUsed = dailyUsed + 1;
+    setDailyUsed(newUsed);
+    try { localStorage.setItem(STORAGE_PREFIX + "daily_" + pageId + "_" + today, String(newUsed)); } catch {}
       const max = effCfg.maxMessages || 0;
       if (max > 0 && messages.length >= max) {
         setLimitReached(true);
@@ -1603,6 +1618,9 @@ export function AIChat({
           </svg>
           用户设置
         </button>
+        {dailyLimit > 0 && (
+          <p className="mt-2 px-1 text-xs text-gray-400 dark:text-gray-500">今日：{dailyRemaining}/{dailyLimit}</p>
+        )}
         <p className="mt-2 px-1 text-[11px] font-medium text-gray-400 dark:text-gray-500">
           {settings.title || "Kimo"}
         </p>
