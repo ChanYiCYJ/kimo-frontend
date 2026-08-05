@@ -4,6 +4,7 @@ import { pageApi } from '../lib/api'
 import { AI_CHAT_MARKER, decodeKey, type AIChatConfig } from '../lib/types'
 import { useAuth } from '../lib/auth'
 import { useSite } from '../lib/site'
+import { TypeWriter } from '../components/Spinner'
 import { AIChat, type BotItem } from '../components/AIChat'
 
 /** 解析 AI 页面 → BotItem */
@@ -64,12 +65,12 @@ export function AICenter() {
   if (loading) {
     return (
       <div className="grid h-full place-items-center bg-white dark:bg-gray-900">
-        <div className="flex items-center gap-2 text-sm text-gray-400">
-          <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24" fill="none">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-          加载中...
+        <div className="flex flex-col items-center gap-3">
+          <TypeWriter
+            text="Think Different"
+            className="text-xl font-medium tracking-[0.2em] text-gray-500 dark:text-gray-400"
+          />
+          <p className="font-mono text-xs text-gray-300 dark:text-gray-600">$ loading ...</p>
         </div>
       </div>
     )
