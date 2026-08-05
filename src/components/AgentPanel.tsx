@@ -613,9 +613,7 @@ export function AgentPanel({
   /** 保存 AI 文章到知识库（标题取 H1，缺省用搜索词） */
   const saveArticle = () => {
     if (!articleMd) return;
-    const title = (
-      articleMd.match(/^#\s+(.+)$/m)?.[1] || webUrl || "浏览文章"
-    )
+    const title = (articleMd.match(/^#\s+(.+)$/m)?.[1] || webUrl || "浏览文章")
       .trim()
       .slice(0, 60);
     saveKbEntry(title, articleMd);

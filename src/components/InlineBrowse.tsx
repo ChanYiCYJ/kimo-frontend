@@ -39,9 +39,7 @@ export function InlineBrowse({
   }, [query, nonce]);
 
   const save = () => {
-    const title = (
-      article.match(/^#\s+(.+)$/m)?.[1] || query
-    )
+    const title = (article.match(/^#\s+(.+)$/m)?.[1] || query)
       .trim()
       .slice(0, 60);
     saveKbEntry(title, article);
@@ -49,13 +47,10 @@ export function InlineBrowse({
   };
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-[100] lg:hidden">
+    <div className="fixed inset-0 z-[100] lg:hidden">
       {/* 遮罩：点击关闭 */}
-      <div
-        className="absolute inset-0 bg-black/30"
-        onClick={onClose}
-      />
-      <div className="relative mx-auto max-w-2xl animate-[kslideUp_0.3s_ease-out] rounded-t-2xl border-t border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div className="absolute inset-x-0 bottom-0 mx-auto max-w-2xl animate-[kslideUp_0.3s_ease-out] rounded-t-2xl border-t border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2.5 dark:border-gray-800">
           <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
             浏览结果
