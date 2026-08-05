@@ -1,137 +1,150 @@
-import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { articleApi, categoryApi, resolveAsset, uploadApi } from '../../lib/api'
-import type { ArticleDetail, Category } from '../../lib/types'
-import { MdEditor } from '../../components/MdEditor'
-import { PageSpinner } from '../../components/Spinner'
-import { useToast } from '../../lib/toast'
-import { readingTime } from '../../lib/format'
-import { aiWrite, getAIConfig } from '../../lib/ai'
+import { useEffect, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import {
+  articleApi,
+  categoryApi,
+  resolveAsset,
+  uploadApi,
+} from "../../lib/api";
+import type { ArticleDetail, Category } from "../../lib/types";
+import { MdEditor } from "../../components/MdEditor";
+import { PageSpinner } from "../../components/Spinner";
+import { useToast } from "../../lib/toast";
+import { readingTime } from "../../lib/format";
+import { aiWrite, getAIConfig } from "../../lib/ai";
 
 export function ArticleEditor() {
-  const { id } = useParams<{ id: string }>()
-  const isEdit = !!id
-  const navigate = useNavigate()
-  const { success, error } = useToast()
+  const { id } = useParams<{ id: string }>();
+  const isEdit = !!id;
+  const navigate = useNavigate();
+  const { success, error } = useToast();
 
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [content, setContent] = useState('')
-  const [coverImage, setCoverImage] = useState('')
-  const [categoryId, setCategoryId] = useState<number | ''>('')
-  const [tagsInput, setTagsInput] = useState('')
-  const [categories, setCategories] = useState<Category[]>([])
-  const [loading, setLoading] = useState(isEdit)
-  const [saving, setSaving] = useState(false)
-  const [uploading, setUploading] = useState(false)
-  const [aiLoading, setAiLoading] = useState(false)
-  const [aiPrompt, setAiPrompt] = useState('')
-  const coverInputRef = useRef<HTMLInputElement>(null)
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [content, setContent] = useState("");
+  const [coverImage, setCoverImage] = useState("");
+  const [categoryId, setCategoryId] = useState<number | "">("");
+  const [tagsInput, setTagsInput] = useState("");
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(isEdit);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   // 加载分类 & 编辑时加载文章
   useEffect(() => {
-    categoryApi.list().then(setCategories).catch(() => {})
+    categoryApi
+      .list()
+      .then(setCategories)
+      .catch(() => {});
     if (isEdit) {
       articleApi
         .get(Number(id))
         .then((a: ArticleDetail) => {
-          setTitle(a.title)
-          setDescription(a.description ?? '')
-          setContent(a.content)
-          setCoverImage(a.cover_image ?? '')
-          setCategoryId(a.category_id ?? '')
-          setTagsInput(a.tags.map((t) => t.tag_name).join(', '))
+          setTitle(a.title);
+          setDescription(a.description ?? "");
+          setContent(a.content);
+          setCoverImage(a.cover_image ?? "");
+          setCategoryId(a.category_id ?? "");
+          setTagsInput(a.tags.map((t) => t.tag_name).join(", "));
         })
-        .catch((e: Error) => error(e.message || '加载失败'))
-        .finally(() => setLoading(false))
+        .catch((e: Error) => error(e.message || "加载失败"))
+        .finally(() => setLoading(false));
     }
-  }, [isEdit, id, error])
+  }, [isEdit, id, error]);
 
   const onUploadCover = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploading(true)
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
     try {
-      const res = await uploadApi.image(file)
-      setCoverImage(resolveAsset(res.url))
-      success('封面已上传')
+      const res = await uploadApi.image(file);
+      setCoverImage(resolveAsset(res.url));
+      success("封面已上传");
     } catch (err) {
-      error(err instanceof Error ? err.message : '上传失败')
+      error(err instanceof Error ? err.message : "上传失败");
     } finally {
-      setUploading(false)
-      if (coverInputRef.current) coverInputRef.current.value = ''
+      setUploading(false);
+      if (coverInputRef.current) coverInputRef.current.value = "";
     }
-  }
+  };
 
   const handleSubmit = async () => {
     if (!title.trim()) {
-      error('请输入文章标题')
-      return
+      error("请输入文章标题");
+      return;
     }
     if (!content.trim()) {
-      error('请输入文章内容')
-      return
+      error("请输入文章内容");
+      return;
     }
-    setSaving(true)
+    setSaving(true);
     const payload = {
       title: title.trim(),
       content,
       description: description.trim() || null,
       cover_image: coverImage || null,
-      category_id: categoryId === '' ? null : Number(categoryId),
+      category_id: categoryId === "" ? null : Number(categoryId),
       tags: tagsInput
         .split(/[,，]/)
         .map((t) => t.trim())
         .filter(Boolean),
-    }
+    };
     try {
       if (isEdit) {
-        await articleApi.update(Number(id), payload)
-        success('文章已更新')
+        await articleApi.update(Number(id), payload);
+        success("文章已更新");
       } else {
-        await articleApi.create(payload)
-        success('文章已发布')
+        await articleApi.create(payload);
+        success("文章已发布");
       }
-      navigate('/dashboard/articles')
+      navigate("/dashboard/articles");
     } catch (e) {
-      error(e instanceof Error ? e.message : '保存失败')
+      error(e instanceof Error ? e.message : "保存失败");
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
-  if (loading) return <PageSpinner />
+  if (loading) return <PageSpinner />;
 
-  const handleAiGenerate = async () => {
-    const prompt = aiPrompt.trim()
-    if (!prompt) { error('请输入 AI 指令'); return }
-    setAiLoading(true)
+  const handleAiGenerate = async (prompt: string) => {
     try {
-      const result = await aiWrite(prompt, content || undefined)
-      setContent((prev) => prev ? prev + '\n\n' + result : result)
-      setAiPrompt('')
-      success('AI 内容已追加')
+      const result = await aiWrite(prompt, content || undefined);
+      setContent((prev) => (prev ? prev + "\n\n" + result : result));
+      success("AI 内容已追加");
     } catch (e) {
-      error(e instanceof Error ? e.message : 'AI 请求失败')
-    } finally { setAiLoading(false) }
-  }
+      error(e instanceof Error ? e.message : "AI 请求失败");
+    }
+  };
 
-  const aiEnabled = getAIConfig().enabled
+  const aiEnabled = getAIConfig().enabled;
 
   const inputCls =
-    'w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-gray-400 focus:ring-2 focus:ring-gray-100'
+    "w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-gray-400 focus:ring-2 focus:ring-gray-100";
 
   return (
     <div className="fade-up">
-      {/* 顶栏：返回 + 标题 + 发布 */}
-      <div className="sticky top-14 z-30 -mx-4 -mt-4 mb-6 flex items-center gap-2 border-b border-gray-200/70 bg-white/80 px-4 py-2.5 backdrop-blur sm:-mx-6 sm:-mt-6 sm:mb-8 sm:gap-3 sm:px-6 sm:py-3">
+      {/* 顶栏：返回 + 标题 + 发布（紧凑） */}
+      <div className="sticky top-14 z-20 -mx-4 -mt-4 mb-3 flex items-center gap-2 border-b border-gray-200/70 bg-white/80 px-4 py-2 backdrop-blur sm:px-6">
         <button
-          onClick={() => navigate('/dashboard/articles')}
+          onClick={() => navigate("/dashboard/articles")}
           title="返回"
           className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
         >
-          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+          <svg
+            className="h-5 w-5"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"
+            />
           </svg>
         </button>
         <input
@@ -146,13 +159,32 @@ export function ArticleEditor() {
           className="flex shrink-0 items-center gap-1.5 rounded-xl bg-gray-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 active:scale-[0.98] disabled:opacity-60 sm:gap-2 sm:px-5"
         >
           {saving && (
-            <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            <svg
+              className="h-4 w-4 animate-spin"
+              viewBox="0 0 24 24"
+              fill="none"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+              />
             </svg>
           )}
-          <span className="hidden sm:inline">{isEdit ? '保存修改' : '发布'}</span>
-          <span className="sm:hidden">{saving ? '...' : isEdit ? '保存' : '发布'}</span>
+          <span className="hidden sm:inline">
+            {isEdit ? "保存修改" : "发布"}
+          </span>
+          <span className="sm:hidden">
+            {saving ? "..." : isEdit ? "保存" : "发布"}
+          </span>
         </button>
       </div>
 
@@ -161,7 +193,7 @@ export function ArticleEditor() {
         {/* 正文编辑器：限宽居中，像写作产品（不撑满整页，避免“很长一条”） */}
         <div className="min-w-0">
           <div className="mx-auto w-full max-w-[760px]">
-            <MdEditor value={content} onChange={setContent} height={560} />
+            <MdEditor value={content} onChange={setContent} height={560} aiCommand={aiEnabled ? handleAiGenerate : undefined} />
           </div>
         </div>
 
@@ -171,10 +203,16 @@ export function ArticleEditor() {
             <h2 className="text-sm font-semibold text-gray-700">文章设置</h2>
 
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-500">分类</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">
+                分类
+              </label>
               <select
                 value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value === '' ? '' : Number(e.target.value))}
+                onChange={(e) =>
+                  setCategoryId(
+                    e.target.value === "" ? "" : Number(e.target.value),
+                  )
+                }
                 className={inputCls}
               >
                 <option value="">无分类</option>
@@ -187,7 +225,9 @@ export function ArticleEditor() {
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-500">标签（逗号分隔）</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">
+                标签（逗号分隔）
+              </label>
               <input
                 value={tagsInput}
                 onChange={(e) => setTagsInput(e.target.value)}
@@ -197,7 +237,9 @@ export function ArticleEditor() {
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-500">摘要</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">
+                摘要
+              </label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -208,7 +250,9 @@ export function ArticleEditor() {
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-gray-500">封面图</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">
+                封面图
+              </label>
               <input
                 ref={coverInputRef}
                 type="file"
@@ -219,48 +263,40 @@ export function ArticleEditor() {
               />
               <div
                 className={`flex h-28 cursor-pointer flex-col items-center justify-center gap-1.5 overflow-hidden rounded-xl border-2 border-dashed transition ${
-                  coverImage ? 'border-gray-300 bg-gray-100/50' : 'border-gray-200 bg-white hover:border-gray-300'
+                  coverImage
+                    ? "border-gray-300 bg-gray-100/50"
+                    : "border-gray-200 bg-white hover:border-gray-300"
                 }`}
                 onClick={() => coverInputRef.current?.click()}
               >
                 {uploading ? (
                   <p className="text-xs text-gray-400">上传中...</p>
                 ) : coverImage ? (
-                  <img src={coverImage} alt="封面" className="h-full w-full object-cover" />
+                  <img
+                    src={coverImage}
+                    alt="封面"
+                    className="h-full w-full object-cover"
+                  />
                 ) : (
                   <>
-                    <svg className="h-5 w-5 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25z" />
+                    <svg
+                      className="h-5 w-5 text-gray-300"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25z"
+                      />
                     </svg>
                     <p className="text-xs text-gray-400">点击上传</p>
                   </>
                 )}
               </div>
             </div>
-
-            {aiEnabled && (
-              <div className="space-y-2 border-t border-gray-100 pt-4 dark:border-gray-800">
-                <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">AI 辅助</p>
-                <div className="flex gap-1.5">
-                  <input
-                    value={aiPrompt}
-                    onChange={(e) => setAiPrompt(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAiGenerate()}
-                    placeholder="AI 指令，如：续写总结"
-                    disabled={aiLoading}
-                    className="min-w-0 flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs outline-none transition placeholder:text-gray-400 focus:border-gray-400 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                  />
-                  <button
-                    onClick={handleAiGenerate}
-                    disabled={aiLoading || !aiPrompt.trim()}
-                    className="shrink-0 rounded-xl bg-gray-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-gray-700 disabled:opacity-50 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
-                  >
-                    生成
-                  </button>
-                </div>
-                <p className="text-[11px] text-gray-400">AI 内容由第三方模型生成，仅供参考；全文改写请用编辑器工具栏「AI 润色」。</p>
-              </div>
-            )}
 
             <div className="border-t border-gray-100 pt-3 text-xs text-gray-400 dark:border-gray-800">
               正文 {content.length} 字 · 约 {readingTime(content)} 分钟
@@ -269,5 +305,5 @@ export function ArticleEditor() {
         </aside>
       </div>
     </div>
-  )
+  );
 }

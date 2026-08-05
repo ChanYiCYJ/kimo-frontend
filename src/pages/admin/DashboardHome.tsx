@@ -113,26 +113,26 @@ export function DashboardHome() {
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <div className="card p-5">
+          <Link to="/dashboard/articles" className="card block p-5 transition hover:-translate-y-1 hover:shadow-sm">
             <p className="text-3xl font-semibold text-gray-900">{stats.articles}</p>
-            <p className="mt-1 text-sm text-gray-500">文章</p>
-          </div>
-          <div className="card p-5">
+            <p className="mt-1 flex items-center gap-1 text-sm text-gray-500">文章 <span className="text-gray-300">→</span></p>
+          </Link>
+          <Link to="/dashboard/categories" className="card block p-5 transition hover:-translate-y-1 hover:shadow-sm">
             <p className="text-3xl font-semibold text-gray-900">{stats.categories}</p>
-            <p className="mt-1 text-sm text-gray-500">分类</p>
-          </div>
-          <div className="card p-5">
+            <p className="mt-1 flex items-center gap-1 text-sm text-gray-500">分类 <span className="text-gray-300">→</span></p>
+          </Link>
+          <Link to="/dashboard/categories" className="card block p-5 transition hover:-translate-y-1 hover:shadow-sm">
             <p className="text-3xl font-semibold text-gray-900">{stats.tags}</p>
-            <p className="mt-1 text-sm text-gray-500">标签</p>
-          </div>
-          <div className="card p-5">
+            <p className="mt-1 flex items-center gap-1 text-sm text-gray-500">标签 <span className="text-gray-300">→</span></p>
+          </Link>
+          <Link to="/dashboard/pages" className="card block p-5 transition hover:-translate-y-1 hover:shadow-sm">
             <p className="text-3xl font-semibold text-gray-900">{stats.pages}</p>
-            <p className="mt-1 text-sm text-gray-500">页面</p>
-          </div>
-          <div className="card p-5">
+            <p className="mt-1 flex items-center gap-1 text-sm text-gray-500">页面 <span className="text-gray-300">→</span></p>
+          </Link>
+          <Link to="/dashboard/users" className="card block p-5 transition hover:-translate-y-1 hover:shadow-sm">
             <p className="text-3xl font-semibold text-gray-900">{stats.users}</p>
-            <p className="mt-1 text-sm text-gray-500">用户</p>
-          </div>
+            <p className="mt-1 flex items-center gap-1 text-sm text-gray-500">用户 <span className="text-gray-300">→</span></p>
+          </Link>
         </div>
       )}
 

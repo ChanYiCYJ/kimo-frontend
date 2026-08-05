@@ -119,7 +119,9 @@ export function Layout() {
           text="Think Different"
           className="text-xl font-medium tracking-[0.2em] text-gray-500 dark:text-gray-400"
         />
-        <p className="font-mono text-xs text-gray-300 dark:text-gray-600">$ loading ...</p>
+        <p className="font-mono text-xs text-gray-300 dark:text-gray-600">
+          $ loading ...
+        </p>
       </div>
     );
   }
