@@ -189,6 +189,10 @@ export function AIChat({
   const [kbOn, setKbOn] = useState(true); // Coser 角色资料默认开启
   const [kbText, setKbText] = useState("");
   const [kbOpen, setKbOpen] = useState(false);
+  const [chatFontSize, setChatFontSize] = useState<'sm' | 'base' | 'lg'>(() => {
+    try { return (localStorage.getItem('kimo_ai_fontsize') || 'base') as 'sm' | 'base' | 'lg' } catch { return 'base' }
+  });
+  const fontSizeCls = chatFontSize === 'sm' ? 'text-sm' : chatFontSize === 'lg' ? 'text-lg' : 'text-[15px]';
   const [webSearchOn, setWebSearchOn] = useState(() => {
     try {
       return localStorage.getItem("kimo_ai_websearch") === "1";
@@ -1161,7 +1165,7 @@ export function AIChat({
                         </span>
                       ))}
                     <div
-                      className={`min-w-0 ${m.role === "user" ? "max-w-[85%] rounded-2xl border border-gray-200 bg-gray-100 px-4 py-2.5 text-sm leading-relaxed text-gray-800 sm:max-w-[70%] dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100" : "flex-1 text-[15px] leading-relaxed text-gray-800 dark:text-gray-100"}`}
+                      className={`min-w-0 ${m.role === "user" ? "max-w-[85%] rounded-2xl border border-gray-200 bg-gray-100 px-4 py-2.5 text-sm leading-relaxed text-gray-800 sm:max-w-[70%] dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100" : `flex-1 leading-relaxed text-gray-800 dark:text-gray-100 ${fontSizeCls}`}`}
                     >
                       {m.role === "assistant" ? (
                         <div className="chat-md">
@@ -1176,6 +1180,13 @@ export function AIChat({
                         <div
                           className={`mt-1 flex items-center gap-1 opacity-0 transition group-hover:opacity-100 ${speakingIdx === i ? "opacity-100" : ""}`}
                         >
+                          <button
+                            onClick={() => { navigator.clipboard.writeText(m.content).catch(()=>{}); }}
+                            className="rounded-md p-1 text-gray-400 transition hover:text-gray-600 dark:hover:text-gray-300"
+                            title="复制回复"
+                          >
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                          </button>
                           <button
                             onClick={() => playTTS(m.content, i)}
                             className={`rounded-md p-1 transition ${speakingIdx === i ? "text-blue-600 dark:text-blue-400" : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"}`}
@@ -1458,6 +1469,21 @@ export function AIChat({
               style={{ resize: "none" }}
               className="no-scrollbar max-h-40 min-h-[38px] flex-1 self-center bg-transparent px-1.5 py-2 text-sm leading-6 text-gray-800 outline-none placeholder:text-gray-400 disabled:opacity-50 sm:text-[15px] dark:text-gray-100"
             />
+            <button
+              onClick={() => {
+                setChatFontSize((prev: string) => {
+                  const map: Record<string, string> = { sm: 'base', base: 'lg', lg: 'sm' };
+                  const n = map[prev] || 'base';
+                  try { localStorage.setItem('kimo_ai_fontsize', n); } catch {}
+                  return n as 'sm' | 'base' | 'lg';
+                });
+              }}
+              className={`${iconBtn} text-[10px] font-bold`}
+              title={`对话字体：${chatFontSize === 'sm' ? '小' : chatFontSize === 'lg' ? '大' : '中'}`}
+              aria-label="切换字体大小"
+            >
+              {chatFontSize === 'sm' ? 'A-' : chatFontSize === 'lg' ? 'A+' : 'A'}
+            </button>
             {config.autoTTS && (
               <button
                 onClick={toggleTts}
@@ -1628,7 +1654,14 @@ export function AIChat({
           用户设置
         </button>
         {dailyLimit > 0 && (
-          <p className="mt-2 px-1 text-xs text-gray-400 dark:text-gray-500">今日：{dailyRemaining}/{dailyLimit}</p>
+          <div className="mt-2 space-y-1 px-1">
+            <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-gray-500">
+              <span>额度</span><span>{dailyRemaining}/{dailyLimit}</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+              <div className="h-full rounded-full bg-gray-400 transition-all duration-500 dark:bg-gray-500" style={{"width": `${Math.round((dailyRemaining/dailyLimit)*100)}%`}} />
+            </div>
+          </div>
         )}
         <p className="mt-2 px-1 text-[11px] font-medium text-gray-400 dark:text-gray-500">
           {settings.title || "Kimo"}
