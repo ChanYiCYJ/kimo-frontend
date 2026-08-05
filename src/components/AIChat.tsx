@@ -5,7 +5,7 @@ import remarkGfm from "remark-gfm";
 import type { AIChatConfig, Page } from "../lib/types";
 import { useSite } from "../lib/site";
 import { useTheme } from "../lib/theme";
-import { webSearch } from "../lib/search";
+import { webSearch, fetchWebpage } from "../lib/search";
 import { getKbSelections, getKbNotes, assembleKnowledge } from "../lib/kb";
 import { getLocalCfg } from "../lib/localCfg";
 import { KbModal } from "./KbModal";
@@ -570,6 +570,15 @@ export function AIChat({
         setSearching(false);
       }
     }
+    // 浏览器浏览：消息里含 http(s) URL 时自动抓取正文注入上下文
+      const urlMatch = t.match(/https?:\/\/[^\s，,。]+/);
+      if (urlMatch) {
+        setSearching(true);
+        try {
+          const pageText = await fetchWebpage(urlMatch[0]);
+          if (pageText) web = "网页 " + urlMatch[0] + " 的内容：\n" + pageText;
+        } catch {} finally { setSearching(false); }
+      }
     // 流式：始终只保留一条正在增长的 assistant 消息（替换上一条）
     const upsertAssistant = (content: string) =>
       updateActive((prev) => {
