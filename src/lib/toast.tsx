@@ -26,9 +26,9 @@ interface ToastContextValue {
 const ToastContext = createContext<ToastContextValue | null>(null)
 
 const KIND_STYLES: Record<ToastKind, string> = {
-  success: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  success: 'border-gray-200 bg-white text-gray-700',
   error: 'border-red-200 bg-red-50 text-red-700',
-  info: 'border-blue-200 bg-blue-50 text-blue-700',
+  info: 'border-gray-200 bg-white text-gray-700',
 }
 
 const KIND_ICON: Record<ToastKind, ReactNode> = {

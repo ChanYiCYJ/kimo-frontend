@@ -5,7 +5,7 @@ import remarkGfm from "remark-gfm";
 import type { AIChatConfig, Page } from "../lib/types";
 import { useSite } from "../lib/site";
 import { useTheme } from "../lib/theme";
-import { webSearch, fetchWebpage } from "../lib/search";
+import { webSearch, fetchWebpage, searchWithCache } from "../lib/search";
 import {
   getKbSelections,
   getKbNotes,
@@ -215,7 +215,13 @@ export function AIChat({
   const [speakingIdx, setSpeakingIdx] = useState(-1);
   const [stick, setStick] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("kimo_ai_sidebar_collapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
   const [localCfg, setLocalCfg] = useState(() => getLocalCfg(pageId));
   const [apiModalOpen, setApiModalOpen] = useState(false);
   const [docOpen, setDocOpen] = useState(false);
@@ -257,6 +263,10 @@ export function AIChat({
     | undefined
   >();
   const [agentWidth, setAgentWidth] = useState(() => {
+    try {
+      const saved = Number(localStorage.getItem("kimo_ai_agent_width"));
+      if (saved >= 300 && saved <= 520) return saved;
+    } catch {}
     if (typeof window === "undefined") return 384;
     return Math.min(520, Math.max(320, Math.round(window.innerWidth * 0.3)));
   });
@@ -295,8 +305,37 @@ export function AIChat({
       tab?: "web" | "kb" | "edit" | "settings";
       /** 浏览/搜索关键词（点击卡片时传给 Agent 面板触发 AI 搜索） */
       query?: string;
+      /** 文章后台生成中（卡片显示「生成中…」） */
+      pending?: boolean;
+      /** 所属会话 id（刷新后按会话恢复工具卡历史） */
+      sessionId?: string;
     }[]
-  >([]);
+  >(() => {
+    try {
+      const r = JSON.parse(
+        localStorage.getItem("kimo_ai_toolcalls_" + pageId) || "[]",
+      );
+      return Array.isArray(r)
+        ? r.filter(
+            (t) =>
+              typeof t?.msgIdx === "number" &&
+              typeof t?.type === "string" &&
+              !t.pending,
+          )
+        : [];
+    } catch {
+      return [];
+    }
+  });
+  // 工具卡持久化（刷新后保留历史；不含生成中 pending）
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "kimo_ai_toolcalls_" + pageId,
+        JSON.stringify(toolCalls.filter((t) => !t.pending)),
+      );
+    } catch {}
+  }, [toolCalls, pageId]);
   // 卡片点击后强制重新触发浏览（避免同关键词二次点击不生效）
   const [agentSearchNonce, setAgentSearchNonce] = useState(0);
   const clearMemory = useCallback(() => {
@@ -368,6 +407,9 @@ export function AIChat({
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       setAgentWidth(el.offsetWidth);
+      try {
+        localStorage.setItem("kimo_ai_agent_width", String(el.offsetWidth));
+      } catch {}
     };
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
@@ -829,8 +871,6 @@ export function AIChat({
     const autoOpenAgent = () => {
       if (window.innerWidth >= 1024) setAgentOpen(true);
     };
-    // 浏览类触发：桌面与手机都自动弹出浏览 Agent 面板（加载/文章可见）
-    const autoOpenBrowse = () => setAgentOpen(true);
     // 浏览 Agent 接管：把 AI 的长篇回答替换为简短引导语（详细文章由浏览面板承载）
     const setBrowseNote = (q: string) => {
       const note = `好的，已为你联网搜索「${q}」，正在生成综合文章，结果请看浏览面板。`;
@@ -848,6 +888,36 @@ export function AIChat({
         );
       });
     };
+    // 统一浏览触发：桌面自动弹面板、手机仅出卡片；后台生成文章（写缓存）供点卡片即看
+    const triggerBrowse = (
+      q: string,
+      label: string,
+      opts?: { keepReply?: boolean },
+    ) => {
+      setAgentTab("web");
+      setAgentInitUrl(q);
+      autoOpenAgent();
+      if (!opts?.keepReply) setBrowseNote(q.slice(0, 60));
+      setToolCalls((prev) => [
+        ...prev,
+        {
+          msgIdx,
+          type: label,
+          detail: q.slice(0, 60),
+          tab: "web",
+          query: q,
+          pending: true,
+          sessionId: activeId,
+        },
+      ]);
+      searchWithCache(q, { maxSources: 3, perSourceChars: 2500 })
+        .catch(() => null)
+        .then(() => {
+          setToolCalls((prev) =>
+            prev.map((tc) => (tc.query === q ? { ...tc, pending: false } : tc)),
+          );
+        });
+    };
     if (kbSaveCmd) {
       const entry = saveKbEntry(kbSaveCmd.title, kbSaveCmd.content);
       setAgentKbOpen({ nonce: Date.now(), entry });
@@ -862,41 +932,17 @@ export function AIChat({
           type: kbSaveCmd.mode === "edit" ? "编辑知识库" : "保存知识库",
           detail: kbSaveCmd.title.slice(0, 60),
           tab: "edit",
+          sessionId: activeId,
         },
       ]);
     } else if (browseCmd) {
-      setAgentTab("web");
-      setAgentInitUrl(browseCmd[1]);
-      autoOpenBrowse();
       setAgentEditContent(undefined);
-      setToolCalls((prev) => [
-        ...prev,
-        {
-          msgIdx,
-          type: "浏览网页",
-          detail: browseCmd[1].slice(0, 60),
-          tab: "web",
-          query: browseCmd[1],
-        },
-      ]);
+      triggerBrowse(browseCmd[1], "浏览网页", { keepReply: true });
     } else if (searchCmd) {
-      // 浏览 Agent 开启时自动生成文章：桌面与手机都自动弹面板
+      // 浏览 Agent 开启时自动生成文章：桌面自动开面板，手机只出卡片（生成中→可点）
       if (browseAgentOn) {
         const sq = searchCmd[1].trim();
-        setAgentTab("web");
-        setAgentInitUrl(sq);
-        autoOpenBrowse();
-        setBrowseNote(sq.slice(0, 60));
-        setToolCalls((prev) => [
-          ...prev,
-          {
-            msgIdx,
-            type: "网络搜索",
-            detail: sq.slice(0, 60),
-            tab: "web",
-            query: sq,
-          },
-        ]);
+        triggerBrowse(sq, "网络搜索");
       }
       setAgentEditContent(undefined);
     } else if (editCmd) {
@@ -911,6 +957,7 @@ export function AIChat({
           type: "编辑文档",
           detail: editCmd[1].trim().slice(0, 60),
           tab: "edit",
+          sessionId: activeId,
         },
       ]);
     } else if (kbCmd) {
@@ -925,11 +972,12 @@ export function AIChat({
           type: "打开知识库",
           detail: (kbCmd[1] || "查看/整理知识库条目").slice(0, 60),
           tab: "kb",
+          sessionId: activeId,
         },
       ]);
     }
     // 显式搜索兜底：浏览 Agent 开启时无需再说「搜索」，任何提问都自动生成文章
-    // （除非 AI 已发工具指令或给出代码块）；桌面与手机都自动弹面板
+    // （除非 AI 已发工具指令或给出代码块）；桌面自动开面板、手机只出卡片
     if (
       browseAgentOn &&
       !kbSaveCmd &&
@@ -942,21 +990,8 @@ export function AIChat({
       if (!isCode) {
         const q = t.trim().slice(0, 60);
         if (q) {
-          setAgentTab("web");
-          setAgentInitUrl(q);
           setAgentSearchNonce((n) => n + 1);
-          autoOpenBrowse();
-          setBrowseNote(q);
-          setToolCalls((prev) => [
-            ...prev,
-            {
-              msgIdx,
-              type: "网络搜索",
-              detail: q,
-              tab: "web",
-              query: q,
-            },
-          ]);
+          triggerBrowse(q, "网络搜索");
         }
       }
     }
@@ -1184,7 +1219,17 @@ export function AIChat({
         {/* 左侧：历史按钮（桌面切换侧边栏收起/展开，移动端打开抽屉） */}
         <button
           onClick={() => {
-            if (window.innerWidth >= 1024) setSidebarCollapsed((v) => !v);
+            if (window.innerWidth >= 1024)
+              setSidebarCollapsed((v) => {
+                const n = !v;
+                try {
+                  localStorage.setItem(
+                    "kimo_ai_sidebar_collapsed",
+                    n ? "1" : "0",
+                  );
+                } catch {}
+                return n;
+              });
             else setSidebarOpen(true);
           }}
           className={
@@ -1558,10 +1603,15 @@ export function AIChat({
                         <div className="chat-md">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
                             {stripToolCmds(m.content) ||
-                              (toolCalls.find((tc) => tc.msgIdx === i)
+                              (toolCalls.find(
+                                (tc) =>
+                                  tc.msgIdx === i && tc.sessionId === activeId,
+                              )
                                 ? (() => {
                                     const tf = toolCalls.find(
-                                      (tc) => tc.msgIdx === i,
+                                      (tc) =>
+                                        tc.msgIdx === i &&
+                                        tc.sessionId === activeId,
                                     )!;
                                     return `（${tf.type}：${tf.detail}）`;
                                   })()
@@ -1602,10 +1652,15 @@ export function AIChat({
                         </>
                       )}
                       {/* 工具调用小卡片：可点击（带箭头 + 按压反馈），不可点击则平淡 */}
-                      {toolCalls.filter((tc) => tc.msgIdx === i).length > 0 && (
+                      {toolCalls.filter(
+                        (tc) => tc.msgIdx === i && tc.sessionId === activeId,
+                      ).length > 0 && (
                         <div className="mt-1.5 flex flex-wrap gap-1.5">
                           {toolCalls
-                            .filter((tc) => tc.msgIdx === i)
+                            .filter(
+                              (tc) =>
+                                tc.msgIdx === i && tc.sessionId === activeId,
+                            )
                             .map((tc, j) => {
                               const dot: Record<string, string> = {
                                 保存知识库: "bg-emerald-500",
@@ -1649,9 +1704,34 @@ export function AIChat({
                                   <span className="shrink-0 font-medium">
                                     {tc.type}
                                   </span>
-                                  <span className="truncate text-gray-400 dark:text-gray-500">
-                                    {tc.detail}
-                                  </span>
+                                  {tc.pending ? (
+                                    <span className="flex shrink-0 items-center gap-1 text-gray-400 dark:text-gray-500">
+                                      <svg
+                                        className="h-3 w-3 animate-spin"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                      >
+                                        <circle
+                                          className="opacity-25"
+                                          cx="12"
+                                          cy="12"
+                                          r="10"
+                                          stroke="currentColor"
+                                          strokeWidth="4"
+                                        />
+                                        <path
+                                          className="opacity-75"
+                                          fill="currentColor"
+                                          d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                                        />
+                                      </svg>
+                                      生成中…
+                                    </span>
+                                  ) : (
+                                    <span className="truncate text-gray-400 dark:text-gray-500">
+                                      {tc.detail}
+                                    </span>
+                                  )}
                                   {tc.tab && (
                                     <svg
                                       className="h-3 w-3 shrink-0 text-gray-300 transition group-hover:text-blue-500 dark:text-gray-600"

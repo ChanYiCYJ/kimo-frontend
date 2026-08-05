@@ -279,6 +279,7 @@ export default {
         // 提取标题/封面/文本
         let title = "";
         let ogImage = "";
+        let images = [];
         let text = raw;
         if (ct.includes("text/html") || raw.includes("<html")) {
           const titleMatch = raw.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
@@ -292,6 +293,22 @@ export default {
               /<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i,
             );
           ogImage = ogMatch ? ogMatch[1].trim() : "";
+          // 正文图片：收集 og:image 之外的 <img> src（供 AI 文章多图）
+          const imgRe = /<img[^>]+src=["']([^"']+)["']/gi;
+          let im;
+          while ((im = imgRe.exec(raw)) && images.length < 6) {
+            const src = im[1].trim();
+            if (!src || src.startsWith("data:")) continue;
+            if (src.startsWith("//")) images.push("https:" + src);
+            else if (/^https?:\/\//i.test(src)) images.push(src);
+            else if (src.startsWith("/")) {
+              try {
+                images.push(new URL(src, finalUrl).href);
+              } catch {}
+            }
+          }
+          if (ogImage) images.unshift(ogImage);
+          images = [...new Set(images)].slice(0, 6);
           // 简单 HTML → 文本
           text = raw
             .replace(/<script[\s\S]*?<\/script>/gi, " ")
@@ -314,6 +331,7 @@ export default {
             contentType: ct,
             title,
             ogImage,
+            images,
             retrievalMethod: "proxy",
             truncated,
             content,

@@ -533,10 +533,20 @@ export function AgentPanel({
     // 关键词搜索（复用，含缓存读取）
     const runKeyword = async (kw: string) => {
       setWebUrl(kw);
-      const r = await searchWithCache(kw, {
+      let r = await searchWithCache(kw, {
         maxSources: 3,
         perSourceChars: 2500,
       });
+      // 后台（AI 侧 triggerBrowse）正在生成：短暂轮询等待，拿到结果再展示，避免卡在加载态
+      if (r.loading && !r.content) {
+        for (let i = 0; i < 30 && r.loading && !r.content; i++) {
+          await new Promise((res) => setTimeout(res, 600));
+          r = await searchWithCache(kw, {
+            maxSources: 3,
+            perSourceChars: 2500,
+          });
+        }
+      }
       setFromCache(!!r.cached);
       setWebContent(r.content || "未找到结果");
       setArticleMd(r.article || "");
@@ -617,6 +627,8 @@ export function AgentPanel({
       .trim()
       .slice(0, 60);
     saveKbEntry(title, articleMd);
+    // 刷新本地条目列表，让保存的条目立刻出现在知识库
+    setEntries(loadEntries());
     toast("已保存到知识库");
   };
 

@@ -45,6 +45,8 @@ export interface FetchWebContentResult {
   title: string;
   /** og:image 封面图（供 AI 文章插图） */
   ogImage?: string;
+  /** 正文图片列表（worker /api/fetch 提取，含 og:image） */
+  images?: string[];
   /** 抓取方式：direct(浏览器直连) | proxy(后端代理) */
   retrievalMethod: "direct" | "proxy";
   truncated: boolean;
@@ -623,6 +625,11 @@ export async function fetchWebContent(
             contentType: j.contentType || "text/html",
             title: j.title || "",
             ogImage: j.ogImage || "",
+            images: Array.isArray(j.images)
+              ? j.images.filter(
+                  (im: string) => /^https?:\/\//i.test(im) && !im.includes("data:"),
+                )
+              : [],
             retrievalMethod: "proxy",
             truncated: j.truncated || false,
             content: normalizeText(j.content),
@@ -908,15 +915,20 @@ export async function webSearchToArticle(
     targets.map(async (t) => {
       let content = "";
       let image = "";
+      let images: string[] = [];
       try {
         const c = await fetchWebContent(t.url, 2500);
         content = c.content;
         image = c.ogImage || "";
+        images = (c.images || [])
+          .filter((im) => /^https?:\/\//i.test(im) && !im.includes("data:"))
+          .filter((u, i, a) => a.indexOf(u) === i);
       } catch {
         /* 单点失败不影响整体 */
       }
       if (!image) image = await extractOgImage(t.url);
-      return { url: t.url, title: t.title, content, image };
+      if (image && !images.includes(image)) images.unshift(image);
+      return { url: t.url, title: t.title, content, image, images };
     }),
   );
 
@@ -924,8 +936,12 @@ export async function webSearchToArticle(
     .map((s, i) => {
       if (s.status !== "fulfilled") return "";
       const f = s.value;
-      const img = f.image ? `\n[图片]: ${f.image}` : "";
-      return `来源${i + 1} (${f.url} | ${f.title})${img}：\n${(f.content || "").slice(0, 2500)}`;
+      const imgs = (f.images || [])
+        .filter((u: string) => /^https?:\/\//i.test(u) && !u.includes("data:"))
+        .slice(0, 4)
+        .map((u: string) => `\n[图片]: ${u}`)
+        .join("");
+      return `来源${i + 1} (${f.url} | ${f.title})${imgs}：\n${(f.content || "").slice(0, 2500)}`;
     })
     .filter(Boolean)
     .join("\n\n");
@@ -989,7 +1005,7 @@ export async function webSearchToArticle(
   article = await tryGenerate();
   if (!article) article = await tryGenerate();
 
-  // 多图增强：把来源封面图分布插进文章（封面 1 张 + 各 H2 小节前各 1 张，最多共 3 张）
+  // 多图增强：收集所有来源图片（og:image + 正文图），封面 1 张 + 各 H2 小节前各 1 张，最多共 3 张
   if (article) {
     const imgs = fetched
       .filter(
@@ -1000,10 +1016,19 @@ export async function webSearchToArticle(
           title: string;
           content: string;
           image: string;
-        }> => f.status === "fulfilled" && !!f.value.image,
+          images: string[];
+        }> => f.status === "fulfilled",
       )
-      .map((f) => f.value.image)
-      .filter((u, i, a) => a.indexOf(u) === i);
+      .flatMap((f) =>
+        (f.value.images.length
+          ? f.value.images
+          : f.value.image
+            ? [f.value.image]
+            : []
+        ).filter((u: string) => /^https?:\/\//i.test(u) && !u.includes("data:")),
+      )
+      .filter((u, i, a) => a.indexOf(u) === i)
+      .slice(0, 4);
     if (imgs.length) {
       // 1) 封面：H1 标题后（若文章还没有任何图）
       if (!article.includes("![") && /^#/.test(article)) {
