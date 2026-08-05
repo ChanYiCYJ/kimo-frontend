@@ -78,6 +78,7 @@ export function AgentPanel({
   settings,
   kbOpen,
   onKbOpenConsumed,
+  searchNonce,
 }: {
   onClose: () => void;
   initUrl?: string;
@@ -94,6 +95,8 @@ export function AgentPanel({
     entry: { id: string; name: string; content: string; createdAt: number };
   };
   onKbOpenConsumed?: () => void;
+  /** 卡片点击后递增，用于强制重新触发浏览 */
+  searchNonce?: number;
 }) {
   const [tab, setTab] = useState<"web" | "kb" | "edit" | "settings">(
     initTab || (initUrl ? "web" : "kb"),
@@ -597,7 +600,7 @@ export function AgentPanel({
     }
   };
 
-  // AI 触发搜索/浏览时自动执行（[SEARCH:] / [BROWSE:]）
+  // AI 触发搜索/浏览时自动执行（[SEARCH:] / [BROWSE:] / 卡片点击）
   useEffect(() => {
     if (initUrl) {
       setTab("web");
@@ -606,7 +609,7 @@ export function AgentPanel({
       browse(initUrl);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initUrl]);
+  }, [initUrl, searchNonce]);
 
   /** 解析浏览结果：拆分为「搜索结果」列表与「来源内容」块 */
   const parseBrowseContent = (content: string) => {
@@ -642,10 +645,7 @@ export function AgentPanel({
         return { title, href, desc, host };
       })
       .filter(
-        (r) =>
-          r.href &&
-          /^https?:\/\//i.test(r.href) &&
-          (r.title || r.desc),
+        (r) => r.href && /^https?:\/\//i.test(r.href) && (r.title || r.desc),
       );
     return { results, sourcesText };
   };
@@ -723,29 +723,6 @@ export function AgentPanel({
             设置
           </button>
         </div>
-        {tab === "web" && (
-          <button
-            onClick={() => {
-              setWebContent("");
-              setArticleMd("");
-              setArticleLoading(false);
-              setFromCache(false);
-            }}
-            title="搜索"
-            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
-          >
-            <svg
-              className="h-4 w-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <path strokeLinecap="round" d="M21 21l-4.35-4.35" />
-            </svg>
-          </button>
-        )}
         <button
           onClick={onClose}
           className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
@@ -774,9 +751,9 @@ export function AgentPanel({
                 <p className="text-xs text-gray-400">AI 正在联网整理…</p>
               </div>
             )}
-            {/* 空态：唯一搜索入口（极简胶囊，无常驻搜索栏） */}
+            {/* 空态：无搜索栏，等待 AI 联网搜索生成 */}
             {!webLoading && !webContent && (
-              <div className="flex h-full flex-col items-center justify-center gap-5 px-6">
+              <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
                 <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white shadow-sm ring-1 ring-gray-100 dark:bg-gray-900 dark:ring-gray-800">
                   <svg
                     className="h-6 w-6 text-gray-300 dark:text-gray-600"
@@ -789,39 +766,14 @@ export function AgentPanel({
                     <path d="M2 12h20M12 2a15.3 15.3 0 014 10M12 22a15.3 15.3 0 01-4-10 15.3 15.3 0 014-10" />
                   </svg>
                 </div>
-                <form
-                  className="w-full max-w-sm"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    browse();
-                  }}
-                >
-                  <div className="flex items-center gap-2.5 rounded-full border border-gray-200 bg-white py-2.5 pl-4 pr-3 shadow-sm transition focus-within:border-gray-300 focus-within:ring-2 focus-within:ring-gray-900/5 dark:border-gray-700 dark:bg-gray-900 dark:focus-within:border-gray-600 dark:focus-within:ring-gray-100/5">
-                    <svg
-                      className="h-4 w-4 shrink-0 text-gray-400"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <circle cx="11" cy="11" r="8" />
-                      <path strokeLinecap="round" d="M21 21l-4.35-4.35" />
-                    </svg>
-                    <input
-                      autoFocus
-                      value={webUrl}
-                      onChange={(e) => setWebUrl(e.target.value)}
-                      placeholder="搜索或输入网址，回车"
-                      className="min-w-0 flex-1 bg-transparent text-sm text-gray-700 outline-none placeholder:text-gray-400 dark:text-gray-200 dark:placeholder:text-gray-500"
-                    />
-                    <kbd className="rounded-md border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500">
-                      ↵
-                    </kbd>
-                  </div>
-                </form>
-                <p className="text-[11px] text-gray-400">
-                  多引擎联网搜索，AI 自动生成综合文章
-                </p>
+                <div>
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                    让 AI 联网搜索
+                  </p>
+                  <p className="mt-1 max-w-[220px] text-xs leading-relaxed text-gray-400">
+                    在对话中输入「搜索 关键词」，结果与综合文章将在这里自动生成
+                  </p>
+                </div>
               </div>
             )}
             {/* 结果态：AI 文章为主 + 紧凑来源 */}

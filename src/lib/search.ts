@@ -43,6 +43,8 @@ export interface FetchWebContentResult {
   finalUrl: string;
   contentType: string;
   title: string;
+  /** og:image 封面图（供 AI 文章插图） */
+  ogImage?: string;
   /** 抓取方式：direct(浏览器直连) | proxy(后端代理) */
   retrievalMethod: "direct" | "proxy";
   truncated: boolean;
@@ -620,6 +622,7 @@ export async function fetchWebContent(
             finalUrl: j.finalUrl || u,
             contentType: j.contentType || "text/html",
             title: j.title || "",
+            ogImage: j.ogImage || "",
             retrievalMethod: "proxy",
             truncated: j.truncated || false,
             content: normalizeText(j.content),
@@ -810,8 +813,23 @@ export async function webSearchWithContent(
 
 // ======================== AI 生成 markdown 文章（综合筛选） ========================
 
-/** 从网页 HTML 提取 og:image 封面图 */
+/** 从网页提取 og:image 封面图（优先经 Worker 代理，解决 CORS） */
 async function extractOgImage(url: string): Promise<string> {
+  try {
+    const res = await fetchWithTimeout(
+      `/api/fetch?url=${encodeURIComponent(url)}&maxChars=5000`,
+      { headers: { Accept: "application/json" } },
+      8000,
+    );
+    if (res.ok) {
+      const j = (await res.json().catch(() => null)) as {
+        ogImage?: string;
+      } | null;
+      if (j?.ogImage) return j.ogImage;
+    }
+  } catch {
+    /* 代理不可用，回退直连 */
+  }
   try {
     const res = await fetchWithTimeout(
       url,
@@ -863,18 +881,22 @@ export async function webSearchToArticle(
   }
   if (!results.length) return { article: "", sources: results };
 
-  // 2) 抓取正文 + 封面图
+  // 2) 抓取正文 + 封面图（og:image 经 Worker 代理提取）
   const targets = results
     .filter((r) => /^https?:\/\//i.test(r.url))
     .slice(0, maxSources);
   const fetched = await Promise.allSettled(
     targets.map(async (t) => {
-      const [content, image] = await Promise.all([
-        fetchWebContent(t.url, 2500)
-          .then((c) => c.content)
-          .catch(() => ""),
-        extractOgImage(t.url),
-      ]);
+      let content = "";
+      let image = "";
+      try {
+        const c = await fetchWebContent(t.url, 2500);
+        content = c.content;
+        image = c.ogImage || "";
+      } catch {
+        /* 单点失败不影响整体 */
+      }
+      if (!image) image = await extractOgImage(t.url);
       return { url: t.url, title: t.title, content, image };
     }),
   );
@@ -896,8 +918,9 @@ export async function webSearchToArticle(
     "- 首行 H1 标题（中文，概括主题）\n" +
     "- 开头 2-3 句引言摘要（加粗要点）\n" +
     "- 用 H2 分节（3-5 节），每节用有序/无序列表或短段落呈现关键信息\n" +
-    "- 如有来源图片，用 `![配图](图片URL)` 插入合适位置（无图片则省略）\n" +
+    "- 若提供了来源图片（[图片]: URL），必须在文章合适位置用 `![配图](图片URL)` 插入至少一张（放在 H1 标题后最佳）\n" +
     "- 引用事实时用 `> 引用` 块，末尾附「参考来源」列表（Markdown 链接）\n" +
+    "- 安全合规：若主题涉及成人/敏感/争议内容，仅做客观克制的信息介绍，绝不输出露骨、色情、暴力、仇恨或违法违规内容；资料不足时如实说明\n" +
     "- 只输出文章正文，不要额外说明";
   const userMsg = `查询主题：${query}\n\n【搜索结果】\n${results
     .slice(0, 10)
@@ -935,7 +958,33 @@ export async function webSearchToArticle(
     const j = (await res.json()) as {
       choices?: { message?: { content?: string } }[];
     };
-    const article = j.choices?.[0]?.message?.content?.trim() || "";
+    let article = j.choices?.[0]?.message?.content?.trim() || "";
+    // 兜底：AI 漏插图但有来源封面时，自动在标题后补一张
+    if (article && !article.includes("![") && /^#/.test(article)) {
+      const cover = fetched
+        .filter(
+          (
+            f,
+          ): f is PromiseFulfilledResult<{
+            url: string;
+            title: string;
+            content: string;
+            image: string;
+          }> => f.status === "fulfilled" && !!f.value.image,
+        )
+        .map((f) => f.value.image)[0];
+      if (cover) {
+        const nl = article.indexOf("\n");
+        article =
+          nl > 0
+            ? article.slice(0, nl) +
+              "\n\n![配图](" +
+              cover +
+              ")\n" +
+              article.slice(nl)
+            : article + "\n\n![配图](" + cover + ")";
+      }
+    }
     return { article, sources: results };
   } catch {
     return { article: "", sources: results };

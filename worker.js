@@ -276,12 +276,22 @@ export default {
         const raw = await res.text();
         const finalUrl = res.url || targetUrl;
 
-        // 提取标题和文本
+        // 提取标题/封面/文本
         let title = "";
+        let ogImage = "";
         let text = raw;
         if (ct.includes("text/html") || raw.includes("<html")) {
           const titleMatch = raw.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
           title = titleMatch ? titleMatch[1].trim() : "";
+          // og:image 封面（供 AI 文章插图）
+          const ogMatch =
+            raw.match(
+              /<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i,
+            ) ||
+            raw.match(
+              /<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i,
+            );
+          ogImage = ogMatch ? ogMatch[1].trim() : "";
           // 简单 HTML → 文本
           text = raw
             .replace(/<script[\s\S]*?<\/script>/gi, " ")
@@ -303,6 +313,7 @@ export default {
             finalUrl,
             contentType: ct,
             title,
+            ogImage,
             retrievalMethod: "proxy",
             truncated,
             content,

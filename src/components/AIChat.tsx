@@ -276,8 +276,12 @@ export function AIChat({
       type: string;
       detail: string;
       tab?: "web" | "kb" | "edit" | "settings";
+      /** 浏览/搜索关键词（点击卡片时传给 Agent 面板触发 AI 搜索） */
+      query?: string;
     }[]
   >([]);
+  // 卡片点击后强制重新触发浏览（避免同关键词二次点击不生效）
+  const [agentSearchNonce, setAgentSearchNonce] = useState(0);
   const clearMemory = useCallback(() => {
     setMemory("");
     clearStoredMemory(pageId);
@@ -813,6 +817,7 @@ export function AIChat({
           type: "浏览网页",
           detail: browseCmd[1].slice(0, 60),
           tab: "web",
+          query: browseCmd[1],
         },
       ]);
     } else if (searchCmd) {
@@ -827,6 +832,7 @@ export function AIChat({
           type: "网络搜索",
           detail: searchCmd[1].trim().slice(0, 60),
           tab: "web",
+          query: searchCmd[1].trim(),
         },
       ]);
     } else if (editCmd) {
@@ -859,9 +865,24 @@ export function AIChat({
       ]);
     }
     if (web && web.trim()) {
+      // 从用户输入中提炼搜索主题，作为「网络资料」卡片的浏览关键词
+      const qClean = t
+        .replace(
+          /^\s*(?:请|麻烦|帮我|你好)?\s*(?:搜索|查找|查询|搜一下|查一下|搜|查|了解一下|看看|介绍下|介绍一下|了解下|讲解|整理|汇总|生成|帮我写|写)\s*(?:的|关于|一下|下|一个)?\s*/i,
+          "",
+        )
+        .replace(/[。！？!?\s]+$/, "")
+        .trim()
+        .slice(0, 60);
       setToolCalls((prev) => [
         ...prev,
-        { msgIdx, type: "网络资料", detail: web.slice(0, 120), tab: "web" },
+        {
+          msgIdx,
+          type: "网络资料",
+          detail: web.slice(0, 120),
+          tab: "web",
+          query: qClean || t.trim().slice(0, 60),
+        },
       ]);
     }
 
@@ -1553,13 +1574,14 @@ export function AIChat({
                                   onClick={() => {
                                     if (tc.tab) {
                                       setAgentTab(tc.tab);
-                                      if (
-                                        tc.tab === "web" &&
-                                        tc.type !== "网络资料"
-                                      ) {
+                                      if (tc.tab === "web") {
                                         setAgentInitUrl(
-                                          tc.detail.split(" ")[0],
+                                          tc.query ||
+                                            (tc.type === "网络搜索"
+                                              ? tc.detail.split(" ")[0]
+                                              : undefined),
                                         );
+                                        setAgentSearchNonce((n) => n + 1);
                                       }
                                       setAgentEditContent(undefined);
                                       setAgentOpen(true);
@@ -2118,6 +2140,7 @@ export function AIChat({
                 }}
                 initUrl={agentInitUrl}
                 initTab={agentTab}
+                searchNonce={agentSearchNonce}
                 initEditContent={agentEditContent}
                 lastAssistantContent={lastAssistant?.content}
                 pageId={pageId}
@@ -2149,6 +2172,7 @@ export function AIChat({
               }}
               initUrl={agentInitUrl}
               initTab={agentTab}
+              searchNonce={agentSearchNonce}
               initEditContent={agentEditContent}
               lastAssistantContent={lastAssistant?.content}
               pageId={pageId}
