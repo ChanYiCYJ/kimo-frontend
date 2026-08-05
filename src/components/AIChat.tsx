@@ -180,6 +180,7 @@ export function AIChat({
   const [stick, setStick] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(() => { try { return Number(localStorage.getItem("kimo_sidebar_w"))||280; } catch { return 280; } });
   const [localCfg, setLocalCfg] = useState(() => getLocalCfg(pageId));
   const [apiModalOpen, setApiModalOpen] = useState(false);
   const [docOpen, setDocOpen] = useState(false);
@@ -1677,10 +1678,32 @@ export function AIChat({
   const desktopSidebar = (
     <div
       className={`hidden shrink-0 overflow-hidden border-r border-gray-200 transition-[width] duration-300 ease-in-out lg:block dark:border-gray-800 ${
-        collapsed ? "w-0 border-r-0" : "w-64"
+        collapsed ? "w-0 border-r-0" : ""
       }`}
+      style={collapsed ? undefined : {width: sidebarWidth+"px"}}
     >
-      {sidebar}
+      <div className="relative h-full">
+        {sidebar}
+        {/* 拖拽调整宽度手柄 */}
+        {!collapsed && (
+          <div
+            className="absolute inset-y-0 right-0 w-1.5 cursor-col-resize hover:bg-gray-400/30 active:bg-gray-400/50 transition-colors z-10"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              const startX = e.clientX;
+              const startW = sidebarWidth;
+              const onMove = (ev: MouseEvent) => {
+                const w = Math.max(200, Math.min(500, startW + (ev.clientX - startX)));
+                setSidebarWidth(w);
+                try { localStorage.setItem("kimo_sidebar_w", String(w)); } catch {}
+              };
+              const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+              document.addEventListener("mousemove", onMove);
+              document.addEventListener("mouseup", onUp);
+            }}
+          />
+        )}
+      </div>
     </div>
   );
 
