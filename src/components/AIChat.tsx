@@ -35,7 +35,6 @@ import { LocalApiModal } from "./LocalApiModal";
 import { UsageDocModal } from "./UsageDocModal";
 import { ArticleComposerModal } from "./ArticleComposerModal";
 import { AgentPanel } from "./AgentPanel";
-import { InlineBrowse } from "./InlineBrowse";
 import { KbPicker } from "./KbPicker";
 import type { AgentSettingsProps } from "./SettingsTab";
 
@@ -296,11 +295,6 @@ export function AIChat({
   >([]);
   // 卡片点击后强制重新触发浏览（避免同关键词二次点击不生效）
   const [agentSearchNonce, setAgentSearchNonce] = useState(0);
-  /** 手机端：搜索/浏览结果内嵌对话显示（不强制弹面板） */
-  const [inlineBrowse, setInlineBrowse] = useState<{
-    query: string;
-    nonce: number;
-  } | null>(null);
   const clearMemory = useCallback(() => {
     setMemory("");
     clearStoredMemory(pageId);
@@ -443,7 +437,6 @@ export function AIChat({
     setLimitReached(false);
     // 新建会话：清空上一会话遗留的工具卡/内嵌浏览等临时状态
     setToolCalls([]);
-    setInlineBrowse(null);
     setAgentKbOpen(undefined);
     setAgentEditContent(undefined);
     setAgentInitUrl(undefined);
@@ -848,13 +841,9 @@ export function AIChat({
         },
       ]);
     } else if (browseCmd) {
-      if (window.innerWidth < 1024) {
-        setInlineBrowse({ query: browseCmd[1], nonce: Date.now() });
-      } else {
-        setAgentTab("web");
-        setAgentInitUrl(browseCmd[1]);
-        autoOpenAgent();
-      }
+      setAgentTab("web");
+      setAgentInitUrl(browseCmd[1]);
+      autoOpenAgent();
       setAgentEditContent(undefined);
       setToolCalls((prev) => [
         ...prev,
@@ -867,18 +856,21 @@ export function AIChat({
         },
       ]);
     } else if (searchCmd) {
-      // 浏览 Agent 开启时才自动生成文章；手机端内嵌、桌面端开面板
+      // 浏览 Agent 开启时自动生成文章：桌面自动开面板，手机只展示可点击卡片（不自动弹出）
       if (browseAgentOn) {
-        if (window.innerWidth < 1024) {
-          setInlineBrowse({
+        setAgentTab("web");
+        setAgentInitUrl(searchCmd[1].trim());
+        autoOpenAgent();
+        setToolCalls((prev) => [
+          ...prev,
+          {
+            msgIdx,
+            type: "网络搜索",
+            detail: searchCmd[1].trim().slice(0, 60),
+            tab: "web",
             query: searchCmd[1].trim(),
-            nonce: Date.now(),
-          });
-        } else {
-          setAgentTab("web");
-          setAgentInitUrl(searchCmd[1].trim());
-          autoOpenAgent();
-        }
+          },
+        ]);
       }
       setAgentEditContent(undefined);
     } else if (editCmd) {
@@ -910,21 +902,25 @@ export function AIChat({
         },
       ]);
     }
-    // 显式搜索兜底：用户说「搜索 xxx」且浏览 Agent 开启时，无论 AI 是否发 [SEARCH:] 都强制生成文章
-    if (!searchCmd && !browseCmd && browseAgentOn) {
-      const es = t.match(
-        /^\s*(?:请|麻烦|帮我)?\s*(?:搜索|查找|查询|搜一下|查一下|搜|查|搜搜|帮我搜|帮我查|了解一下|看看)\s*(?:的|关于|一下|下)?\s*(.+)$/i,
-      );
-      const q = es?.[1]?.trim().slice(0, 60);
+    // 显式搜索兜底：浏览 Agent 开启时无需再说「搜索」，任何提问都自动生成文章
+    // （除非 AI 已发工具指令）；桌面自动开面板，手机只展示可点击卡片
+    if (browseAgentOn && !kbSaveCmd && !browseCmd && !searchCmd && !editCmd && !kbCmd) {
+      const q = t.trim().slice(0, 60);
       if (q) {
-        if (window.innerWidth < 1024) {
-          setInlineBrowse({ query: q, nonce: Date.now() });
-        } else {
-          setAgentTab("web");
-          setAgentInitUrl(q);
-          setAgentSearchNonce((n) => n + 1);
-          setAgentOpen(true);
-        }
+        setAgentTab("web");
+        setAgentInitUrl(q);
+        setAgentSearchNonce((n) => n + 1);
+        autoOpenAgent();
+        setToolCalls((prev) => [
+          ...prev,
+          {
+            msgIdx,
+            type: "网络搜索",
+            detail: q,
+            tab: "web",
+            query: q,
+          },
+        ]);
       }
     }
     // 网络资料不再以卡片展示（浏览结果由浏览 Agent 自动呈现），避免刷屏
@@ -1593,18 +1589,6 @@ export function AIChat({
                                       (tc.type === "网络搜索"
                                         ? tc.detail.split(" ")[0]
                                         : undefined);
-                                    if (
-                                      tc.tab === "web" &&
-                                      q &&
-                                      window.innerWidth < 1024
-                                    ) {
-                                      // 手机端：底部滑出浏览结果（不自动弹 Agent 面板）
-                                      setInlineBrowse({
-                                        query: q,
-                                        nonce: Date.now(),
-                                      });
-                                      return;
-                                    }
                                     setAgentTab(tc.tab);
                                     if (tc.tab === "web") {
                                       setAgentInitUrl(q);
@@ -2222,14 +2206,6 @@ export function AIChat({
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">{chatBody}</div>
       {agentSidebar}
       {mobileSidebar}
-      {/* 手机端浏览结果：底部滑出面板（非内嵌对话） */}
-      {inlineBrowse && (
-        <InlineBrowse
-          key={inlineBrowse.nonce}
-          query={inlineBrowse.query}
-          onClose={() => setInlineBrowse(null)}
-        />
-      )}
     </div>
   );
 
