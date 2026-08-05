@@ -95,6 +95,7 @@ export interface AIChatConfig {
   /** 仅管理员可使用 */
   adminOnly?: boolean
   dailyLimit?: number
+  prompts?: {name:string;systemPrompt:string}[]
 }
 
 // API Key 简单混淆（base64，防明文泄露，非真正加密）

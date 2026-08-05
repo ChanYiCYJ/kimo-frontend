@@ -28,6 +28,7 @@ export function BotEditorModal({ open, onClose, bot, onSaved }: BotEditorModalPr
   const [autoTTS, setAutoTTS] = useState(false)
   const [adminOnly, setAdminOnly] = useState(false)
   const [dailyLimit, setDailyLimit] = useState("")
+  const [prompts, setPrompts] = useState<{name:string;systemPrompt:string}[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -48,11 +49,13 @@ export function BotEditorModal({ open, onClose, bot, onSaved }: BotEditorModalPr
       setAutoTTS(!!c.autoTTS)
       setAdminOnly(!!c.adminOnly)
       setDailyLimit(c.dailyLimit ? String(c.dailyLimit) : "")
+      setPrompts(c.prompts ? [...c.prompts] : [])
     } else {
       setName(''); setBotName(''); setAvatar('')
       setModel('gpt-4o-mini'); setEndpoint('https://api.openai.com/v1'); setApiKey('')
       setSystemPrompt('你是一个友好、专业的 AI 助手，请用简体中文回答。')
       setMaxMessages(''); setCooldown(''); setAutoTTS(false); setAdminOnly(false); setDailyLimit("")
+    setPrompts([])
     }
   }, [open, bot])
 
@@ -74,6 +77,7 @@ export function BotEditorModal({ open, onClose, bot, onSaved }: BotEditorModalPr
       autoTTS,
       adminOnly,
       dailyLimit: dailyLimit ? Number(dailyLimit) || undefined : undefined,
+      prompts: prompts.length ? prompts : undefined,
     }
     const content = AI_CHAT_MARKER + JSON.stringify(cfg)
     try {
@@ -161,6 +165,26 @@ export function BotEditorModal({ open, onClose, bot, onSaved }: BotEditorModalPr
             <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">每日额度（0=不限，用户每天可发消息数）</label>
             <input value={dailyLimit} onChange={(e) => setDailyLimit(e.target.value)} type="number" min={0} placeholder="不限" className={inputCls} />
           </div>
+                    <div className="space-y-2 border-t border-gray-100 pt-3 dark:border-gray-800">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-200">多提示词模板</p>
+              <button onClick={() => setPrompts([...prompts, {name:"新模板"+(prompts.length+1), systemPrompt:""}])}
+                className="rounded-lg border border-gray-200 px-2 py-0.5 text-xs text-gray-500 hover:bg-gray-50 dark:border-gray-700">+ 添加</button>
+            </div>
+            {prompts.map((p,i) => (
+              <div key={i} className="rounded-lg border border-gray-100 bg-gray-50 p-2 dark:border-gray-800 dark:bg-gray-800/50">
+                <div className="flex items-center gap-2 mb-1">
+                  <input value={p.name} onChange={(e) => { const n = [...prompts]; n[i] = {...n[i], name:e.target.value}; setPrompts(n) }}
+                    placeholder="模板名称" className="flex-1 min-w-0 rounded border border-gray-200 bg-white px-2 py-0.5 text-xs outline-none dark:border-gray-700 dark:bg-gray-800" />
+                  <button onClick={() => setPrompts(prompts.filter((_,j)=>j!==i))}
+                    className="shrink-0 text-xs text-red-400 hover:text-red-600">✕</button>
+                </div>
+                <textarea value={p.systemPrompt} onChange={(e) => { const n = [...prompts]; n[i] = {...n[i], systemPrompt:e.target.value}; setPrompts(n) }}
+                  rows={3} placeholder="该模板的系统提示词" className="w-full rounded border border-gray-200 bg-white px-2 py-1 text-xs outline-none resize-none dark:border-gray-700 dark:bg-gray-800" />
+              </div>
+            ))}
+          </div>
+
           <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
             <input type="checkbox" checked={autoTTS} onChange={(e) => setAutoTTS(e.target.checked)} className="h-4 w-4 accent-gray-900" />
             自动朗读回复

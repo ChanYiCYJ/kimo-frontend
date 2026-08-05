@@ -205,6 +205,10 @@ export function AIChat({
   const [botMenuOpen, setBotMenuOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
+  const clearMemory = useCallback(() => {
+    setMemory("");
+    try { localStorage.removeItem(STORAGE_PREFIX + "memory_" + pageId); } catch {}
+  }, [pageId]);
   const [dailyUsed, setDailyUsed] = useState(() => {
     const today = new Date().toISOString().slice(0, 10);
     try { return Number(localStorage.getItem(STORAGE_PREFIX + "daily_" + pageId + "_" + today) || 0); } catch { return 0; }
@@ -264,6 +268,9 @@ export function AIChat({
     systemPrompt: localCfg.prompt || config.systemPrompt,
   };
   const hasCustom = !!(localCfg.endpoint || localCfg.apiKey || localCfg.model);
+  const [activePromptIdx, setActivePromptIdx] = useState<number | null>(null);
+  const allPrompts = (effCfg.prompts || config.prompts || []).filter((p: {systemPrompt:string}) => p.systemPrompt.trim());
+
   const dailyLimit = effCfg.dailyLimit || config.dailyLimit || 0;
   const dailyRemaining = dailyLimit > 0 ? Math.max(0, dailyLimit - dailyUsed) : -1;
 
@@ -962,6 +969,16 @@ export function AIChat({
                     <span className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
                       {config.botName || "AI 助手"}
                     </span>
+                    {allPrompts.length > 1 && (
+                      <select
+                        value={activePromptIdx ?? ''}
+                        onChange={(e) => setActivePromptIdx(e.target.value === '' ? null : Number(e.target.value))}
+                        className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                      >
+                        <option value="">默认</option>
+                        {allPrompts.map((p, i) => <option key={i} value={i}>{p.name}</option>)}
+                      </select>
+                    )}
                     <span
                       className={`h-1.5 w-1.5 shrink-0 rounded-full ${loading ? "animate-pulse bg-green-400" : "bg-green-500"}`}
                     />
@@ -1761,6 +1778,7 @@ export function AIChat({
           setSettingsOpen(false);
           setDocOpen(true);
         }}
+        onClearMemory={clearMemory}
         onCustomSaved={() => setLocalCfg(getLocalCfg(pageId))}
         allowCustomApi={customApiEnabled}
       />
