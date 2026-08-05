@@ -8,7 +8,6 @@ import { useTheme } from "../lib/theme";
 import { webSearch, fetchWebpage } from "../lib/search";
 import { getKbSelections, getKbNotes, assembleKnowledge } from "../lib/kb";
 import { getLocalCfg } from "../lib/localCfg";
-import { KbModal } from "./KbModal";
 import { LocalApiModal } from "./LocalApiModal";
 import { UsageDocModal } from "./UsageDocModal";
 import { ArticleComposerModal } from "./ArticleComposerModal";
@@ -69,7 +68,8 @@ async function streamChat(
       : "") +
     (web
       ? `\n\n以下是来自网络的最新搜索结果，请基于它们回答（并在适当时注明来源）：\n${web}`
-      : "");
+      : "") +
+    `\n\n你可以使用以下工具：当需要浏览网页时，回复 [BROWSE:url]；当需要编写文档时，回复 [EDIT:内容]。用户说"打开浏览器"时会自动打开浏览器面板。`;
   const res = await fetch(
     cfg.endpoint.replace(/\/+$/, "") + "/chat/completions",
     {
@@ -189,13 +189,24 @@ export function AIChat({
   const [agentInitUrl, setAgentInitUrl] = useState<string | undefined>();
   const [attachedFile, setAttachedFile] = useState("");
   const [searching, setSearching] = useState(false);
-  const [kbOn, setKbOn] = useState(true); // Coser 角色资料默认开启
+  const [kbOn, setKbOn] = useState(true); // Coser 知识库默认开启
   const [kbText, setKbText] = useState("");
-  const [kbOpen, setKbOpen] = useState(false);
-  const [chatFontSize, setChatFontSize] = useState<'sm' | 'base' | 'lg'>(() => {
-    try { return (localStorage.getItem('kimo_ai_fontsize') || 'base') as 'sm' | 'base' | 'lg' } catch { return 'base' }
+  const [chatFontSize, setChatFontSize] = useState<"sm" | "base" | "lg">(() => {
+    try {
+      return (localStorage.getItem("kimo_ai_fontsize") || "base") as
+        | "sm"
+        | "base"
+        | "lg";
+    } catch {
+      return "base";
+    }
   });
-  const fontSizeCls = chatFontSize === 'sm' ? 'text-sm' : chatFontSize === 'lg' ? 'text-lg' : 'text-[15px]';
+  const fontSizeCls =
+    chatFontSize === "sm"
+      ? "text-sm"
+      : chatFontSize === "lg"
+        ? "text-lg"
+        : "text-[15px]";
   const [webSearchOn, setWebSearchOn] = useState(() => {
     try {
       return localStorage.getItem("kimo_ai_websearch") === "1";
@@ -209,11 +220,21 @@ export function AIChat({
   const [limitReached, setLimitReached] = useState(false);
   const clearMemory = useCallback(() => {
     setMemory("");
-    try { localStorage.removeItem(STORAGE_PREFIX + "memory_" + pageId); } catch {}
+    try {
+      localStorage.removeItem(STORAGE_PREFIX + "memory_" + pageId);
+    } catch {}
   }, [pageId]);
   const [dailyUsed, setDailyUsed] = useState(() => {
     const today = new Date().toISOString().slice(0, 10);
-    try { return Number(localStorage.getItem(STORAGE_PREFIX + "daily_" + pageId + "_" + today) || 0); } catch { return 0; }
+    try {
+      return Number(
+        localStorage.getItem(
+          STORAGE_PREFIX + "daily_" + pageId + "_" + today,
+        ) || 0,
+      );
+    } catch {
+      return 0;
+    }
   });
   const [memory, setMemory] = useState(() => {
     try {
@@ -269,10 +290,13 @@ export function AIChat({
   };
   const hasCustom = !!(localCfg.endpoint || localCfg.apiKey || localCfg.model);
   const [activePromptIdx, setActivePromptIdx] = useState<number | null>(null);
-  const allPrompts = (effCfg.prompts || config.prompts || []).filter((p: {systemPrompt:string}) => p.systemPrompt.trim());
+  const allPrompts = (effCfg.prompts || config.prompts || []).filter(
+    (p: { systemPrompt: string }) => p.systemPrompt.trim(),
+  );
 
   const dailyLimit = effCfg.dailyLimit || config.dailyLimit || 0;
-  const dailyRemaining = dailyLimit > 0 ? Math.max(0, dailyLimit - dailyUsed) : -1;
+  const dailyRemaining =
+    dailyLimit > 0 ? Math.max(0, dailyLimit - dailyUsed) : -1;
 
   const persistSessions = useCallback(
     (next: Session[]) => {
@@ -508,17 +532,38 @@ export function AIChat({
   const send = async () => {
     const t = input.trim();
     if (!t || loading || cooldown > 0) return;
+
+    // AI→Agent 语音触发：用户说"打开浏览器"/"搜索xxx"→自动打开 Agent 网页 tab
+    const browserCmd = t.match(/(?:打开|浏览|用|帮我).*(?:浏览器|网页|网站|搜索)\s*(.+)?/);
+    const browserUrl = t.match(/(?:打开|浏览)\s*(https?:\/\/[^\s，,。]+)/);
+    if (browserCmd || browserUrl) {
+      const target = browserUrl?.[1] || browserCmd?.[1]?.trim();
+      if (target) {
+        const searchUrl = target.startsWith("http") ? target : `https://www.google.com/search?q=${encodeURIComponent(target)}`;
+        setAgentInitUrl(searchUrl);
+      }
+      setAgentOpen(true);
+    }
+
     // 默认服务端 API 有限制；用户自定义 API 时解除次数/冷却限制
     if (!hasCustom) {
-    if (dailyLimit > 0 && dailyUsed >= dailyLimit) {
-      const msg: Message = { role: "assistant" as const, content: `今日额度已用完（${dailyLimit} 条/天）。可使用自定义 API 解除限制，或明天再试。` };
-      updateActive((prev) => [...prev, msg]);
-      return;
-    }
-    const today = new Date().toISOString().slice(0, 10);
-    const newUsed = dailyUsed + 1;
-    setDailyUsed(newUsed);
-    try { localStorage.setItem(STORAGE_PREFIX + "daily_" + pageId + "_" + today, String(newUsed)); } catch {}
+      if (dailyLimit > 0 && dailyUsed >= dailyLimit) {
+        const msg: Message = {
+          role: "assistant" as const,
+          content: `今日额度已用完（${dailyLimit} 条/天）。可使用自定义 API 解除限制，或明天再试。`,
+        };
+        updateActive((prev) => [...prev, msg]);
+        return;
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      const newUsed = dailyUsed + 1;
+      setDailyUsed(newUsed);
+      try {
+        localStorage.setItem(
+          STORAGE_PREFIX + "daily_" + pageId + "_" + today,
+          String(newUsed),
+        );
+      } catch {}
       const max = effCfg.maxMessages || 0;
       if (max > 0 && messages.length >= max) {
         setLimitReached(true);
@@ -571,14 +616,17 @@ export function AIChat({
       }
     }
     // 浏览器浏览：消息里含 http(s) URL 时自动抓取正文注入上下文
-      const urlMatch = t.match(/https?:\/\/[^\s，,。]+/);
-      if (urlMatch) {
-        setSearching(true);
-        try {
-          const pageText = await fetchWebpage(urlMatch[0]);
-          if (pageText) web = "网页 " + urlMatch[0] + " 的内容：\n" + pageText;
-        } catch {} finally { setSearching(false); }
+    const urlMatch = t.match(/https?:\/\/[^\s，,。]+/);
+    if (urlMatch) {
+      setSearching(true);
+      try {
+        const pageText = await fetchWebpage(urlMatch[0]);
+        if (pageText) web = "网页 " + urlMatch[0] + " 的内容：\n" + pageText;
+      } catch {
+      } finally {
+        setSearching(false);
       }
+    }
     // 流式：始终只保留一条正在增长的 assistant 消息（替换上一条）
     const upsertAssistant = (content: string) =>
       updateActive((prev) => {
@@ -606,6 +654,18 @@ export function AIChat({
       setLoading(false);
     }
     upsertAssistant(reply);
+
+    // AI→Agent 工具调用：解析 [BROWSE:url] / [EDIT:content]
+    const browseCmd = reply.match(/\[BROWSE:\s*(https?:\/\/[^\s\]]+)\s*\]/);
+    const editCmd = reply.match(/\[EDIT:\s*([\s\S]*?)\s*\]/);
+    if (browseCmd) {
+      setAgentInitUrl(browseCmd[1]);
+      setAgentOpen(true);
+    } else if (editCmd) {
+      setAgentInitUrl(undefined);
+      setAgentOpen(true);
+    }
+
     if (!reply.startsWith("错误")) learn(t, reply);
     if (ttsOn)
       setTimeout(
@@ -960,12 +1020,22 @@ export function AIChat({
                     </span>
                     {allPrompts.length > 1 && (
                       <select
-                        value={activePromptIdx ?? ''}
-                        onChange={(e) => setActivePromptIdx(e.target.value === '' ? null : Number(e.target.value))}
+                        value={activePromptIdx ?? ""}
+                        onChange={(e) =>
+                          setActivePromptIdx(
+                            e.target.value === ""
+                              ? null
+                              : Number(e.target.value),
+                          )
+                        }
                         className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
                       >
                         <option value="">默认</option>
-                        {allPrompts.map((p, i) => <option key={i} value={i}>{p.name}</option>)}
+                        {allPrompts.map((p, i) => (
+                          <option key={i} value={i}>
+                            {p.name}
+                          </option>
+                        ))}
                       </select>
                     )}
                     <span
@@ -1187,11 +1257,27 @@ export function AIChat({
                           className={`mt-1 flex items-center gap-1 opacity-0 transition group-hover:opacity-100 ${speakingIdx === i ? "opacity-100" : ""}`}
                         >
                           <button
-                            onClick={() => { navigator.clipboard.writeText(m.content).catch(()=>{}); }}
+                            onClick={() => {
+                              navigator.clipboard
+                                .writeText(m.content)
+                                .catch(() => {});
+                            }}
                             className="rounded-md p-1 text-gray-400 transition hover:text-gray-600 dark:hover:text-gray-300"
                             title="复制回复"
                           >
-                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                            <svg
+                              className="h-3.5 w-3.5"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                              />
+                            </svg>
                           </button>
                           <button
                             onClick={() => playTTS(m.content, i)}
@@ -1213,11 +1299,30 @@ export function AIChat({
                             </svg>
                           </button>
                           <button
-                            onClick={() => { setAgentInitUrl(undefined); const urls = m.content.match(/https?:\/\/[^\s<>"{}|\\^`\[\]]+/g); if (urls) setAgentInitUrl(urls[0]); setAgentOpen(true); }}
+                            onClick={() => {
+                              setAgentInitUrl(undefined);
+                              const urls = m.content.match(
+                                /https?:\/\/[^\s<>"{}|\\^`\[\]]+/g,
+                              );
+                              if (urls) setAgentInitUrl(urls[0]);
+                              setAgentOpen(true);
+                            }}
                             className="rounded-md p-1 text-gray-400 transition hover:text-blue-600 dark:hover:text-blue-400"
                             title="在 Agent 中打开"
                           >
-                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21" /></svg>
+                            <svg
+                              className="h-3.5 w-3.5"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21"
+                              />
+                            </svg>
                           </button>
                         </div>
                       )}
@@ -1316,9 +1421,39 @@ export function AIChat({
             </div>
           )}
           <div className="flex items-center gap-0.5 rounded-[26px] border border-gray-200 bg-white p-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition focus-within:border-gray-400 focus-within:shadow-[0_0_0_3px_rgba(156,163,175,0.15)] dark:border-gray-600 dark:bg-gray-800">
-                        {/* Agent 工具箱：文档 / 网页 / 提示词 + 知识库 / 上传 / 导出 / 写文章（合并原 + 菜单） */}
-            <button onClick={() => { setAgentOpen(v => { if (!v) { const last = messages[messages.length-1]; if (last?.role==="assistant") { const m = last.content.match(/https?:\/\/[^\s<>"{}|\\^`\[\]]+/); if (m) setAgentInitUrl(m[0]); } } return !v; }) }} className={`${iconBtn} ${agentOpen ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300' : ''}`} title="Agent 工具箱" aria-label="Agent 工具箱">
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.689-1.718-.293-2.3-2.379-1.068-3.611L5 14.5" /></svg>
+            {/* Agent 工具箱：文档 / 网页 / 提示词 + 知识库 / 上传 / 导出 / 写文章（合并原 + 菜单） */}
+            <button
+              onClick={() => {
+                setAgentOpen((v) => {
+                  if (!v) {
+                    const last = messages[messages.length - 1];
+                    if (last?.role === "assistant") {
+                      const m = last.content.match(
+                        /https?:\/\/[^\s<>"{}|\\^`\[\]]+/,
+                      );
+                      if (m) setAgentInitUrl(m[0]);
+                    }
+                  }
+                  return !v;
+                });
+              }}
+              className={`${iconBtn} ${agentOpen ? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300" : ""}`}
+              title="Agent 工具箱"
+              aria-label="Agent 工具箱"
+            >
+              <svg
+                className="h-5 w-5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.689-1.718-.293-2.3-2.379-1.068-3.611L5 14.5"
+                />
+              </svg>
             </button>
             <input
               ref={fileRef}
@@ -1343,7 +1478,7 @@ export function AIChat({
               style={{ resize: "none" }}
               className="no-scrollbar max-h-40 min-h-[38px] flex-1 self-center bg-transparent px-1.5 py-2 text-sm leading-6 text-gray-800 outline-none placeholder:text-gray-400 disabled:opacity-50 sm:text-[15px] dark:text-gray-100"
             />
-                        <button
+            <button
               onClick={send}
               disabled={loading || !input.trim() || cooldown > 0}
               className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gray-900 text-white transition hover:bg-gray-700 disabled:opacity-40 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300"
@@ -1493,10 +1628,18 @@ export function AIChat({
         {dailyLimit > 0 && (
           <div className="mt-2 space-y-1 px-1">
             <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-gray-500">
-              <span>额度</span><span>{dailyRemaining}/{dailyLimit}</span>
+              <span>额度</span>
+              <span>
+                {dailyRemaining}/{dailyLimit}
+              </span>
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-              <div className="h-full rounded-full bg-gray-400 transition-all duration-500 dark:bg-gray-500" style={{"width": `${Math.round((dailyRemaining/dailyLimit)*100)}%`}} />
+              <div
+                className="h-full rounded-full bg-gray-400 transition-all duration-500 dark:bg-gray-500"
+                style={{
+                  width: `${Math.round((dailyRemaining / dailyLimit) * 100)}%`,
+                }}
+              />
             </div>
           </div>
         )}
@@ -1516,7 +1659,6 @@ export function AIChat({
       className={`hidden shrink-0 overflow-hidden border-r border-gray-200 transition-[width] duration-300 ease-in-out lg:block dark:border-gray-800 ${
         collapsed ? "w-0 border-r-0" : ""
       }`}
-      
     >
       {sidebar}
     </div>
@@ -1545,46 +1687,65 @@ export function AIChat({
     </div>
   );
 
-const lastAssistant = [...messages].reverse().find(m => m.role === "assistant");
+  const lastAssistant = [...messages]
+    .reverse()
+    .find((m) => m.role === "assistant");
 
-const agentSidebar = agentOpen && (
+  const agentSidebar = agentOpen && (
     <>
       {/* 桌面端：右侧固定面板 */}
-      <div className="hidden shrink-0 border-l border-gray-200 lg:block dark:border-gray-700" style={{width:22+"rem"}}>
+      <div
+        className="hidden shrink-0 border-l border-gray-200 lg:block dark:border-gray-700"
+        style={{ width: 22 + "rem" }}
+      >
         <AgentPanel
           onClose={() => setAgentOpen(false)}
-          onInsertMessage={(t: string) => { setInput((prev: string) => prev ? prev + "\n\n" + t : t); setAgentOpen(false) }}
+          onInsertMessage={(t: string) => {
+            setInput((prev: string) => (prev ? prev + "\n\n" + t : t));
+            setAgentOpen(false);
+          }}
           initUrl={agentInitUrl}
           lastAssistantContent={lastAssistant?.content}
-          onOpenKb={() => setKbOpen(true)}
           onExport={exportChat}
           onUpload={() => fileRef.current?.click()}
           onArticle={enableArticles ? () => setArticleOpen(true) : undefined}
           enableArticles={enableArticles}
           messagesLength={messages.length}
+          pageId={pageId}
+          kbOn={kbOn}
+          onToggleKb={toggleKb}
+          onApplied={refreshKb}
         />
       </div>
       {/* 移动端：全屏 overlay */}
       <div className="fixed inset-0 z-50 lg:hidden">
-        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setAgentOpen(false)} />
+        <div
+          className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+          onClick={() => setAgentOpen(false)}
+        />
         <div className="absolute inset-y-0 right-0 w-full max-w-sm shadow-2xl">
           <AgentPanel
             onClose={() => setAgentOpen(false)}
-            onInsertMessage={(t: string) => { setInput((prev: string) => prev ? prev + "\n\n" + t : t); setAgentOpen(false) }}
+            onInsertMessage={(t: string) => {
+              setInput((prev: string) => (prev ? prev + "\n\n" + t : t));
+              setAgentOpen(false);
+            }}
             initUrl={agentInitUrl}
             lastAssistantContent={lastAssistant?.content}
-            onOpenKb={() => setKbOpen(true)}
             onExport={exportChat}
             onUpload={() => fileRef.current?.click()}
             onArticle={enableArticles ? () => setArticleOpen(true) : undefined}
             enableArticles={enableArticles}
             messagesLength={messages.length}
+            pageId={pageId}
+            kbOn={kbOn}
+            onToggleKb={toggleKb}
+            onApplied={refreshKb}
           />
         </div>
       </div>
     </>
   );
-
 
   const layout = (
     <div className="flex h-full min-h-0 overflow-hidden bg-white dark:bg-gray-900">
@@ -1595,18 +1756,8 @@ const agentSidebar = agentOpen && (
     </div>
   );
 
-  
   return (
     <>
-      <KbModal
-        open={kbOpen}
-        onClose={() => setKbOpen(false)}
-        pageId={pageId}
-        kbOn={kbOn}
-        onToggleKb={toggleKb}
-        onApplied={refreshKb}
-        
-      />
       <LocalApiModal
         open={apiModalOpen}
         onClose={() => setApiModalOpen(false)}
@@ -1643,7 +1794,12 @@ const agentSidebar = agentOpen && (
         }}
         onClearMemory={clearMemory}
         chatFontSize={chatFontSize}
-        onSetFontSize={(v) => { setChatFontSize(v as any); try{localStorage.setItem('kimo_ai_fontsize',v)}catch{} }}
+        onSetFontSize={(v) => {
+          setChatFontSize(v as any);
+          try {
+            localStorage.setItem("kimo_ai_fontsize", v);
+          } catch {}
+        }}
         onCustomSaved={() => setLocalCfg(getLocalCfg(pageId))}
         allowCustomApi={customApiEnabled}
       />
