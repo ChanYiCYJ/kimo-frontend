@@ -231,8 +231,6 @@ export function AIChat({
       return () => clearTimeout(t);
     }
   }, [agentOpen]);
-  /** 移动端：AI 弹出工具小卡片时，提示用户可点击进入 Agent 详情 */
-  const [toolClickHint, setToolClickHint] = useState(false);
   const [kbPickerOpen, setKbPickerOpen] = useState(false);
   const [kbPickerSelected, setKbPickerSelected] = useState<string[]>([]);
   const [kbAttachments, setKbAttachments] = useState<
@@ -285,16 +283,6 @@ export function AIChat({
   >([]);
   // 卡片点击后强制重新触发浏览（避免同关键词二次点击不生效）
   const [agentSearchNonce, setAgentSearchNonce] = useState(0);
-  // 移动端：AI 弹出工具卡时提示可点击进入 Agent 详情
-  useEffect(() => {
-    if (window.innerWidth < 1024 && !agentOpen && toolCalls.length > 0) {
-      setToolClickHint(true);
-      const t = setTimeout(() => setToolClickHint(false), 4000);
-      return () => clearTimeout(t);
-    } else if (agentOpen) {
-      setToolClickHint(false);
-    }
-  }, [toolCalls, agentOpen]);
   const clearMemory = useCallback(() => {
     setMemory("");
     clearStoredMemory(pageId);
@@ -1539,7 +1527,7 @@ export function AIChat({
                           </span>
                         </>
                       )}
-                      {/* 工具调用小卡片：简洁中性 pill（仅小圆点区分类型） */}
+                      {/* 工具调用小卡片：可点击（带箭头 + 按压反馈），不可点击则平淡 */}
                       {toolCalls.filter((tc) => tc.msgIdx === i).length > 0 && (
                         <div className="mt-1.5 flex flex-wrap gap-1.5">
                           {toolCalls
@@ -1576,7 +1564,11 @@ export function AIChat({
                                   title={
                                     tc.tab ? "点击打开 Agent 面板" : undefined
                                   }
-                                  className={`inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-600 transition hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-gray-600 ${tc.tab ? "hover:opacity-90 active:scale-[0.98]" : "cursor-default"}`}
+                                  className={`group inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs transition ${
+                                    tc.tab
+                                      ? "cursor-pointer border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50/50 hover:text-blue-600 active:scale-95 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-blue-700 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
+                                      : "cursor-default border-gray-100 bg-gray-50 text-gray-400 dark:border-gray-800 dark:bg-gray-800/40 dark:text-gray-500"
+                                  }`}
                                 >
                                   <span
                                     className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot[tc.type] || "bg-gray-400"}`}
@@ -1587,6 +1579,21 @@ export function AIChat({
                                   <span className="truncate text-gray-400 dark:text-gray-500">
                                     {tc.detail}
                                   </span>
+                                  {tc.tab && (
+                                    <svg
+                                      className="h-3 w-3 shrink-0 text-gray-300 transition group-hover:text-blue-500 dark:text-gray-600"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        d="M9 5l7 7-7 7"
+                                      />
+                                    </svg>
+                                  )}
                                 </button>
                               );
                             })}
@@ -2175,27 +2182,6 @@ export function AIChat({
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">{chatBody}</div>
       {agentSidebar}
       {mobileSidebar}
-      {/* 移动端：AI 弹出工具卡时提示可点击进入 Agent */}
-      {toolClickHint && !agentOpen && (
-        <div className="pointer-events-none fixed bottom-24 left-1/2 z-[70] -translate-x-1/2 animate-[kfade_0.3s_ease-out]">
-          <div className="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-gray-900 px-3.5 py-2 text-xs font-medium text-white shadow-lg dark:bg-gray-200 dark:text-gray-900">
-            <svg
-              className="h-3.5 w-3.5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21"
-              />
-            </svg>
-            点击卡片进入 Agent 详情
-          </div>
-        </div>
-      )}
     </div>
   );
 

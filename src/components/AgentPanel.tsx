@@ -772,32 +772,25 @@ export function AgentPanel({
         <div className="flex min-h-0 flex-1 flex-col">
           {/* 内容滚动区 */}
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {/* 加载中：迷你浏览器窗口 + 站点加载动画 */}
+            {/* 加载中：站点式加载（顶部进度条 + 页面骨架） */}
             {webLoading && (
-              <div className="flex h-full flex-col items-center justify-center gap-5 px-6">
-                <div className="w-full max-w-[260px] overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-lg dark:border-gray-800 dark:bg-gray-900">
-                  <div className="flex items-center gap-1.5 border-b border-gray-100 px-3 py-2 dark:border-gray-800">
-                    <span className="h-2 w-2 rounded-full bg-red-400" />
-                    <span className="h-2 w-2 rounded-full bg-amber-400" />
-                    <span className="h-2 w-2 rounded-full bg-green-400" />
-                    <div className="ml-2 flex h-4 flex-1 items-center rounded-md bg-gray-100 px-1.5 dark:bg-gray-800">
-                      <div className="h-1.5 w-10 animate-pulse rounded bg-gray-300/70 dark:bg-gray-600" />
-                    </div>
-                  </div>
-                  <div className="space-y-2 p-3">
-                    <div className="h-3 w-2/3 animate-pulse rounded bg-gray-100 dark:bg-gray-800" />
-                    <div className="h-3 w-full animate-pulse rounded bg-gray-100 dark:bg-gray-800" />
-                    <div className="h-3 w-5/6 animate-pulse rounded bg-gray-100 dark:bg-gray-800" />
-                    <div className="h-3 w-2/3 animate-pulse rounded bg-gray-100 dark:bg-gray-800" />
-                    <div className="h-3 w-4/5 animate-pulse rounded bg-gray-100 dark:bg-gray-800" />
-                    <div className="pt-1.5">
-                      <div className="h-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-                        <div className="h-full w-1/3 animate-[kload_1.1s_ease-in-out_infinite] rounded-full bg-gray-900 dark:bg-gray-200" />
-                      </div>
-                    </div>
-                  </div>
+              <div className="relative h-full w-full overflow-hidden">
+                <div className="absolute inset-x-0 top-0 z-10 h-0.5 overflow-hidden bg-gray-100 dark:bg-gray-800">
+                  <div className="h-full w-1/3 animate-[kload_1.1s_ease-in-out_infinite] rounded-full bg-blue-500" />
                 </div>
-                <p className="text-xs text-gray-400">正在加载站点内容…</p>
+                <div className="space-y-3 px-4 py-6">
+                  <div className="h-5 w-1/2 animate-pulse rounded-md bg-gray-100 dark:bg-gray-800" />
+                  <div className="space-y-2">
+                    <div className="h-3 w-full animate-pulse rounded bg-gray-100 dark:bg-gray-800" />
+                    <div className="h-3 w-11/12 animate-pulse rounded bg-gray-100 dark:bg-gray-800" />
+                    <div className="h-3 w-4/5 animate-pulse rounded bg-gray-100 dark:bg-gray-800" />
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <div className="h-3 w-24 animate-pulse rounded bg-gray-100 dark:bg-gray-800" />
+                    <div className="h-3 w-32 animate-pulse rounded bg-gray-100 dark:bg-gray-800" />
+                  </div>
+                  <div className="h-24 animate-pulse rounded-xl bg-gray-100 dark:bg-gray-800" />
+                </div>
               </div>
             )}
             {/* 空态：极简（无 logo/标题） */}
@@ -955,22 +948,14 @@ export function AgentPanel({
         <div className="flex min-h-0 flex-1 flex-col">
           {/* 概览头部 */}
           <div className="shrink-0 border-b border-gray-100 bg-gradient-to-b from-gray-50/80 to-transparent px-3.5 pb-3 pt-3 dark:border-gray-800 dark:from-gray-800/30">
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                  知识库
-                </p>
-                <p className="mt-0.5 text-[10px] text-gray-400">
-                  整理要点 · 沉淀知识 · AI 自动学习
-                </p>
-              </div>
+            <div className="flex items-center justify-end">
               <button
                 onClick={() => {
                   setActiveEntry(null);
                   setMdContent("");
                   setTab("edit");
                 }}
-                className="flex shrink-0 items-center gap-1 rounded-full bg-gray-900 px-3 py-1.5 text-[11px] font-medium text-white transition hover:bg-gray-700 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
+                className="flex shrink-0 items-center gap-1 rounded-full bg-blue-600 px-3 py-1.5 text-[11px] font-medium text-white transition hover:bg-blue-500 dark:bg-blue-500 dark:text-white dark:hover:bg-blue-400"
               >
                 <svg
                   className="h-3.5 w-3.5"
@@ -1184,25 +1169,6 @@ export function AgentPanel({
                   className="min-w-0 flex-1 bg-transparent text-xs text-gray-700 outline-none placeholder:text-gray-400 dark:text-gray-200 dark:placeholder:text-gray-500"
                 />
               </div>
-              <button
-                onClick={() => {
-                  setTab("web");
-                  setWebContent("");
-                }}
-                title="浏览"
-                className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300"
-              >
-                <svg
-                  className="h-3.5 w-3.5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                >
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M2 12h20M12 2a15.3 15.3 0 014 10" />
-                </svg>
-              </button>
               <button
                 onClick={() => {
                   const v = !kbAiReadAll;
