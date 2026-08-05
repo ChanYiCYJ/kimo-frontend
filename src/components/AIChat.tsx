@@ -18,6 +18,8 @@ import { KbPicker } from "./KbPicker";
 interface Message {
   role: "user" | "assistant";
   content: string;
+  /** 附加的知识库条目（对话中以卡片展示，AI 上下文仍会注入内容） */
+  attachments?: { id: string; title: string; content: string }[];
 }
 
 interface Session {
@@ -618,17 +620,31 @@ export function AIChat({
         return;
       }
     }
-    const attachText = kbAttachments.length
-      ? "【附加知识条目】\n" +
-        kbAttachments.map((a: { content: string }) => a.content).join("\n\n")
-      : "";
     const user: Message = {
       role: "user" as const,
-      content: attachText ? t + "\n\n" + attachText : t,
+      content: t,
+      attachments: kbAttachments.length ? kbAttachments : undefined,
     };
     const allMsgs = [...messages, user];
     let summary = "";
     const recent = allMsgs.length > 6 ? allMsgs.slice(-6) : allMsgs;
+    // 注入附件的完整内容给 AI（显示层只展示卡片，不显示大段文字）
+    const injectAttachments = (msgs: Message[]) =>
+      msgs.map((m) =>
+        m.role === "user" && m.attachments?.length
+          ? {
+              role: m.role,
+              content:
+                m.content +
+                (m.content.trim()
+                  ? "\n\n【附加知识条目】\n"
+                  : "【附加知识条目】\n") +
+                m.attachments
+                  .map((a) => "- " + a.title + "：" + a.content)
+                  .join("\n"),
+            }
+          : { role: m.role, content: m.content },
+      );
     if (allMsgs.length > 6)
       summary = allMsgs
         .slice(0, allMsgs.length - 6)
@@ -714,7 +730,7 @@ export function AIChat({
       })();
       reply = await streamChat(
         effCfg,
-        recent,
+        injectAttachments(recent),
         upsertAssistant,
         ctrl.signal,
         summary,
@@ -1349,7 +1365,35 @@ export function AIChat({
                           </ReactMarkdown>
                         </div>
                       ) : (
-                        <span className="whitespace-pre-wrap">{m.content}</span>
+                        <>
+                          {m.attachments && m.attachments.length > 0 && (
+                            <div className="mb-1.5 flex flex-wrap gap-1.5">
+                              {m.attachments.map((a) => (
+                                <span
+                                  key={a.id}
+                                  className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                                  title={a.content.slice(0, 200)}
+                                >
+                                  <svg
+                                    className="h-3.5 w-3.5 shrink-0"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"
+                                    />
+                                  </svg>
+                                  <span className="truncate">{a.title}</span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          <span className="whitespace-pre-wrap">{m.content}</span>
+                        </>
                       )}
                       {/* 工具调用卡片 */}
                       {toolCalls.filter((tc) => tc.msgIdx === i).length > 0 && (
@@ -1630,6 +1674,11 @@ export function AIChat({
                     }}
                     onClose={() => setKbPickerOpen(false)}
                     onOpenAgent={() => setAgentOpen(true)}
+                    webSearchOn={webSearchOn}
+                    onToggleWebSearch={() => {
+                      toggleWebSearch();
+                      setKbPickerOpen(false);
+                    }}
                   />
                 </>
               )}
@@ -1685,10 +1734,10 @@ export function AIChat({
 
   const sidebar = (
     <div className="flex h-full w-64 flex-col bg-gray-50 dark:bg-gray-950">
-      <div className="flex items-center justify-between p-3">
+      <div className="p-3">
         <button
           onClick={newSession}
-          className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+          className="flex w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
         >
           <svg
             className="h-4 w-4"
@@ -1700,21 +1749,6 @@ export function AIChat({
             <path strokeLinecap="round" d="M12 4.5v15m7.5-7.5h-15" />
           </svg>
           新建会话
-        </button>
-        <button
-          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          className="ml-1.5 hidden lg:grid rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
-          title="收起"
-        >
-          <svg
-            className="h-4 w-4"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path strokeLinecap="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-          </svg>
         </button>
       </div>
       <div className="flex-1 overflow-y-auto px-2.5 pb-3">
