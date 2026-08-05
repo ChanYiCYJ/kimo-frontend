@@ -17,7 +17,7 @@ export default {
     const pathname = url.pathname;
     const backend = (env.API_BACKEND || "").trim().replace(/\/+$/, "");
 
-    // ── 1) 搜索代理：/api/search → 优先转发海外后端（DDG/Bing），失败本地 Wikipedia 兜底 ──
+    // ── 1) 搜索代理：/api/search → 纯前端多引擎（bing/duckduckgo/brave/wikipedia）──
     if (pathname === "/api/search") {
       const query = url.searchParams.get("q") || "";
       const limit = parseInt(url.searchParams.get("limit") || "8", 10);
@@ -32,61 +32,177 @@ export default {
             "Access-Control-Allow-Origin": "*",
           },
         });
+      const want = (e) => engines.split(",").map((s) => s.trim()).includes(e);
+      const out = [];
+      const seen = new Set();
+      const push = (r) => {
+        if (r && r.title && r.url && !seen.has(r.url)) {
+          seen.add(r.url);
+          out.push(r);
+        }
+      };
 
-      // 1) 转发到海外后端（api.yogofor.top 可访问 DDG/Bing）
-      if (backend) {
+      // Bing（标准 b_algo + 降级页宽松解析）
+      if (want("bing")) {
         try {
-          const target =
-            backend +
-            "/api/v1/search?q=" +
-            encodeURIComponent(query) +
-            "&limit=" +
-            limit +
-            "&engines=" +
-            encodeURIComponent(engines);
-          const res = await fetch(target, {
-            headers: { Accept: "application/json" },
-            redirect: "follow",
-          });
+          const res = await fetch(
+            "https://www.bing.com/search?q=" + encodeURIComponent(query) + "&count=" + Math.min(20, limit) + "&mkt=zh-CN",
+            {
+              headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+              },
+              redirect: "follow",
+            },
+          );
           if (res.ok) {
-            const d = await res.json().catch(() => null);
-            const data = d?.data ?? d;
-            if (Array.isArray(data) && data.length) return json(data);
+            const html = await res.text();
+            // 标准 b_algo 块
+            const blocks = html.match(/<li class="b_algo[^"]*"[\s\S]*?<\/li>/g) || [];
+            for (const block of blocks) {
+              if (out.length >= limit) break;
+              const hrefM = block.match(/<h2[^>]*>\s*<a[^>]*href="([^"]+)"/);
+              const titleM = block.match(/<h2[^>]*>\s*<a[^>]*href="[^"]*"[^>]*>([\s\S]*?)<\/a>/);
+              const snipM = block.match(/<p[^>]*class="b_lineclamp[^"]*"[^>]*>([\s\S]*?)<\/p>/);
+              if (hrefM && titleM) {
+                let source = "";
+                try {
+                  source = new URL(hrefM[1]).hostname;
+                } catch {}
+                push({
+                  title: titleM[1].replace(/<[^>]+>/g, "").trim(),
+                  url: hrefM[1],
+                  description: (snipM ? snipM[1] : "").replace(/<[^>]+>/g, "").trim(),
+                  source,
+                  engine: "bing",
+                });
+              }
+            }
+            // 降级页：无 b_algo 时宽松匹配 h2>a 结果链接
+            if (out.length === 0) {
+              const altBlocks = html.match(/<h2[^>]*>\s*<a[^>]*href="(https?:\/\/[^"]+)"[^>]*>([\s\S]*?)<\/a><\/h2>/g) || [];
+              for (const block of altBlocks) {
+                if (out.length >= limit) break;
+                const m = block.match(/<h2[^>]*>\s*<a[^>]*href="(https?:\/\/[^"]+)"[^>]*>([\s\S]*?)<\/a><\/h2>/);
+                if (m) {
+                  let source = "";
+                  try {
+                    source = new URL(m[1]).hostname;
+                  } catch {}
+                  push({
+                    title: m[2].replace(/<[^>]+>/g, "").trim(),
+                    url: m[1],
+                    description: "",
+                    source,
+                    engine: "bing",
+                  });
+                }
+              }
+            }
           }
         } catch {}
       }
 
-      // 2) 本地兜底：Wikipedia opensearch（Worker 部分地区可访问）
-      try {
-        const apiUrl =
-          "https://en.wikipedia.org/w/api.php?action=opensearch&format=json&origin=*&limit=" +
-          limit +
-          "&namespace=0&search=" +
-          encodeURIComponent(query);
-        const res = await fetch(apiUrl, {
-          headers: { "User-Agent": "KimoBot/1.0 (research)" },
-          redirect: "follow",
-        });
-        if (res.ok) {
-          const d = await res.json();
-          const titles = (d[1] || []).filter(Boolean);
-          const descs = d[2] || [];
-          const urls = d[3] || [];
-          const out = [];
-          for (let i = 0; i < titles.length && out.length < limit; i++) {
-            out.push({
-              title: titles[i],
-              url: urls[i] || "",
-              description: (descs[i] || "").replace(/\s+/g, " ").trim(),
-              source: "wikipedia.org",
-              engine: "wikipedia",
-            });
+      // DuckDuckGo HTML（202 验证页则跳过）
+      if (want("duckduckgo")) {
+        try {
+          const res = await fetch("https://html.duckduckgo.com/html/?q=" + encodeURIComponent(query), {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            },
+            redirect: "follow",
+          });
+          if (res.ok) {
+            const html = await res.text();
+            const links = [...html.matchAll(/<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g)];
+            const snips = [...html.matchAll(/<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g)];
+            for (let i = 0; i < links.length && out.length < limit; i++) {
+              const raw = links[i][1] || "";
+              let target = raw;
+              const um = raw.match(/[?&]uddg=([^&]+)/);
+              if (um) target = decodeURIComponent(um[1]);
+              else if (raw.startsWith("http")) target = raw;
+              let source = "";
+              try {
+                source = new URL(target).hostname;
+              } catch {}
+              push({
+                title: (links[i][2] || "").replace(/<[^>]+>/g, "").trim(),
+                url: target,
+                description: (snips[i]?.[1] || "").replace(/<[^>]+>/g, "").trim(),
+                source,
+                engine: "duckduckgo",
+              });
+            }
           }
-          if (out.length) return json(out);
-        }
-      } catch {}
+        } catch {}
+      }
 
-      return json([]);
+      // Brave（抓 HTML 结果）
+      if (want("brave") && out.length < limit) {
+        try {
+          const res = await fetch("https://search.brave.com/search?q=" + encodeURIComponent(query) + "&source=web", {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            },
+            redirect: "follow",
+          });
+          if (res.ok) {
+            const html = await res.text();
+            const blocks = html.match(/<div[^>]*class="[^"]*snippet[^"]*"[^>]*>[\s\S]*?<\/div>/g) || [];
+            for (const block of blocks) {
+              if (out.length >= limit) break;
+              const hrefM = block.match(/<a[^>]*href="(https?:\/\/[^"]+)"/);
+              const titleM = block.match(/<a[^>]*href="https?:\/\/[^"]+"[^>]*>\s*<[^>]*>([\s\S]*?)<\/[^>]+>\s*<\/a>/);
+              if (hrefM && titleM) {
+                let source = "";
+                try {
+                  source = new URL(hrefM[1]).hostname;
+                } catch {}
+                push({
+                  title: titleM[1].replace(/<[^>]+>/g, "").trim().slice(0, 120),
+                  url: hrefM[1],
+                  description: "",
+                  source,
+                  engine: "brave",
+                });
+              }
+            }
+          }
+        } catch {}
+      }
+
+      // Wikipedia opensearch（稳定兜底）
+      if (want("wikipedia") && out.length < limit) {
+        try {
+          const apiUrl =
+            "https://en.wikipedia.org/w/api.php?action=opensearch&format=json&origin=*&limit=" +
+            (limit - out.length) +
+            "&namespace=0&search=" +
+            encodeURIComponent(query);
+          const res = await fetch(apiUrl, {
+            headers: { "User-Agent": "KimoBot/1.0 (research)" },
+            redirect: "follow",
+          });
+          if (res.ok) {
+            const d = await res.json();
+            const titles = (d[1] || []).filter(Boolean);
+            const descs = d[2] || [];
+            const urls = d[3] || [];
+            for (let i = 0; i < titles.length && out.length < limit; i++) {
+              push({
+                title: titles[i],
+                url: urls[i] || "",
+                description: (descs[i] || "").replace(/\s+/g, " ").trim(),
+                source: "wikipedia.org",
+                engine: "wikipedia",
+              });
+            }
+          }
+        } catch {}
+      }
+
+      return json(out);
     }
 
     // ── 2) 网页抓取代理：/api/fetch → 目标 URL ──

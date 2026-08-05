@@ -927,3 +927,142 @@ export async function webSearchToArticle(
     return { article: "", sources: results };
   }
 }
+
+// ======================== 搜索/文章历史缓存（避免重复生成） ========================
+
+interface SearchCacheEntry {
+  content: string;
+  article: string;
+  sources: SearchResult[];
+  time: number;
+  /** 生成中标记：命中时避免并发重复生成 */
+  loading?: boolean;
+}
+
+const SEARCH_CACHE_KEY = "kimo_search_cache_v1";
+const SEARCH_CACHE_MAX = 30;
+const SEARCH_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 小时
+
+function searchCacheKey(q: string): string {
+  return q.trim().toLowerCase().replace(/\s+/g, " ").slice(0, 80);
+}
+
+function loadSearchCache(): Record<string, SearchCacheEntry> {
+  try {
+    const r = JSON.parse(localStorage.getItem(SEARCH_CACHE_KEY) || "{}");
+    return r && typeof r === "object" ? r : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSearchCache(map: Record<string, SearchCacheEntry>): void {
+  try {
+    localStorage.setItem(SEARCH_CACHE_KEY, JSON.stringify(map));
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/** 读取搜索/文章缓存（命中且未过期返回内容；生成中返回 loading 标记） */
+export function readSearchCache(
+  query: string,
+): (SearchCacheEntry & { cached: boolean }) | null {
+  const map = loadSearchCache();
+  const e = map[searchCacheKey(query)];
+  if (!e) return null;
+  // 生成中：返回 loading，不当作完成
+  if (e.loading) return { ...e, cached: false, loading: true };
+  // 过期清理
+  if (Date.now() - e.time > SEARCH_CACHE_TTL) {
+    delete map[searchCacheKey(query)];
+    saveSearchCache(map);
+    return null;
+  }
+  return { ...e, cached: true };
+}
+
+/** 写入缓存（保留最近 SEARCH_CACHE_MAX 条） */
+export function writeSearchCache(
+  query: string,
+  entry: Partial<SearchCacheEntry>,
+): void {
+  const map = loadSearchCache();
+  const key = searchCacheKey(query);
+  const prev = map[key] || {};
+  map[key] = { ...prev, ...entry, time: Date.now() };
+  // 限制条数：超限删最旧
+  const keys = Object.keys(map);
+  if (keys.length > SEARCH_CACHE_MAX) {
+    keys
+      .sort((a, b) => (map[a].time || 0) - (map[b].time || 0))
+      .slice(0, keys.length - SEARCH_CACHE_MAX)
+      .forEach((k) => delete map[k]);
+  }
+  saveSearchCache(map);
+}
+
+/** 清除某条缓存 */
+export function clearSearchCache(query?: string): void {
+  const map = loadSearchCache();
+  if (query) delete map[searchCacheKey(query)];
+  else {
+    Object.keys(map).forEach((k) => delete map[k]);
+  }
+  saveSearchCache(map);
+}
+
+/**
+ * 带缓存的深度搜索 + AI 文章（供浏览面板使用）：
+ * - 命中缓存直接返回（不重复生成）
+ * - 未命中则搜索+抓取+AI 生成，完成后自动写入历史
+ * - 生成中标记 loading，避免并发重复生成
+ */
+export type SearchWithCacheResult = {
+  content: string;
+  article: string;
+  sources: SearchResult[];
+  time: number;
+  cached: boolean;
+  loading: boolean;
+  fresh: boolean;
+};
+
+export async function searchWithCache(
+  query: string,
+  opts: { maxSources?: number; perSourceChars?: number } = {},
+): Promise<SearchWithCacheResult> {
+  const hit = readSearchCache(query);
+  if (hit) return { ...hit, loading: !!hit.loading, fresh: false };
+
+  // 标记生成中（同关键词并发只生成一次）
+  writeSearchCache(query, { loading: true });
+
+  try {
+    // 并行：搜索+抓取内容 & AI 文章
+    const [content, articleRes] = await Promise.all([
+      webSearchWithContent(query, opts.maxSources ?? 3, opts.perSourceChars ?? 2500),
+      webSearchToArticle(query, opts.maxSources ?? 4),
+    ]);
+    const entry: SearchCacheEntry = {
+      content: content || "",
+      article: articleRes.article || "",
+      sources: articleRes.sources || [],
+      time: Date.now(),
+      loading: false,
+    };
+    writeSearchCache(query, entry);
+    return { ...entry, loading: false, cached: false, fresh: true };
+  } catch {
+    writeSearchCache(query, { loading: false });
+    return {
+      content: "",
+      article: "",
+      sources: [],
+      time: Date.now(),
+      cached: false,
+      loading: false,
+      fresh: true,
+    };
+  }
+}
