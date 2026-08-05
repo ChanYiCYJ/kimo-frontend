@@ -375,7 +375,7 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
   if (!consented) {
     return (
       <div className="flex h-full w-full items-center justify-center px-4">
-        <div className="w-full max-w-xl rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-7 dark:border-gray-700 dark:bg-gray-900">
+        <div className="w-full max-w-xl rounded-3xl border border-gray-200 bg-white p-5 shadow-sm sm:p-7 dark:border-gray-700 dark:bg-gray-900">
           <div className="flex items-center gap-3">
             {config.avatar
               ? <img src={config.avatar} alt={config.botName} className="h-11 w-11 rounded-full object-cover" />
@@ -431,16 +431,20 @@ export function AIChat({ config, pageId, center, bots, onSwitchBot, canManage, o
 
   if (!effCfg.endpoint || !effCfg.apiKey || !effCfg.model) {
     return (
-      <div className="mx-auto max-w-md rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 p-8 text-center text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-800/50">
-        <p>AI 对话未配置。</p>
-        {!canManage && customApiEnabled ? (
-          <button onClick={() => setApiModalOpen(true)} className="mt-4 rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-700 dark:bg-gray-200 dark:text-gray-900">
-            在本机配置模型 API
-          </button>
-        ) : (
-          <p className="mt-2">请在后台「AI 管理」中配置。</p>
-        )}
-      </div>
+      <>
+        {/* 未配置引导也要渲染 LocalApiModal，否则「在本机配置模型 API」点了弹窗打不开 */}
+        <LocalApiModal open={apiModalOpen} onClose={() => setApiModalOpen(false)} pageId={pageId} botName={config.botName || 'AI'} onSaved={() => setLocalCfg(getLocalCfg(pageId))} />
+        <div className="mx-auto max-w-md rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 p-8 text-center text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-800/50">
+          <p>AI 对话未配置。</p>
+          {!canManage && customApiEnabled ? (
+            <button onClick={() => setApiModalOpen(true)} className="mt-4 rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-700 dark:bg-gray-200 dark:text-gray-900">
+              在本机配置模型 API
+            </button>
+          ) : (
+            <p className="mt-2">请在后台「AI 管理」中配置。</p>
+          )}
+        </div>
+      </>
     )
   }
 

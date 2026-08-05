@@ -9,7 +9,7 @@ import type {
   SiteSettings,
   Tag,
   User,
-} from './types'
+} from "./types";
 
 const MOCK_ARTICLE_MD = `
 # 关于这个博客
@@ -27,7 +27,7 @@ const MOCK_ARTICLE_MD = `
 - [ ] 写写折腾服务器的过程
 
 如果有什么想让我写的话题，欢迎留言告诉我（虽然暂时还没有评论功能）。
-`
+`;
 
 const MOCK_ARTICLE_MD_2 = `
 # 为什么把前端换成 React
@@ -43,7 +43,7 @@ const MOCK_ARTICLE_MD_2 = `
 3. 登录态用 localStorage + Context 管，不用每次发请求都带 cookie 了。
 
 当然也有麻烦的地方，比如新技术的坑要一个个踩。不过总体不后悔。
-`
+`;
 
 const MOCK_ARTICLE_MD_3 = `
 # 写作编辑器选型
@@ -57,7 +57,7 @@ const MOCK_ARTICLE_MD_3 = `
 - 图片能直接上传
 
 用下来的感觉还行，代码高亮和表格都支持。不过有个小遗憾：默认样式有点花，回头有空再调调。
-`
+`;
 
 const MOCK_ARTICLE_MD_4 = `
 # 记笔记的一些心得
@@ -69,314 +69,398 @@ const MOCK_ARTICLE_MD_4 = `
 - **写给别人看**，哪怕是给自己，假设读者是三个月后的自己
 
 > 记录的意义不在于保存，而在于想清楚。
-`
+`;
 
 function daysAgo(n: number): string {
-  const d = new Date()
-  d.setDate(d.getDate() - n)
-  return d.toISOString()
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString();
 }
 
 export let mockTags: Tag[] = [
-  { id: 1, tag_name: 'React' },
-  { id: 2, tag_name: 'TypeScript' },
-  { id: 3, tag_name: 'Vite' },
-  { id: 4, tag_name: 'FastAPI' },
-  { id: 5, tag_name: '随笔' },
-  { id: 6, tag_name: '教程' },
-]
+  { id: 1, tag_name: "React" },
+  { id: 2, tag_name: "TypeScript" },
+  { id: 3, tag_name: "Vite" },
+  { id: 4, tag_name: "FastAPI" },
+  { id: 5, tag_name: "随笔" },
+  { id: 6, tag_name: "教程" },
+];
 
 export let mockCategories: Category[] = [
-  { id: 1, name: '技术', slug: 'tech', description: '技术相关文章', created_at: daysAgo(90) },
-  { id: 2, name: '随笔', slug: 'notes', description: '日常随笔', created_at: daysAgo(80) },
-  { id: 3, name: '生活', slug: 'life', description: '生活记录', created_at: daysAgo(70) },
-]
+  {
+    id: 1,
+    name: "技术",
+    slug: "tech",
+    description: "技术相关文章",
+    created_at: daysAgo(90),
+  },
+  {
+    id: 2,
+    name: "随笔",
+    slug: "notes",
+    description: "日常随笔",
+    created_at: daysAgo(80),
+  },
+  {
+    id: 3,
+    name: "生活",
+    slug: "life",
+    description: "生活记录",
+    created_at: daysAgo(70),
+  },
+];
 
 const mockArticles: ArticleDetail[] = [
   {
     id: 1,
-    title: '关于这个博客',
-    description: '折腾了好几个晚上，终于把博客搭起来了，简单记录一下。',
+    title: "关于这个博客",
+    description: "折腾了好几个晚上，终于把博客搭起来了，简单记录一下。",
     cover_image: null,
     created: daysAgo(0),
     category_id: 1,
-    category_name: '技术',
+    category_name: "技术",
     tags: [mockTags[3], mockTags[5]],
     content: MOCK_ARTICLE_MD,
-    content_html: '',
+    content_html: "",
   },
   {
     id: 2,
-    title: '为什么把前端换成 React',
-    description: '聊聊这次重构的动机，和一些踩坑的感想。',
+    title: "为什么把前端换成 React",
+    description: "聊聊这次重构的动机，和一些踩坑的感想。",
     cover_image: null,
     created: daysAgo(1),
     category_id: 1,
-    category_name: '技术',
+    category_name: "技术",
     tags: [mockTags[0], mockTags[1], mockTags[2]],
     content: MOCK_ARTICLE_MD_2,
-    content_html: '',
+    content_html: "",
   },
   {
     id: 3,
-    title: '写作编辑器选型',
-    description: '从 Vditor 换到 @uiw/react-md-editor 的一点使用感受。',
+    title: "写作编辑器选型",
+    description: "从 Vditor 换到 @uiw/react-md-editor 的一点使用感受。",
     cover_image: null,
     created: daysAgo(3),
     category_id: 1,
-    category_name: '技术',
+    category_name: "技术",
     tags: [mockTags[0], mockTags[2]],
     content: MOCK_ARTICLE_MD_3,
-    content_html: '',
+    content_html: "",
   },
   {
     id: 4,
-    title: '记笔记的一些心得',
-    description: '坚持记笔记几年，说说我自己的几点体会。',
+    title: "记笔记的一些心得",
+    description: "坚持记笔记几年，说说我自己的几点体会。",
     cover_image: null,
     created: daysAgo(6),
     category_id: 2,
-    category_name: '随笔',
+    category_name: "随笔",
     tags: [mockTags[4]],
     content: MOCK_ARTICLE_MD_4,
-    content_html: '',
+    content_html: "",
   },
-]
+];
 
 export const mockPages: Page[] = [
   {
     id: 1,
-    name: '关于',
-    type: 'markdown',
+    name: "关于",
+    type: "markdown",
     status: 0,
     content:
-      '<h1>关于</h1><p>这里是本站的「关于」页面。博客是拿 React + FastAPI 搭的，前端沿用 Kimo 的风格重写了一遍。</p><blockquote><p>记录技术、生活与思考。</p></blockquote>',
+      "<h1>关于</h1><p>这里是本站的「关于」页面。博客是拿 React + FastAPI 搭的，前端沿用 Kimo 的风格重写了一遍。</p><blockquote><p>记录技术、生活与思考。</p></blockquote>",
   },
   {
     id: 2,
-    name: '友链',
-    type: 'list',
+    name: "友链",
+    type: "list",
     status: 0,
     content: JSON.stringify([
-      { title: 'GitHub', description: 'https://github.com' },
-      { title: 'Vite', description: 'https://vitejs.dev' },
+      { title: "GitHub", description: "https://github.com" },
+      { title: "Vite", description: "https://vitejs.dev" },
     ]),
   },
-  { id: 3, name: 'GitHub', type: 'link', status: 0, content: 'https://github.com' },
-]
+  {
+    id: 3,
+    name: "GitHub",
+    type: "link",
+    status: 0,
+    content: "https://github.com",
+  },
+];
 
 const DEFAULT_SETTINGS: SiteSettings = {
-  title: 'Kimo',
-  ltitle: '记录技术、生活与思考',
-  avatar: '/favicon.svg',
-  background: 'https://api.1314.cool/bingimg',
-  footer: '© Kimo · Powered by FastAPI + React',
+  title: "Kimo",
+  ltitle: "记录技术、生活与思考",
+  avatar: "/favicon.svg",
+  background: "https://api.1314.cool/bingimg",
+  footer: "© Kimo · Powered by FastAPI + React",
   // 是否开放注册：'1'=开放，'0'=关闭（与后端 allow_register 键对应）
-  allow_register: '1',
-}
+  allow_register: "1",
+};
 
 // 演示模式的站点设置持久化到 localStorage，避免整页刷新后丢失
-const SETTINGS_KEY = 'kimo_mock_settings'
+const SETTINGS_KEY = "kimo_mock_settings";
 
 function loadMockSettings(): SiteSettings {
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY)
-    if (raw) return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as SiteSettings) }
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw)
+      return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as SiteSettings) };
   } catch {
     /* 忽略 */
   }
-  return { ...DEFAULT_SETTINGS }
+  return { ...DEFAULT_SETTINGS };
 }
 
 function saveMockSettings(s: SiteSettings): void {
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s))
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
   } catch {
     /* 忽略 */
   }
 }
 
-export let mockSettings: SiteSettings = loadMockSettings()
+export let mockSettings: SiteSettings = loadMockSettings();
 
 export const mockAdmin: User = {
   id: 1,
-  email: 'admin@kimo.dev',
-  user_name: 'admin',
+  email: "admin@kimo.dev",
+  user_name: "admin",
   role: 0,
   created_at: daysAgo(120),
-}
+};
 
 // 演示模式的用户列表（后端不可用时展示）
 export let mockUsers: User[] = [
-  { id: 1, email: 'admin@kimo.dev', user_name: 'admin', role: 0, created_at: daysAgo(120) },
-  { id: 2, email: 'alice@kimo.dev', user_name: 'alice', role: 1, created_at: daysAgo(80) },
-  { id: 3, email: 'bob@kimo.dev', user_name: 'bob', role: 1, created_at: daysAgo(45) },
-  { id: 4, email: 'charlie@kimo.dev', user_name: 'charlie', role: 1, created_at: daysAgo(12) },
-]
+  {
+    id: 1,
+    email: "admin@kimo.dev",
+    user_name: "admin",
+    role: 0,
+    created_at: daysAgo(120),
+  },
+  {
+    id: 2,
+    email: "alice@kimo.dev",
+    user_name: "alice",
+    role: 1,
+    created_at: daysAgo(80),
+  },
+  {
+    id: 3,
+    email: "bob@kimo.dev",
+    user_name: "bob",
+    role: 1,
+    created_at: daysAgo(45),
+  },
+  {
+    id: 4,
+    email: "charlie@kimo.dev",
+    user_name: "charlie",
+    role: 1,
+    created_at: daysAgo(12),
+  },
+];
 
-const wait = (ms = 350) => new Promise((r) => setTimeout(r, ms))
+const wait = (ms = 350) => new Promise((r) => setTimeout(r, ms));
 
 function toListItem(a: ArticleDetail): ArticleListItem {
-  const { content: _c, content_html: _h, ...rest } = a
-  return rest
+  const { content: _c, content_html: _h, ...rest } = a;
+  return rest;
 }
 
 export const mockApi = {
-  async getArticles(page = 1, categoryId?: number, keyword?: string): Promise<ArticleListResult> {
-    await wait()
-    let list = [...mockArticles]
-    if (categoryId) list = list.filter((a) => a.category_id === categoryId)
-    if (keyword) list = list.filter((a) => a.title.toLowerCase().includes(keyword.toLowerCase()))
-    const pageSize = 5
-    const total = list.length
-    const total_page = Math.max(1, Math.ceil(total / pageSize))
-    const items = list.slice((page - 1) * pageSize, page * pageSize).map(toListItem)
-    return { items, total, page, page_size: pageSize, total_page }
+  async getArticles(
+    page = 1,
+    categoryId?: number,
+    keyword?: string,
+  ): Promise<ArticleListResult> {
+    await wait();
+    let list = [...mockArticles];
+    if (categoryId) list = list.filter((a) => a.category_id === categoryId);
+    if (keyword)
+      list = list.filter((a) =>
+        a.title.toLowerCase().includes(keyword.toLowerCase()),
+      );
+    const pageSize = 5;
+    const total = list.length;
+    const total_page = Math.max(1, Math.ceil(total / pageSize));
+    const items = list
+      .slice((page - 1) * pageSize, page * pageSize)
+      .map(toListItem);
+    return { items, total, page, page_size: pageSize, total_page };
   },
   async getArticle(id: number): Promise<ArticleDetail> {
-    await wait()
-    const a = mockArticles.find((x) => x.id === id)
-    if (!a) throw new Error('文章不存在')
-    return a
+    await wait();
+    const a = mockArticles.find((x) => x.id === id);
+    if (!a) throw new Error("文章不存在");
+    return a;
   },
   async search(keyword: string): Promise<ArticleListItem[]> {
-    await wait()
+    await wait();
     return mockArticles
       .filter((a) => a.title.toLowerCase().includes(keyword.toLowerCase()))
-      .map(toListItem)
+      .map(toListItem);
   },
   async getCategories(): Promise<Category[]> {
-    await wait(200)
-    return mockCategories
+    await wait(200);
+    return mockCategories;
   },
-  async createCategory(payload: { name: string; description?: string | null; slug?: string | null }): Promise<Category> {
-    await wait(200)
+  async createCategory(payload: {
+    name: string;
+    description?: string | null;
+    slug?: string | null;
+  }): Promise<Category> {
+    await wait(200);
     const c: Category = {
       id: mockCategories.length + 1,
       name: payload.name,
       slug: payload.slug ?? payload.name,
       description: payload.description ?? null,
       created_at: new Date().toISOString(),
-    }
-    mockCategories = [...mockCategories, c]
-    return c
+    };
+    mockCategories = [...mockCategories, c];
+    return c;
   },
-  async updateCategory(id: number, payload: { name: string; description?: string | null; slug?: string | null }): Promise<Category> {
-    await wait(200)
-    const idx = mockCategories.findIndex((c) => c.id === id)
-    if (idx === -1) throw new Error('分类不存在')
+  async updateCategory(
+    id: number,
+    payload: {
+      name: string;
+      description?: string | null;
+      slug?: string | null;
+    },
+  ): Promise<Category> {
+    await wait(200);
+    const idx = mockCategories.findIndex((c) => c.id === id);
+    if (idx === -1) throw new Error("分类不存在");
     const updated: Category = {
       ...mockCategories[idx],
       name: payload.name,
       slug: payload.slug ?? payload.name,
       description: payload.description ?? null,
-    }
-    mockCategories = mockCategories.map((c, i) => (i === idx ? updated : c))
-    return updated
+    };
+    mockCategories = mockCategories.map((c, i) => (i === idx ? updated : c));
+    return updated;
   },
   async deleteCategory(id: number): Promise<void> {
-    await wait(200)
-    mockCategories = mockCategories.filter((c) => c.id !== id)
+    await wait(200);
+    mockCategories = mockCategories.filter((c) => c.id !== id);
   },
   async getTags(): Promise<Tag[]> {
-    await wait(200)
-    return mockTags
+    await wait(200);
+    return mockTags;
   },
   async createTag(tagName: string): Promise<Tag> {
-    await wait(200)
-    const t: Tag = { id: mockTags.length + 1, tag_name: tagName }
-    mockTags = [...mockTags, t]
-    return t
+    await wait(200);
+    const t: Tag = { id: mockTags.length + 1, tag_name: tagName };
+    mockTags = [...mockTags, t];
+    return t;
   },
   async updateTag(id: number, tagName: string): Promise<Tag> {
-    await wait(200)
-    const idx = mockTags.findIndex((t) => t.id === id)
-    if (idx === -1) throw new Error('标签不存在')
-    const updated: Tag = { id, tag_name: tagName }
-    mockTags = mockTags.map((t, i) => (i === idx ? updated : t))
-    return updated
+    await wait(200);
+    const idx = mockTags.findIndex((t) => t.id === id);
+    if (idx === -1) throw new Error("标签不存在");
+    const updated: Tag = { id, tag_name: tagName };
+    mockTags = mockTags.map((t, i) => (i === idx ? updated : t));
+    return updated;
   },
   async deleteTag(id: number): Promise<void> {
-    await wait(200)
-    mockTags = mockTags.filter((t) => t.id !== id)
+    await wait(200);
+    mockTags = mockTags.filter((t) => t.id !== id);
   },
   async getPages(): Promise<Page[]> {
-    await wait(200)
-    return mockPages
+    await wait(200);
+    return mockPages;
   },
   async getPageByName(name: string): Promise<Page> {
-    await wait(200)
-    const p = mockPages.find((x) => x.name === name)
-    if (!p) throw new Error('页面不存在')
-    return p
+    await wait(200);
+    const p = mockPages.find((x) => x.name === name);
+    if (!p) throw new Error("页面不存在");
+    return p;
   },
-  async createPage(payload: { name: string; content?: string | null; type?: Page['type']; status?: number }): Promise<Page> {
-    await wait(200)
+  async createPage(payload: {
+    name: string;
+    content?: string | null;
+    type?: Page["type"];
+    status?: number;
+  }): Promise<Page> {
+    await wait(200);
     const p: Page = {
       id: mockPages.length + 1,
       name: payload.name,
       content: payload.content ?? null,
-      type: payload.type ?? 'markdown',
+      type: payload.type ?? "markdown",
       status: payload.status ?? 0,
-    }
-    mockPages.push(p)
-    return p
+    };
+    mockPages.push(p);
+    return p;
   },
   async updatePage(id: number, payload: Partial<Page>): Promise<Page> {
-    await wait(200)
-    const i = mockPages.findIndex((x) => x.id === id)
-    if (i < 0) throw new Error('页面不存在')
-    mockPages[i] = { ...mockPages[i], ...payload }
-    return mockPages[i]
+    await wait(200);
+    const i = mockPages.findIndex((x) => x.id === id);
+    if (i < 0) throw new Error("页面不存在");
+    mockPages[i] = { ...mockPages[i], ...payload };
+    return mockPages[i];
   },
   async deletePage(id: number): Promise<void> {
-    await wait(150)
-    const i = mockPages.findIndex((x) => x.id === id)
-    if (i >= 0) mockPages.splice(i, 1)
+    await wait(150);
+    const i = mockPages.findIndex((x) => x.id === id);
+    if (i >= 0) mockPages.splice(i, 1);
   },
   async getUsers(): Promise<User[]> {
-    await wait(250)
-    return mockUsers.map((u) => ({ ...u }))
+    await wait(250);
+    return mockUsers.map((u) => ({ ...u }));
   },
   async updateUserRole(id: number, role: number): Promise<User> {
-    await wait(200)
-    const u = mockUsers.find((x) => x.id === id)
-    if (!u) throw new Error('用户不存在')
-    u.role = role
-    return { ...u }
+    await wait(200);
+    const u = mockUsers.find((x) => x.id === id);
+    if (!u) throw new Error("用户不存在");
+    u.role = role;
+    return { ...u };
   },
   async deleteUser(id: number): Promise<void> {
-    await wait(150)
-    const i = mockUsers.findIndex((x) => x.id === id)
-    if (i >= 0) mockUsers.splice(i, 1)
+    await wait(150);
+    const i = mockUsers.findIndex((x) => x.id === id);
+    if (i >= 0) mockUsers.splice(i, 1);
   },
   async getSettings(): Promise<SiteSettings> {
-    await wait(200)
-    return { ...mockSettings }
+    await wait(200);
+    return { ...mockSettings };
   },
-  async setSetting(key: string, value: string): Promise<{ key: string; value: string }> {
-    await wait(150)
-    mockSettings = { ...mockSettings, [key]: value }
-    saveMockSettings(mockSettings)
-    return { key, value }
+  async setSetting(
+    key: string,
+    value: string,
+  ): Promise<{ key: string; value: string }> {
+    await wait(150);
+    mockSettings = { ...mockSettings, [key]: value };
+    saveMockSettings(mockSettings);
+    return { key, value };
   },
   async removeSetting(key: string): Promise<void> {
-    await wait(150)
-    const next = { ...mockSettings }
-    delete next[key]
-    mockSettings = next
-    saveMockSettings(mockSettings)
+    await wait(150);
+    const next = { ...mockSettings };
+    delete next[key];
+    mockSettings = next;
+    saveMockSettings(mockSettings);
   },
-  async login(_userInfo: string, _password: string): Promise<{ access_token: string; token_type: string; user: User }> {
-    await wait(500)
-    return { access_token: 'mock-token', token_type: 'bearer', user: mockAdmin }
+  async login(
+    _userInfo: string,
+    _password: string,
+  ): Promise<{ access_token: string; token_type: string; user: User }> {
+    await wait(500);
+    return {
+      access_token: "mock-token",
+      token_type: "bearer",
+      user: mockAdmin,
+    };
   },
   async register(): Promise<User> {
-    await wait(500)
-    return { ...mockAdmin, id: 99, user_name: 'user' }
+    await wait(500);
+    return { ...mockAdmin, id: 99, user_name: "user" };
   },
   async getMe(): Promise<User> {
-    await wait(200)
-    return mockAdmin
+    await wait(200);
+    return mockAdmin;
   },
-}
+};

@@ -11,7 +11,7 @@ interface LocalApiModalProps {
 }
 
 const inputCls =
-  'w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800'
+  'w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800'
 
 export function LocalApiModal({ open, onClose, pageId, botName, onSaved }: LocalApiModalProps) {
   const [cfg, setCfg] = useState<LocalAIConfig>({ endpoint: '', apiKey: '', model: '', prompt: '' })
@@ -41,7 +41,7 @@ export function LocalApiModal({ open, onClose, pageId, botName, onSaved }: Local
   return createPortal(
     <div className="fixed inset-0 z-[95] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+      <div className="relative w-full max-w-md rounded-3xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
           <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">模型 API 设置 · {botName}</h3>
           <button onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800" aria-label="关闭">
@@ -87,10 +87,10 @@ export function LocalApiModal({ open, onClose, pageId, botName, onSaved }: Local
         </div>
 
         <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3 dark:border-gray-700">
-          <button onClick={clear} className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400">
+          <button onClick={clear} className="rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-500 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400">
             清除本地配置
           </button>
-          <button onClick={save} className="rounded-lg bg-gray-900 px-5 py-2 text-sm font-medium text-white transition hover:bg-gray-700 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300">
+          <button onClick={save} className="rounded-xl bg-gray-900 px-5 py-2 text-sm font-medium text-white transition hover:bg-gray-700 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300">
             保存
           </button>
         </div>

@@ -21,7 +21,7 @@ interface UserSettingsPanelProps {
 }
 
 const inputCls =
-  'w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800'
+  'w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800'
 
 function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
   return (
@@ -121,10 +121,10 @@ export function UserSettingsPanel({
                 <input value={cfg.model} onChange={(e) => setCfg({ ...cfg, model: e.target.value })} placeholder="模型（留空用默认）" className={inputCls} />
                 <textarea value={cfg.prompt || ''} onChange={(e) => setCfg({ ...cfg, prompt: e.target.value })} rows={3} placeholder="自定义提示词（可选，覆盖默认人设）" className={`${inputCls} resize-none`} />
                 <div className="flex gap-2">
-                  <button onClick={saveCfg} className="flex-1 rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-gray-700 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300">
+                  <button onClick={saveCfg} className="flex-1 rounded-xl bg-gray-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-gray-700 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300">
                     保存
                   </button>
-                  <button onClick={clearCfg} className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400">
+                  <button onClick={clearCfg} className="rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-500 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400">
                     清除
                   </button>
                 </div>
