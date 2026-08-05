@@ -1873,20 +1873,10 @@ export function AIChat({
           )}
         </div>
       </div>
-      {/* 移动端：全屏 overlay（不覆盖顶栏） */}
+      {/* 移动端：底部滑入，无模糊遮罩 */}
       {agentOpen && (
-        <div className="fixed inset-0 top-0 z-50 lg:hidden">
-          <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity duration-300"
-            onClick={() => {
-              refreshKb();
-              setAgentOpen(false);
-            }}
-          />
-          <div
-            className="absolute inset-x-0 bottom-0 animate-[kslideUp_0.35s_ease-out]"
-            style={{ top: "52px", maxHeight: "85vh" }}
-          >
+        <div className="fixed inset-0 z-50 lg:hidden pointer-events-none">
+          <div className="absolute inset-x-0 bottom-0 pointer-events-auto animate-[kslideUp_0.35s_ease-out] bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 shadow-2xl" style={{ top: "52px", maxHeight: "calc(100vh - 52px)" }}>
             <AgentPanel
               onClose={() => {
                 refreshKb();

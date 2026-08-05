@@ -510,111 +510,52 @@ export function AgentPanel({
 
       {/* TAB 1: Browse */}
       {tab === "web" && (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex shrink-0 gap-1.5 px-3 py-2">
-            <input
-              value={webUrl}
-              onChange={(e) => setWebUrl(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") browse();
-              }}
-              placeholder="输入网址或关键词..."
-              className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-            />
-            <button
-              onClick={browse}
-              disabled={webLoading}
-              className="shrink-0 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
-            >
-              {webLoading ? "搜索中..." : "搜索"}
-            </button>
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 py-12 text-center">
+          <svg className="h-12 w-12 text-gray-300 dark:text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10"/></svg>
+          <div>
+            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">需要搜索或浏览网页？</p>
+            <p className="mt-1 text-xs text-gray-400">在对话中告诉 AI，比如「帮我搜索 Vue.js 最新特性」</p>
+            <p className="mt-1 text-xs text-gray-400">或直接输入网址让 AI 帮你抓取内容</p>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {webLoading && (
-              <div className="flex justify-center py-12">
-                <div className="flex gap-1.5">
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" />
-                  <span
-                    className="h-2 w-2 animate-bounce rounded-full bg-gray-400"
-                    style={{ animationDelay: "0.15s" }}
-                  />
-                  <span
-                    className="h-2 w-2 animate-bounce rounded-full bg-gray-400"
-                    style={{ animationDelay: "0.3s" }}
-                  />
-                </div>
-              </div>
+          <div className="flex gap-2">
+            <button onClick={() => onInsertMessage("请帮我搜索：")}
+              className="rounded-lg border border-gray-200 px-4 py-2 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">
+              发起搜索
+            </button>
+            <input value={webUrl} onChange={(e) => setWebUrl(e.target.value)}
+              placeholder="或输入网址..." className="w-40 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+              onKeyDown={(e) => { if (e.key === "Enter" && webUrl.trim()) { browse(); } }} />
+            {webUrl.trim() && (
+              <button onClick={browse} disabled={webLoading}
+                className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50 dark:bg-gray-200 dark:text-gray-900">
+                {webLoading ? "获取中..." : "获取"}
+              </button>
             )}
-            {webContent && !webLoading && (
-              <div className="p-3">
-                <div className="mb-2 flex items-center gap-2 text-xs text-gray-400">
-                  <button
-                    onClick={() => onInsertMessage(webContent)}
-                    className="rounded-md bg-gray-100 px-2 py-0.5 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
-                  >
-                    发送到对话
-                  </button>
-                  <button
-                    onClick={() => setWebContent("")}
-                    className="rounded-md px-2 py-0.5 hover:text-gray-600"
-                  >
-                    清除
-                  </button>
-                </div>
+          </div>
+          {webLoading && <div className="flex gap-1.5"><span className="h-2 w-2 animate-bounce rounded-full bg-gray-400"/><span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{animationDelay:"0.15s"}}/><span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{animationDelay:"0.3s"}}/></div>}
+          {webContent && !webLoading && (
+            <div className="w-full text-left">
+              <div className="mb-2 flex items-center gap-2 text-xs text-gray-400">
+                <button onClick={() => onInsertMessage(webContent)} className="rounded-md bg-gray-100 px-2 py-0.5 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300">发送到对话</button>
+                <button onClick={() => setWebContent("")} className="rounded-md px-2 py-0.5 hover:text-gray-600">清除</button>
+              </div>
+              <div className="max-h-96 overflow-y-auto rounded-xl border border-gray-200 p-3 dark:border-gray-700">
                 <div className="space-y-2">
                   {webContent.split(/\n(?=- )/).map((item, i) => {
-                    const m = item.match(
-                      /^- (.*?)(?:\s*\((https?:\/\/[^)]+)\))?\n\s+(.*)$/s,
-                    );
-                    if (m)
-                      return (
-                        <div
-                          key={i}
-                          className="rounded-xl border border-gray-200 bg-white p-3 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800/50"
-                        >
-                          <a
-                            href={m[2] || "#"}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
-                          >
-                            {m[1]}
-                          </a>
-                          <p className="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-                            {m[3]?.slice(0, 300)}
-                          </p>
-                        </div>
-                      );
-                    return (
-                      <div
-                        key={i}
-                        className="whitespace-pre-wrap break-words text-sm text-gray-600 dark:text-gray-300"
-                      >
-                        {item}
+                    const m = item.match(/^- (.*?)(?:\s*\((https?:\/\/[^)]+)\))?\n\s+(.*)$/s);
+                    if (m) return (
+                      <div key={i} className="rounded-lg border border-gray-100 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-800/50">
+                        <a href={m[2] || "#"} target="_blank" rel="noreferrer" className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400">{m[1]}</a>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{m[3]?.slice(0, 300)}</p>
                       </div>
                     );
+                    return <div key={i} className="whitespace-pre-wrap break-words text-sm text-gray-600 dark:text-gray-300">{item}</div>;
                   })}
                 </div>
               </div>
-            )}
-            {!webContent && !webLoading && (
-              <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-                <svg
-                  className="h-10 w-10 text-gray-300 dark:text-gray-600"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                >
-                  <circle cx="11" cy="11" r="8" />
-                  <path d="M21 21l-4.35-4.35" />
-                </svg>
-                <p className="text-sm text-gray-400">
-                  输入网址或关键词开始搜索
-                </p>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
