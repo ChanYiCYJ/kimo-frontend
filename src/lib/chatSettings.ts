@@ -57,17 +57,17 @@ export function saveChatFontSize(v: ChatFontSize): void {
   lsSet(KEY_FONT_SIZE, v);
 }
 
-// ---- 网络搜索 ----
+// ---- 网络搜索（默认开启）----
 export function loadWebSearchOn(): boolean {
-  return lsGet(KEY_WEB_SEARCH) === "1";
+  return lsGet(KEY_WEB_SEARCH) !== "0";
 }
 export function saveWebSearchOn(on: boolean): void {
   lsSet(KEY_WEB_SEARCH, on ? "1" : "0");
 }
 
-// ---- 浏览 Agent（开启后搜索自动生成综合文章）----
+// ---- 浏览 Agent（默认关闭；与网络搜索互斥，开启后搜索自动生成综合文章）----
 export function loadBrowseAgentOn(): boolean {
-  return lsGet(KEY_BROWSE_AGENT) !== "0"; // 默认开启
+  return lsGet(KEY_BROWSE_AGENT) === "1";
 }
 export function saveBrowseAgentOn(on: boolean): void {
   lsSet(KEY_BROWSE_AGENT, on ? "1" : "0");

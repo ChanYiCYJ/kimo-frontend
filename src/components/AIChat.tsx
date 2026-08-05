@@ -89,6 +89,7 @@ async function streamChat(
   memory = "",
   web = "",
   webTools = true,
+  browseMode = false,
 ) {
   const sys =
     (knowledge
@@ -101,6 +102,9 @@ async function streamChat(
     (summary ? `\n\n对话上下文摘要：\n${summary}` : "") +
     (web
       ? `\n\n以下是来自网络的最新搜索结果，请基于它们回答（并在适当时注明来源）：\n${web}`
+      : "") +
+    (browseMode
+      ? `\n\n【联网浏览模式】当前已开启「浏览 Agent」，详细内容由浏览 Agent 生成文章，你只需简短引导。规则：当用户提问需要查询外部/最新/不熟悉的信息时，只允许输出 1-2 句简短的中文说明（不超过 50 字，如"好的，我去搜一下最新资料"），然后必须附上 [SEARCH:关键词]；严禁自行展开成长篇回答，详细内容一律交给浏览 Agent 生成。若问题不需要联网（寒暄、写代码、简单常识等），正常简短回答即可。`
       : "") +
     `\n\n工具使用说明：${webTools ? "当用户询问实时动态、最新资讯、或不熟悉的时效性信息时，请主动联网搜索并回复 [SEARCH:关键词]（直接给出简洁关键词，不要构造或浏览搜索引擎 URL）；当用户明确给出某个网页链接并要求获取其内容时，回复 [BROWSE:url]；" : ""}当需要帮你写作文档或编辑内容时，用 [EDIT:内容] 括起完整内容（必须用 ] 闭合，且编辑内容之后不要再追加其他文字）；当用户需要把内容保存到知识库（如整理要点、记笔记、沉淀知识）时，用 [KB-SAVE:标题]内容[/KB-SAVE]（新条目或按标题更新）；当需要修改已有知识库条目时，用 [KB-EDIT:标题]新内容[/KB-EDIT]（按标题匹配）；当用户需要查看、整理或应用知识库时，回复 [KB:说明]（自动打开知识库面板）。重要：使用任何工具指令时，必须先输出一两句面向用户的中文说明文字（如"好的，我帮你搜索一下"），再附上工具指令，禁止只输出工具标记。一次只回复一个工具指令。`;
   const res = await fetch(
@@ -796,6 +800,7 @@ export function AIChat({
         memory,
         web,
         webSearchOn,
+        browseAgentOn,
       );
     } catch (e: unknown) {
       if ((e as Error).name === "AbortError") return;
@@ -824,6 +829,25 @@ export function AIChat({
     const autoOpenAgent = () => {
       if (window.innerWidth >= 1024) setAgentOpen(true);
     };
+    // 浏览类触发：桌面与手机都自动弹出浏览 Agent 面板（加载/文章可见）
+    const autoOpenBrowse = () => setAgentOpen(true);
+    // 浏览 Agent 接管：把 AI 的长篇回答替换为简短引导语（详细文章由浏览面板承载）
+    const setBrowseNote = (q: string) => {
+      const note = `好的，已为你联网搜索「${q}」，正在生成综合文章，结果请看浏览面板。`;
+      updateActive((prev) => {
+        let lastAsstIdx = -1;
+        for (let i = prev.length - 1; i >= 0; i--) {
+          if (prev[i].role === "assistant") {
+            lastAsstIdx = i;
+            break;
+          }
+        }
+        if (lastAsstIdx < 0) return prev;
+        return prev.map((m, i) =>
+          i === lastAsstIdx ? { ...m, content: note } : m,
+        );
+      });
+    };
     if (kbSaveCmd) {
       const entry = saveKbEntry(kbSaveCmd.title, kbSaveCmd.content);
       setAgentKbOpen({ nonce: Date.now(), entry });
@@ -843,7 +867,7 @@ export function AIChat({
     } else if (browseCmd) {
       setAgentTab("web");
       setAgentInitUrl(browseCmd[1]);
-      autoOpenAgent();
+      autoOpenBrowse();
       setAgentEditContent(undefined);
       setToolCalls((prev) => [
         ...prev,
@@ -856,19 +880,21 @@ export function AIChat({
         },
       ]);
     } else if (searchCmd) {
-      // 浏览 Agent 开启时自动生成文章：桌面自动开面板，手机只展示可点击卡片（不自动弹出）
+      // 浏览 Agent 开启时自动生成文章：桌面与手机都自动弹面板
       if (browseAgentOn) {
+        const sq = searchCmd[1].trim();
         setAgentTab("web");
-        setAgentInitUrl(searchCmd[1].trim());
-        autoOpenAgent();
+        setAgentInitUrl(sq);
+        autoOpenBrowse();
+        setBrowseNote(sq.slice(0, 60));
         setToolCalls((prev) => [
           ...prev,
           {
             msgIdx,
             type: "网络搜索",
-            detail: searchCmd[1].trim().slice(0, 60),
+            detail: sq.slice(0, 60),
             tab: "web",
-            query: searchCmd[1].trim(),
+            query: sq,
           },
         ]);
       }
@@ -903,24 +929,35 @@ export function AIChat({
       ]);
     }
     // 显式搜索兜底：浏览 Agent 开启时无需再说「搜索」，任何提问都自动生成文章
-    // （除非 AI 已发工具指令）；桌面自动开面板，手机只展示可点击卡片
-    if (browseAgentOn && !kbSaveCmd && !browseCmd && !searchCmd && !editCmd && !kbCmd) {
-      const q = t.trim().slice(0, 60);
-      if (q) {
-        setAgentTab("web");
-        setAgentInitUrl(q);
-        setAgentSearchNonce((n) => n + 1);
-        autoOpenAgent();
-        setToolCalls((prev) => [
-          ...prev,
-          {
-            msgIdx,
-            type: "网络搜索",
-            detail: q,
-            tab: "web",
-            query: q,
-          },
-        ]);
+    // （除非 AI 已发工具指令或给出代码块）；桌面与手机都自动弹面板
+    if (
+      browseAgentOn &&
+      !kbSaveCmd &&
+      !browseCmd &&
+      !searchCmd &&
+      !editCmd &&
+      !kbCmd
+    ) {
+      const isCode = /```/.test(reply) || /```[a-zA-Z]*\n/.test(reply);
+      if (!isCode) {
+        const q = t.trim().slice(0, 60);
+        if (q) {
+          setAgentTab("web");
+          setAgentInitUrl(q);
+          setAgentSearchNonce((n) => n + 1);
+          autoOpenBrowse();
+          setBrowseNote(q);
+          setToolCalls((prev) => [
+            ...prev,
+            {
+              msgIdx,
+              type: "网络搜索",
+              detail: q,
+              tab: "web",
+              query: q,
+            },
+          ]);
+        }
       }
     }
     // 网络资料不再以卡片展示（浏览结果由浏览 Agent 自动呈现），避免刷屏

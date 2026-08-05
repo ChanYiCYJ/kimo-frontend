@@ -937,7 +937,7 @@ export async function webSearchToArticle(
     "- 首行 H1 标题（中文，概括主题）\n" +
     "- 开头 2-3 句引言摘要（加粗要点）\n" +
     "- 用 H2 分节（3-5 节），每节用有序/无序列表或短段落呈现关键信息\n" +
-    "- 若提供了来源图片（[图片]: URL），必须在文章合适位置用 `![配图](图片URL)` 插入至少一张（放在 H1 标题后最佳）\n" +
+    "- 若提供了来源图片（[图片]: URL），请把多张图片分布到文章各处（封面放 H1 标题后，其余每节各插 1 张），用 `![配图](图片URL)` 插入\n" +
     "- 引用事实时用 `> 引用` 块，末尾附「参考来源」列表（Markdown 链接）\n" +
     "- 安全合规：若主题涉及成人/敏感/争议内容，仅做客观克制的信息介绍，绝不输出露骨、色情、暴力、仇恨或违法违规内容；资料不足时如实说明\n" +
     "- 只输出文章正文，不要额外说明";
@@ -989,9 +989,9 @@ export async function webSearchToArticle(
   article = await tryGenerate();
   if (!article) article = await tryGenerate();
 
-  // 兜底：AI 漏插图但有来源封面时，自动在标题后补一张
-  if (article && !article.includes("![") && /^#/.test(article)) {
-    const cover = fetched
+  // 多图增强：把来源封面图分布插进文章（封面 1 张 + 各 H2 小节前各 1 张，最多共 3 张）
+  if (article) {
+    const imgs = fetched
       .filter(
         (
           f,
@@ -1002,17 +1002,39 @@ export async function webSearchToArticle(
           image: string;
         }> => f.status === "fulfilled" && !!f.value.image,
       )
-      .map((f) => f.value.image)[0];
-    if (cover) {
-      const nl = article.indexOf("\n");
-      article =
-        nl > 0
-          ? article.slice(0, nl) +
-            "\n\n![配图](" +
-            cover +
-            ")\n" +
-            article.slice(nl)
-          : article + "\n\n![配图](" + cover + ")";
+      .map((f) => f.value.image)
+      .filter((u, i, a) => a.indexOf(u) === i);
+    if (imgs.length) {
+      // 1) 封面：H1 标题后（若文章还没有任何图）
+      if (!article.includes("![") && /^#/.test(article)) {
+        const nl = article.indexOf("\n");
+        article =
+          nl > 0
+            ? article.slice(0, nl) +
+              "\n\n![配图](" +
+              imgs[0] +
+              ")\n" +
+              article.slice(nl)
+            : article + "\n\n![配图](" + imgs[0] + ")";
+      }
+      // 2) 各 H2 小节前补图（从最后一个 H2 往前插保证索引有效；最多再补 2 张）
+      const used = article.split("![").length - 1;
+      const h2s = [...article.matchAll(/^##\s.+$/gm)].map((m) => m.index!);
+      let added = 0;
+      for (
+        let k = h2s.length - 1;
+        k >= 1 && added < 2 && used + added < imgs.length;
+        k--
+      ) {
+        const img = imgs[used + added];
+        article =
+          article.slice(0, h2s[k]) +
+          "\n\n![配图](" +
+          img +
+          ")\n" +
+          article.slice(h2s[k]);
+        added++;
+      }
     }
   }
   return { article, sources: results };
