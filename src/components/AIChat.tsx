@@ -206,7 +206,6 @@ export function AIChat({
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [botMenuOpen, setBotMenuOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
   const clearMemory = useCallback(() => {
     setMemory("");
@@ -257,8 +256,6 @@ export function AIChat({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-
   const active = sessions.find((s) => s.id === activeId) || sessions[0];
   const messages = active?.messages || [];
 
@@ -372,17 +369,6 @@ export function AIChat({
     if (activeId && !sessions.find((s) => s.id === activeId))
       setActiveId(sessions[0].id);
   }, [activeId, sessions]);
-
-  // 点击外部关闭输入栏功能菜单
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node))
-        setMenuOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [menuOpen]);
 
   const isNearBottom = () => {
     const el = msgListRef.current;
@@ -1226,6 +1212,13 @@ export function AIChat({
                               />
                             </svg>
                           </button>
+                          <button
+                            onClick={() => { setAgentInitUrl(undefined); const urls = m.content.match(/https?:\/\/[^\s<>"{}|\\^`\[\]]+/g); if (urls) setAgentInitUrl(urls[0]); setAgentOpen(true); }}
+                            className="rounded-md p-1 text-gray-400 transition hover:text-blue-600 dark:hover:text-blue-400"
+                            title="在 Agent 中打开"
+                          >
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21" /></svg>
+                          </button>
                         </div>
                       )}
                     </div>
@@ -1323,163 +1316,10 @@ export function AIChat({
             </div>
           )}
           <div className="flex items-center gap-0.5 rounded-[26px] border border-gray-200 bg-white p-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition focus-within:border-gray-400 focus-within:shadow-[0_0_0_3px_rgba(156,163,175,0.15)] dark:border-gray-600 dark:bg-gray-800">
-                        {/* Agent 面板：网页 / Markdown / 记忆 */}
-            <button onClick={() => { setAgentOpen(v => { if (!v) { const last = messages[messages.length-1]; if (last?.role==="assistant") { const m = last.content.match(/https?:\/\/[^\s<>"{}|\\^`\[\]]+/); if (m) setAgentInitUrl(m[0]); } } return !v; }) }} className={`${iconBtn} ${agentOpen ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300' : ''}`} title="Agent" aria-label="Agent 面板">
+                        {/* Agent 工具箱：文档 / 网页 / 提示词 + 知识库 / 上传 / 导出 / 写文章（合并原 + 菜单） */}
+            <button onClick={() => { setAgentOpen(v => { if (!v) { const last = messages[messages.length-1]; if (last?.role==="assistant") { const m = last.content.match(/https?:\/\/[^\s<>"{}|\\^`\[\]]+/); if (m) setAgentInitUrl(m[0]); } } return !v; }) }} className={`${iconBtn} ${agentOpen ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300' : ''}`} title="Agent 工具箱" aria-label="Agent 工具箱">
               <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.689-1.718-.293-2.3-2.379-1.068-3.611L5 14.5" /></svg>
             </button>
-            {/* 功能菜单 */}
-            <div ref={menuRef} className="relative shrink-0">
-              <button
-                onClick={() => setMenuOpen((v) => !v)}
-                className={`${iconBtn} ${menuOpen ? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300" : ""}`}
-                title="更多功能"
-                aria-label="更多功能"
-              >
-                <svg
-                  className="h-5 w-5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                >
-                  <path strokeLinecap="round" d="M12 4.5v15m7.5-7.5h-15" />
-                </svg>
-              </button>
-              {menuOpen && (
-                <div className="absolute bottom-full left-0 z-40 mb-1.5 w-52 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-gray-700 dark:bg-gray-900">
-                  <button
-                    onClick={() => {
-                      fileRef.current?.click();
-                      setMenuOpen(false);
-                    }}
-                    className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-gray-600 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-                  >
-                    <svg
-                      className="h-4 w-4 shrink-0"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13"
-                      />
-                    </svg>
-                    上传 Markdown
-                  </button>
-                  <button
-                    onClick={() => {
-                      toggleWebSearch();
-                      setMenuOpen(false);
-                    }}
-                    className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-gray-600 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-                  >
-                    <svg
-                      className="h-4 w-4 shrink-0"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"
-                      />
-                    </svg>
-                    网络搜索{" "}
-                    {webSearchOn && (
-                      <span className="ml-auto text-xs text-gray-400">✓</span>
-                    )}
-                  </button>
-                                    <button
-                    onClick={() => {
-                      setAgentOpen((v) => !v);
-                      setMenuOpen(false);
-                    }}
-                    className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-gray-600 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-                  >
-                    
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setKbOpen(true);
-                      setMenuOpen(false);
-                    }}
-                    className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-gray-600 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-                  >
-                    <svg
-                      className="h-4 w-4 shrink-0"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"
-                      />
-                    </svg>
-                    Coser 角色设定{" "}
-                    {kbOn && (
-                      <span className="ml-auto text-xs text-gray-400">✓</span>
-                    )}
-                  </button>
-                  {enableArticles && (
-                    <button
-                      onClick={() => {
-                        setArticleOpen(true);
-                        setMenuOpen(false);
-                      }}
-                      className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-gray-600 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-                    >
-                      <svg
-                        className="h-4 w-4 shrink-0"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125"
-                        />
-                      </svg>
-                      写文章
-                    </button>
-                  )}
-                  {messages.length > 0 && (
-                    <button
-                      onClick={() => {
-                        exportChat();
-                        setMenuOpen(false);
-                      }}
-                      className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-gray-600 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-                    >
-                      <svg
-                        className="h-4 w-4 shrink-0"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
-                        />
-                      </svg>
-                      导出当前对话
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
             <input
               ref={fileRef}
               type="file"
@@ -1705,17 +1545,41 @@ export function AIChat({
     </div>
   );
 
+const lastAssistant = [...messages].reverse().find(m => m.role === "assistant");
+
 const agentSidebar = agentOpen && (
     <>
       {/* 桌面端：右侧固定面板 */}
       <div className="hidden shrink-0 border-l border-gray-200 lg:block dark:border-gray-700" style={{width:22+"rem"}}>
-        <AgentPanel onClose={() => setAgentOpen(false)} onInsertMessage={(t: string) => { setInput((prev: string) => prev ? prev + "\n\n" + t : t); setAgentOpen(false) }} initUrl={agentInitUrl} />
+        <AgentPanel
+          onClose={() => setAgentOpen(false)}
+          onInsertMessage={(t: string) => { setInput((prev: string) => prev ? prev + "\n\n" + t : t); setAgentOpen(false) }}
+          initUrl={agentInitUrl}
+          lastAssistantContent={lastAssistant?.content}
+          onOpenKb={() => setKbOpen(true)}
+          onExport={exportChat}
+          onUpload={() => fileRef.current?.click()}
+          onArticle={enableArticles ? () => setArticleOpen(true) : undefined}
+          enableArticles={enableArticles}
+          messagesLength={messages.length}
+        />
       </div>
       {/* 移动端：全屏 overlay */}
       <div className="fixed inset-0 z-50 lg:hidden">
         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setAgentOpen(false)} />
         <div className="absolute inset-y-0 right-0 w-full max-w-sm shadow-2xl">
-          <AgentPanel onClose={() => setAgentOpen(false)} onInsertMessage={(t: string) => { setInput((prev: string) => prev ? prev + "\n\n" + t : t); setAgentOpen(false) }} initUrl={agentInitUrl} />
+          <AgentPanel
+            onClose={() => setAgentOpen(false)}
+            onInsertMessage={(t: string) => { setInput((prev: string) => prev ? prev + "\n\n" + t : t); setAgentOpen(false) }}
+            initUrl={agentInitUrl}
+            lastAssistantContent={lastAssistant?.content}
+            onOpenKb={() => setKbOpen(true)}
+            onExport={exportChat}
+            onUpload={() => fileRef.current?.click()}
+            onArticle={enableArticles ? () => setArticleOpen(true) : undefined}
+            enableArticles={enableArticles}
+            messagesLength={messages.length}
+          />
         </div>
       </div>
     </>
