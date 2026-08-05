@@ -1525,7 +1525,6 @@ export function AIChat({
             <button
               onClick={() => { setAgentOpen(true); }}
               className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
               title="知识库条目"
               aria-label="知识库条目"
             >
