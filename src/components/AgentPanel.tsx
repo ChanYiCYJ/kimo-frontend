@@ -131,6 +131,8 @@ export function AgentPanel({
       return true;
     }
   });
+  /** 知识条目本地搜索 */
+  const [entrySearch, setEntrySearch] = useState("");
   const [draftWordCount, setDraftWordCount] = useState(0);
   const [draftSaved, setDraftSaved] = useState(true);
   const draftTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
@@ -770,11 +772,32 @@ export function AgentPanel({
         <div className="flex min-h-0 flex-1 flex-col">
           {/* 内容滚动区 */}
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {/* 加载中 */}
+            {/* 加载中：迷你浏览器窗口 + 站点加载动画 */}
             {webLoading && (
-              <div className="flex h-full flex-col items-center justify-center gap-4">
-                <div className="h-9 w-9 animate-spin rounded-full border-2 border-gray-200 border-t-gray-900 dark:border-gray-700 dark:border-t-gray-100" />
-                <p className="text-xs text-gray-400">AI 正在联网整理…</p>
+              <div className="flex h-full flex-col items-center justify-center gap-5 px-6">
+                <div className="w-full max-w-[260px] overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-lg dark:border-gray-800 dark:bg-gray-900">
+                  <div className="flex items-center gap-1.5 border-b border-gray-100 px-3 py-2 dark:border-gray-800">
+                    <span className="h-2 w-2 rounded-full bg-red-400" />
+                    <span className="h-2 w-2 rounded-full bg-amber-400" />
+                    <span className="h-2 w-2 rounded-full bg-green-400" />
+                    <div className="ml-2 flex h-4 flex-1 items-center rounded-md bg-gray-100 px-1.5 dark:bg-gray-800">
+                      <div className="h-1.5 w-10 animate-pulse rounded bg-gray-300/70 dark:bg-gray-600" />
+                    </div>
+                  </div>
+                  <div className="space-y-2 p-3">
+                    <div className="h-3 w-2/3 animate-pulse rounded bg-gray-100 dark:bg-gray-800" />
+                    <div className="h-3 w-full animate-pulse rounded bg-gray-100 dark:bg-gray-800" />
+                    <div className="h-3 w-5/6 animate-pulse rounded bg-gray-100 dark:bg-gray-800" />
+                    <div className="h-3 w-2/3 animate-pulse rounded bg-gray-100 dark:bg-gray-800" />
+                    <div className="h-3 w-4/5 animate-pulse rounded bg-gray-100 dark:bg-gray-800" />
+                    <div className="pt-1.5">
+                      <div className="h-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                        <div className="h-full w-1/3 animate-[kload_1.1s_ease-in-out_infinite] rounded-full bg-gray-900 dark:bg-gray-200" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400">正在加载站点内容…</p>
               </div>
             )}
             {/* 空态：极简（无 logo/标题） */}
@@ -927,30 +950,84 @@ export function AgentPanel({
         </div>
       )}
 
-      {/* TAB 2: Knowledge Base */}
+      {/* TAB 2: Knowledge Base（概览 + 统一卡片 + 条目网格） */}
       {tab === "kb" && (
         <div className="flex min-h-0 flex-1 flex-col">
-          {/* Site sources */}
-          <div className="shrink-0 border-b border-gray-50 dark:border-gray-800">
-            <button
-              onClick={() => setKbSiteOpen(!kbSiteOpen)}
-              className="flex w-full items-center gap-2 px-3.5 py-2.5 text-xs text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"
-            >
-              <svg
-                className={
-                  "h-3.5 w-3.5 text-gray-400 transition " +
-                  (kbSiteOpen ? "rotate-90" : "")
-                }
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
+          {/* 概览头部 */}
+          <div className="shrink-0 border-b border-gray-100 bg-gradient-to-b from-gray-50/80 to-transparent px-3.5 pb-3 pt-3 dark:border-gray-800 dark:from-gray-800/30">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  知识库
+                </p>
+                <p className="mt-0.5 text-[10px] text-gray-400">
+                  整理要点 · 沉淀知识 · AI 自动学习
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setActiveEntry(null);
+                  setMdContent("");
+                  setTab("edit");
+                }}
+                className="flex shrink-0 items-center gap-1 rounded-full bg-gray-900 px-3 py-1.5 text-[11px] font-medium text-white transition hover:bg-gray-700 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
               >
-                <path strokeLinecap="round" d="M9 5l7 7-7 7" />
-              </svg>
-              <span className="flex items-center gap-1.5 font-medium">
                 <svg
-                  className="h-3.5 w-3.5 text-gray-400"
+                  className="h-3.5 w-3.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                >
+                  <path strokeLinecap="round" d="M12 5v14M5 12h14" />
+                </svg>
+                新建条目
+              </button>
+            </div>
+            <div className="mt-2.5 grid grid-cols-3 gap-1.5">
+              <div className="rounded-xl border border-gray-100 bg-white px-2.5 py-2 dark:border-gray-800 dark:bg-gray-900">
+                <p className="text-base font-bold text-gray-800 dark:text-gray-100">
+                  {entries.length}
+                </p>
+                <p className="text-[10px] text-gray-400">知识条目</p>
+              </div>
+              <div className="rounded-xl border border-gray-100 bg-white px-2.5 py-2 dark:border-gray-800 dark:bg-gray-900">
+                <p className="text-base font-bold text-gray-800 dark:text-gray-100">
+                  {sel.articleIds.length + sel.categoryIds.length}
+                </p>
+                <p className="text-[10px] text-gray-400">知识源</p>
+              </div>
+              <div className="rounded-xl border border-gray-100 bg-white px-2.5 py-2 dark:border-gray-800 dark:bg-gray-900">
+                <p className="text-base font-bold text-gray-800 dark:text-gray-100">
+                  {memory ? memory.split("\n").filter(Boolean).length : 0}
+                </p>
+                <p className="text-[10px] text-gray-400">AI 记忆</p>
+              </div>
+            </div>
+          </div>
+
+          {/* 统一卡片区：知识源 + AI记忆 */}
+          <div className="shrink-0 space-y-2 p-3">
+            {/* 知识源 */}
+            <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <button
+                onClick={() => setKbSiteOpen(!kbSiteOpen)}
+                className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-xs text-gray-500 transition hover:bg-gray-50 dark:hover:bg-gray-800"
+              >
+                <svg
+                  className={
+                    "h-3.5 w-3.5 shrink-0 text-gray-400 transition " +
+                    (kbSiteOpen ? "rotate-90" : "")
+                  }
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path strokeLinecap="round" d="M9 5l7 7-7 7" />
+                </svg>
+                <svg
+                  className="h-4 w-4 shrink-0 text-gray-400"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -962,154 +1039,197 @@ export function AgentPanel({
                     d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"
                   />
                 </svg>
-                知识源
+                <span className="font-medium">知识源</span>
                 <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-normal text-gray-400 dark:bg-gray-800 dark:text-gray-500">
-                  文章 {sel.articleIds.length} · 分类 {sel.categoryIds.length}
+                  {sel.articleIds.length + sel.categoryIds.length}
                 </span>
-              </span>
-            </button>
-            {kbSiteOpen && (
-              <div className="px-3 pb-2 max-h-40 overflow-y-auto">
-                {kbSiteLoading ? (
-                  <p className="text-[11px] text-gray-400">加载中...</p>
-                ) : (
-                  <>
-                    {allCategories.length > 0 && (
-                      <div className="mb-2 flex flex-wrap gap-1">
-                        {allCategories.map((c) => (
-                          <label
-                            key={c.id}
-                            className={
-                              "cursor-pointer rounded-full border px-2 py-0.5 text-[10px] transition " +
-                              (sel.categoryIds.includes(c.id)
-                                ? "border-gray-900 bg-gray-900 text-white dark:border-gray-200 dark:bg-gray-200 dark:text-gray-900"
-                                : "border-gray-200 text-gray-500 hover:border-gray-400")
-                            }
-                          >
-                            <input
-                              type="checkbox"
-                              className="hidden"
-                              checked={sel.categoryIds.includes(c.id)}
-                              onChange={() => toggleCategory(c.id)}
-                            />
-                            {c.name}
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                    {allArticles.length > 0 && (
-                      <div className="space-y-0.5">
-                        {allArticles.map((a) => (
-                          <label
-                            key={a.id}
-                            className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-[11px] hover:bg-gray-50 dark:hover:bg-gray-800"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={sel.articleIds.includes(a.id)}
-                              onChange={() => toggleArticle(a.id)}
-                              className="h-3 w-3 accent-gray-900"
-                            />
-                            <span className="truncate">{a.title}</span>
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </>
+                <div className="flex-1" />
+                <span className="text-[10px] text-gray-300 dark:text-gray-600">
+                  {kbSiteOpen ? "收起" : "展开"}
+                </span>
+              </button>
+              {kbSiteOpen && (
+                <div className="border-t border-gray-50 px-3 pb-3 pt-2 dark:border-gray-800">
+                  {kbSiteLoading ? (
+                    <p className="text-[11px] text-gray-400">加载中...</p>
+                  ) : (
+                    <>
+                      {allCategories.length > 0 && (
+                        <div className="mb-2 flex flex-wrap gap-1">
+                          {allCategories.map((c) => (
+                            <label
+                              key={c.id}
+                              className={
+                                "cursor-pointer rounded-full border px-2 py-0.5 text-[10px] transition " +
+                                (sel.categoryIds.includes(c.id)
+                                  ? "border-gray-900 bg-gray-900 text-white dark:border-gray-200 dark:bg-gray-200 dark:text-gray-900"
+                                  : "border-gray-200 text-gray-500 hover:border-gray-400")
+                              }
+                            >
+                              <input
+                                type="checkbox"
+                                className="hidden"
+                                checked={sel.categoryIds.includes(c.id)}
+                                onChange={() => toggleCategory(c.id)}
+                              />
+                              {c.name}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                      {allArticles.length > 0 && (
+                        <div className="grid grid-cols-1 gap-0.5 min-[460px]:grid-cols-2">
+                          {allArticles.map((a) => (
+                            <label
+                              key={a.id}
+                              className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-[11px] hover:bg-gray-50 dark:hover:bg-gray-800"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={sel.articleIds.includes(a.id)}
+                                onChange={() => toggleArticle(a.id)}
+                                className="h-3 w-3 accent-gray-900"
+                              />
+                              <span className="truncate">{a.title}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* AI 记忆 */}
+            {memory !== undefined && onMemoryChange && (
+              <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <button
+                  onClick={() => {
+                    if (editingMemory) {
+                      onMemoryChange(memoryDraft);
+                    } else {
+                      setMemoryDraft(memory || "");
+                    }
+                    setEditingMemory(!editingMemory);
+                  }}
+                  className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-xs text-gray-500 transition hover:bg-gray-50 dark:hover:bg-gray-800"
+                >
+                  <svg
+                    className="h-4 w-4 shrink-0 text-gray-400"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"
+                    />
+                  </svg>
+                  <span className="font-medium">AI 记忆</span>
+                  <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-normal text-gray-400 dark:bg-gray-800 dark:text-gray-500">
+                    {memory
+                      ? memory.split("\n").filter(Boolean).length + "条"
+                      : "空"}
+                  </span>
+                  <div className="flex-1" />
+                  {memory?.trim() && (
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        saveMemoryToKb();
+                      }}
+                      className="rounded-md px-1.5 py-0.5 text-[10px] text-gray-400 transition hover:bg-gray-100 dark:hover:bg-gray-800"
+                    >
+                      存入KB
+                    </span>
+                  )}
+                </button>
+                {editingMemory && (
+                  <div className="border-t border-gray-50 px-3 pb-3 pt-2 dark:border-gray-800">
+                    <textarea
+                      value={memoryDraft}
+                      onChange={(e) => setMemoryDraft(e.target.value)}
+                      rows={4}
+                      className="w-full resize-none rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs leading-relaxed text-gray-700 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                      placeholder="AI自动学习的偏好..."
+                    />
+                  </div>
                 )}
               </div>
             )}
           </div>
-          {/* AI Memory */}
-          {memory !== undefined && onMemoryChange && (
-            <div className="shrink-0 border-b border-gray-50 dark:border-gray-800">
+
+          {/* 知识条目：搜索 + 网格 */}
+          <div className="flex min-h-0 flex-1 flex-col">
+            {/* 条目工具栏 */}
+            <div className="sticky top-0 z-10 flex items-center gap-1.5 border-b border-gray-100 bg-white/95 px-3 py-2 backdrop-blur dark:border-gray-800 dark:bg-gray-900/95">
+              <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2 py-1.5 dark:border-gray-700 dark:bg-gray-900">
+                <svg
+                  className="h-3.5 w-3.5 shrink-0 text-gray-400"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <path strokeLinecap="round" d="M21 21l-4.35-4.35" />
+                </svg>
+                <input
+                  value={entrySearch}
+                  onChange={(e) => setEntrySearch(e.target.value)}
+                  placeholder="搜索条目…"
+                  className="min-w-0 flex-1 bg-transparent text-xs text-gray-700 outline-none placeholder:text-gray-400 dark:text-gray-200 dark:placeholder:text-gray-500"
+                />
+              </div>
               <button
                 onClick={() => {
-                  if (editingMemory) {
-                    onMemoryChange(memoryDraft);
-                  } else {
-                    setMemoryDraft(memory || "");
-                  }
-                  setEditingMemory(!editingMemory);
+                  setTab("web");
+                  setWebContent("");
                 }}
-                className="flex w-full items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"
+                title="浏览"
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300"
               >
                 <svg
                   className="h-3.5 w-3.5"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
-                  strokeWidth="2"
+                  strokeWidth="1.8"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"
-                  />
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M2 12h20M12 2a15.3 15.3 0 014 10" />
                 </svg>
-                AI记忆 (
-                {memory
-                  ? memory.split("\n").filter(Boolean).length + "条"
-                  : "空"}
-                )
-                <div className="flex-1" />
-                {memory?.trim() && (
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      saveMemoryToKb();
-                    }}
-                    className="rounded px-1.5 py-0.5 text-[10px] text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
-                  >
-                    存入KB
-                  </span>
-                )}
               </button>
-              {editingMemory && (
-                <div className="px-3 pb-2">
-                  <textarea
-                    value={memoryDraft}
-                    onChange={(e) => setMemoryDraft(e.target.value)}
-                    rows={4}
-                    className="w-full resize-none rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs leading-relaxed text-gray-700 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                    placeholder="AI自动学习的偏好..."
-                  />
-                </div>
-              )}
-            </div>
-          )}
-          {/* Entries */}
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {/* 工具栏 */}
-            <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-gray-100 bg-white px-3.5 py-2 dark:border-gray-800 dark:bg-gray-900">
-              <div className="flex items-center gap-1.5">
-                <svg
-                  className="h-3.5 w-3.5 text-gray-400"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"
-                  />
-                </svg>
-                <span className="text-[11px] font-semibold text-gray-500">
-                  知识条目
-                </span>
-                <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-normal text-gray-400 dark:bg-gray-800 dark:text-gray-500">
-                  {entries.length}
-                </span>
-              </div>
-              <div className="flex items-center gap-0.5">
+              <button
+                onClick={() => {
+                  const v = !kbAiReadAll;
+                  setKbAiReadAll(v);
+                  localStorage.setItem("kimo_kb_ai_read_all", v ? "1" : "0");
+                  onKbChanged?.();
+                }}
+                title={kbAiReadAll ? "AI 读取全部知识" : "AI 不读取知识库"}
+                className={
+                  "flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[10px] transition " +
+                  (kbAiReadAll
+                    ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                    : "bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500")
+                }
+              >
+                <span
+                  className={
+                    "h-1.5 w-1.5 rounded-full " +
+                    (kbAiReadAll ? "bg-green-500" : "bg-gray-400")
+                  }
+                />
+                AI
+              </button>
+              <div className="relative shrink-0" ref={exportRef}>
                 <button
-                  onClick={() => {
-                    setTab("web");
-                    setWebContent("");
-                  }}
-                  title="浏览网页"
+                  onClick={() => setShowExportMenu(!showExportMenu)}
+                  title="导出 / 导入"
                   className="grid h-7 w-7 place-items-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300"
                 >
                   <svg
@@ -1119,194 +1239,149 @@ export function AgentPanel({
                     stroke="currentColor"
                     strokeWidth="1.8"
                   >
-                    <circle cx="12" cy="12" r="10" />
-                    <path d="M2 12h20M12 2a15.3 15.3 0 014 10" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+                    />
                   </svg>
                 </button>
-                <button
-                  onClick={() => {
-                    const v = !kbAiReadAll;
-                    setKbAiReadAll(v);
-                    localStorage.setItem("kimo_kb_ai_read_all", v ? "1" : "0");
-                    onKbChanged?.();
-                  }}
-                  title={kbAiReadAll ? "AI 读取全部知识" : "AI 不读取知识库"}
-                  className={
-                    "flex items-center gap-1 rounded-full px-2 py-1 text-[10px] transition " +
-                    (kbAiReadAll
-                      ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                      : "bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500")
-                  }
-                >
-                  <span
-                    className={
-                      "h-1.5 w-1.5 rounded-full " +
-                      (kbAiReadAll ? "bg-green-500" : "bg-gray-400")
-                    }
-                  />
-                  AI
-                </button>
-                <div className="relative" ref={exportRef}>
-                  <button
-                    onClick={() => setShowExportMenu(!showExportMenu)}
-                    title="导出 / 导入"
-                    className="grid h-7 w-7 place-items-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300"
-                  >
+                {showExportMenu && (
+                  <div className="absolute right-0 top-full z-20 mt-1 w-40 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+                    <button
+                      onClick={exportJSON}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                    >
+                      JSON
+                    </button>
+                    <button
+                      onClick={exportMD}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                    >
+                      Markdown
+                    </button>
+                    <div className="border-t border-gray-100 dark:border-gray-800" />
+                    <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800">
+                      导入 JSON
+                      <input
+                        type="file"
+                        accept=".json"
+                        onChange={importJSON}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            </div>
+            {/* 条目网格 */}
+            <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
+              {entries.length === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+                  <div className="grid h-11 w-11 place-items-center rounded-2xl bg-gray-100 dark:bg-gray-800">
                     <svg
-                      className="h-3.5 w-3.5"
+                      className="h-5 w-5 text-gray-400"
                       viewBox="0 0 24 24"
                       fill="none"
                       stroke="currentColor"
-                      strokeWidth="1.8"
+                      strokeWidth="1.5"
                     >
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+                        d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"
                       />
                     </svg>
-                  </button>
-                  {showExportMenu && (
-                    <div className="absolute right-0 top-full z-20 mt-1 w-40 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-gray-700 dark:bg-gray-900">
-                      <button
-                        onClick={exportJSON}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-                      >
-                        JSON
-                      </button>
-                      <button
-                        onClick={exportMD}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-                      >
-                        Markdown
-                      </button>
-                      <div className="border-t border-gray-100 dark:border-gray-800" />
-                      <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800">
-                        导入 JSON
-                        <input
-                          type="file"
-                          accept=".json"
-                          onChange={importJSON}
-                          className="hidden"
-                        />
-                      </label>
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={() => {
-                    setActiveEntry(null);
-                    setMdContent("");
-                    setTab("edit");
-                  }}
-                  className="ml-1 flex items-center gap-1 rounded-full bg-gray-900 px-2.5 py-1 text-[10px] font-medium text-white transition hover:bg-gray-700 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
-                >
-                  <svg
-                    className="h-3 w-3"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                  >
-                    <path strokeLinecap="round" d="M12 5v14M5 12h14" />
-                  </svg>
-                  新建
-                </button>
-              </div>
-            </div>
-            {/* 条目卡片 */}
-            {entries.length === 0 ? (
-              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-                <div className="grid h-11 w-11 place-items-center rounded-2xl bg-gray-100 dark:bg-gray-800">
-                  <svg
-                    className="h-5 w-5 text-gray-400"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"
-                    />
-                  </svg>
-                </div>
-                <p className="text-xs text-gray-400">
-                  在编辑器中编写内容后「存为知识」
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-1.5 p-2.5">
-                {entries.map((entry) => (
-                  <div
-                    key={entry.id}
-                    onClick={() => {
-                      setActiveEntry(entry);
-                      setMdContent("");
-                      setTab("edit");
-                    }}
-                    className={
-                      "group flex cursor-pointer items-start gap-2.5 rounded-xl border bg-white p-2.5 shadow-sm transition hover:border-gray-200 hover:shadow-md dark:bg-gray-900 dark:hover:border-gray-700 " +
-                      (activeEntry?.id === entry.id
-                        ? "border-gray-300 ring-1 ring-gray-200 dark:border-gray-600 dark:ring-gray-700"
-                        : "border-gray-100 dark:border-gray-800")
-                    }
-                  >
-                    <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-                      <svg
-                        className="h-3.5 w-3.5"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
-                        />
-                      </svg>
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-xs font-medium text-gray-700 dark:text-gray-200">
-                        {entry.name}
-                      </span>
-                      <span className="mt-0.5 line-clamp-2 block text-[10px] leading-relaxed text-gray-400 dark:text-gray-500">
-                        {entry.content.slice(0, 90)}
-                      </span>
-                    </span>
-                    <span className="flex shrink-0 flex-col items-end gap-1">
-                      <span className="text-[9px] text-gray-300 dark:text-gray-600">
-                        {new Date(entry.createdAt).toLocaleDateString("zh-CN")}
-                      </span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteEntry(entry.id);
-                        }}
-                        title="删除"
-                        className="rounded p-0.5 text-gray-300 opacity-0 transition group-hover:opacity-100 hover:text-red-500 dark:text-gray-600"
-                      >
-                        <svg
-                          className="h-3 w-3"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
-                          />
-                        </svg>
-                      </button>
-                    </span>
                   </div>
-                ))}
-              </div>
-            )}
+                  <p className="text-xs text-gray-400">
+                    在编辑器中编写内容后「存为知识」
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-1.5 min-[460px]:grid-cols-2">
+                  {entries
+                    .filter(
+                      (entry) =>
+                        !entrySearch.trim() ||
+                        entry.name
+                          .toLowerCase()
+                          .includes(entrySearch.toLowerCase()) ||
+                        entry.content
+                          .toLowerCase()
+                          .includes(entrySearch.toLowerCase()),
+                    )
+                    .map((entry) => (
+                      <div
+                        key={entry.id}
+                        onClick={() => {
+                          setActiveEntry(entry);
+                          setMdContent("");
+                          setTab("edit");
+                        }}
+                        className={
+                          "group flex cursor-pointer items-start gap-2 rounded-xl border bg-white p-2.5 shadow-sm transition hover:border-gray-200 hover:shadow-md dark:bg-gray-900 dark:hover:border-gray-700 " +
+                          (activeEntry?.id === entry.id
+                            ? "border-gray-300 ring-1 ring-gray-200 dark:border-gray-600 dark:ring-gray-700"
+                            : "border-gray-100 dark:border-gray-800")
+                        }
+                      >
+                        <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                          <svg
+                            className="h-3.5 w-3.5"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+                            />
+                          </svg>
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-xs font-medium text-gray-700 dark:text-gray-200">
+                            {entry.name}
+                          </span>
+                          <span className="mt-0.5 line-clamp-2 block text-[10px] leading-relaxed text-gray-400 dark:text-gray-500">
+                            {entry.content.slice(0, 90)}
+                          </span>
+                        </span>
+                        <span className="flex shrink-0 flex-col items-end gap-1">
+                          <span className="text-[9px] text-gray-300 dark:text-gray-600">
+                            {new Date(entry.createdAt).toLocaleDateString(
+                              "zh-CN",
+                            )}
+                          </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteEntry(entry.id);
+                            }}
+                            title="删除"
+                            className="rounded p-0.5 text-gray-300 opacity-0 transition group-hover:opacity-100 hover:text-red-500 dark:text-gray-600"
+                          >
+                            <svg
+                              className="h-3 w-3"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
+                              />
+                            </svg>
+                          </button>
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

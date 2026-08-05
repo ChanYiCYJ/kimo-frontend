@@ -414,6 +414,16 @@ body {
   margin: 0.7em 0;
 }
 
+/* ===== 浏览页站点加载进度条动画 ===== */
+@keyframes kload {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(360%);
+  }
+}
+
 /* ===== 代码高亮 ===== */
 .hljs {
   background: transparent;
