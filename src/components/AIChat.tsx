@@ -291,39 +291,40 @@ export function AIChat({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
-  const resizeRef = useRef<{ startX: number; startW: number } | null>(null);
+  const agentPanelRef = useRef<HTMLDivElement>(null);
   const active = sessions.find((s) => s.id === activeId) || sessions[0];
   const messages = active?.messages || [];
 
-  // Agent 面板宽度拖拽
-  const onResizeDown = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      resizeRef.current = { startX: e.clientX, startW: agentWidth };
-      const onMove = (ev: MouseEvent) => {
-        if (!resizeRef.current) return;
-        const d = resizeRef.current.startX - ev.clientX;
-        setAgentWidth(
-          Math.min(
-            Math.round(window.innerWidth * 0.8),
-            Math.max(300, resizeRef.current.startW + d),
-          ),
-        );
-      };
-      const onUp = () => {
-        resizeRef.current = null;
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-      };
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
-    },
-    [agentWidth],
-  );
+  // Agent 面板宽度拖拽：拖拽期间直接改 DOM 宽度（不触发 React 重渲染），松手才提交 state
+  const onResizeDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const el = agentPanelRef.current;
+    if (!el) return;
+    const startX = e.clientX;
+    const startW = el.offsetWidth;
+    const prevTransition = el.style.transition;
+    el.style.transition = "none";
+    const onMove = (ev: MouseEvent) => {
+      const d = startX - ev.clientX;
+      const w = Math.min(
+        Math.round(window.innerWidth * 0.8),
+        Math.max(300, startW + d),
+      );
+      el.style.width = w + "px";
+    };
+    const onUp = () => {
+      el.style.transition = prevTransition;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      setAgentWidth(el.offsetWidth);
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, []);
 
   // 人设选择（多套人设由 BotEditorModal 配置；选中后覆盖默认 systemPrompt）
   const [activePromptIdx, setActivePromptIdx] = useState<number | null>(null);
@@ -1974,13 +1975,14 @@ export function AIChat({
     <>
       {/* 桌面端：右侧可拖拽面板 + 滑入动画 */}
       <div
+        ref={agentPanelRef}
         className="hidden shrink-0 overflow-hidden border-l border-gray-200 transition-all duration-300 ease-in-out lg:block dark:border-gray-700"
         style={{
           width: agentOpen ? agentWidth : 0,
           borderLeftWidth: agentOpen ? undefined : 0,
         }}
       >
-        <div className="relative flex h-full" style={{ width: agentWidth }}>
+        <div className="relative flex h-full w-full">
           {/* 拖拽手柄 */}
           <div
             className="absolute left-0 top-0 z-10 h-full w-4 cursor-col-resize hover:bg-gray-300/30 active:bg-gray-400/40 dark:hover:bg-gray-600/30"

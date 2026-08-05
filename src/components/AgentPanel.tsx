@@ -591,10 +591,6 @@ export function AgentPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initUrl]);
 
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
-  const h = isMobile
-    ? Math.min(340, Math.max(180, window.innerHeight - 340))
-    : Math.max(360, window.innerHeight - 260);
   const btn =
     "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors";
 
@@ -1156,149 +1152,157 @@ export function AgentPanel({
         </div>
       )}
 
-      {/* TAB 3: Editor */}
+      {/* TAB 3: Editor（编辑器填满面板剩余空间） */}
       {tab === "edit" && (
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex-1 min-h-0">
-            {activeEntry ? (
-              <>
-                <div className="flex items-center gap-2 border-b border-gray-50 px-3 py-1.5 dark:border-gray-800">
-                  <button
-                    onClick={() => {
-                      setActiveEntry(null);
-                      setMdContent("");
-                    }}
-                    className="rounded p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+          {activeEntry ? (
+            <>
+              <div className="flex flex-none items-center gap-2 border-b border-gray-50 px-3 py-1.5 dark:border-gray-800">
+                <button
+                  onClick={() => {
+                    setActiveEntry(null);
+                    setMdContent("");
+                  }}
+                  className="rounded p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                >
+                  <svg
+                    className="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
                   >
-                    <svg
-                      className="h-4 w-4"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path strokeLinecap="round" d="M19 12H5m7-7l-7 7 7 7" />
-                    </svg>
-                  </button>
-                  <span className="truncate text-xs font-medium text-gray-600 dark:text-gray-300">
-                    {activeEntry.name}
-                  </span>
-                </div>
-                <MdEditor
-                  value={activeEntry.content}
-                  onChange={updateEntry}
-                  height={h}
-                  placeholder="编辑知识条目..."
-                  aiPolish={false}
-                  showStatusBar={false}
-                  rounded={false}
-                />
-              </>
-            ) : (
+                    <path strokeLinecap="round" d="M19 12H5m7-7l-7 7 7 7" />
+                  </svg>
+                </button>
+                <span className="truncate text-xs font-medium text-gray-600 dark:text-gray-300">
+                  {activeEntry.name}
+                </span>
+              </div>
               <MdEditor
-                value={mdContent}
-                onChange={setMdContent}
-                height={h}
-                placeholder="编写内容..."
+                value={activeEntry.content}
+                onChange={updateEntry}
+                height="fill"
+                placeholder="在此编辑内容…"
                 aiPolish={false}
                 showStatusBar={false}
                 rounded={false}
               />
-            )}
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-gray-100 px-3 py-2 dark:border-gray-800">
-            <div className="flex min-w-0 items-center gap-1.5">
-              <span className="text-[10px] text-gray-400">
-                {mdContent ? `${draftWordCount} 字` : "Markdown 格式"}
-                <span className="ml-1.5 inline-flex items-center gap-1">
-                  {draftSaved ? (
-                    <span className="text-green-500">● 已保存</span>
-                  ) : (
-                    <span className="text-amber-400">○ 保存中</span>
-                  )}
-                </span>
+            </>
+          ) : (
+            <MdEditor
+              value={mdContent}
+              onChange={setMdContent}
+              height="fill"
+              placeholder="在此输入内容…"
+              aiPolish={false}
+              showStatusBar={false}
+              rounded={false}
+            />
+          )}
+          <div className="flex flex-none items-center justify-between gap-2 border-t border-gray-100 px-3 py-1.5 dark:border-gray-800">
+            <span className="min-w-0 truncate text-[10px] text-gray-400">
+              {mdContent ? `${draftWordCount} 字` : "Markdown 格式"}
+              <span className="ml-1.5">
+                {draftSaved ? (
+                  <span className="text-green-500">已保存</span>
+                ) : (
+                  <span className="text-amber-400">保存中</span>
+                )}
               </span>
-              {/* 临时草稿菜单 */}
+            </span>
+            <div className="flex items-center gap-0.5">
+              {/* 草稿菜单（保存当前为草稿 + 草稿列表） */}
               <div className="relative" ref={draftMenuRef}>
                 <button
                   onClick={() => setShowDraftMenu((v) => !v)}
-                  className="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-[10px] text-gray-500 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-                  title="临时草稿（存草稿后可恢复）"
+                  className="grid h-7 w-7 place-items-center rounded-lg text-gray-500 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+                  title="草稿"
+                  aria-label="草稿"
                 >
-                  📄 草稿{drafts.length ? `(${drafts.length})` : ""}
+                  <svg
+                    className="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z"
+                    />
+                  </svg>
+                  {drafts.length > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 grid h-3.5 min-w-3.5 place-items-center rounded-full bg-gray-900 px-0.5 text-[8px] font-medium text-white dark:bg-gray-200 dark:text-gray-900">
+                      {drafts.length}
+                    </span>
+                  )}
                 </button>
                 {showDraftMenu && (
-                  <div className="absolute bottom-full left-0 z-20 mb-1 max-h-52 w-56 overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+                  <div className="absolute bottom-full right-0 z-20 mb-1 w-56 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
+                    <button
+                      onClick={saveDraft}
+                      disabled={!mdContent.trim()}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-xs text-gray-600 transition hover:bg-gray-50 disabled:opacity-40 dark:text-gray-300 dark:hover:bg-gray-800"
+                    >
+                      <svg
+                        className="h-3.5 w-3.5"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                      >
+                        <path strokeLinecap="round" d="M12 4.5v15m7.5-7.5h-15" />
+                      </svg>
+                      保存当前为草稿
+                    </button>
+                    <div className="border-t border-gray-100 dark:border-gray-800" />
                     {drafts.length === 0 ? (
                       <p className="px-3 py-2 text-[11px] text-gray-400">
                         暂无草稿
                       </p>
                     ) : (
-                      drafts.map((d) => (
-                        <div
-                          key={d.id}
-                          className="group flex items-center gap-1 px-1.5 py-0.5"
-                        >
-                          <button
-                            onClick={() => restoreDraft(d)}
-                            className="min-w-0 flex-1 truncate px-1.5 py-1 text-left text-[11px] text-gray-600 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-                            title={d.content.slice(0, 80)}
+                      <div className="max-h-44 overflow-y-auto py-1">
+                        {drafts.map((d) => (
+                          <div
+                            key={d.id}
+                            className="group flex items-center px-1"
                           >
-                            {d.name}
-                          </button>
-                          <button
-                            onClick={() => deleteDraft(d.id)}
-                            className="shrink-0 rounded p-1 text-gray-400 opacity-0 transition hover:text-red-500 group-hover:opacity-100"
-                            title="删除草稿"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))
+                            <button
+                              onClick={() => restoreDraft(d)}
+                              className="min-w-0 flex-1 truncate px-2 py-1.5 text-left text-[11px] text-gray-600 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                              title={d.content.slice(0, 80)}
+                            >
+                              {d.name}
+                            </button>
+                            <button
+                              onClick={() => deleteDraft(d.id)}
+                              className="shrink-0 rounded p-1 text-gray-400 opacity-0 transition hover:text-red-500 group-hover:opacity-100"
+                              title="删除草稿"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 )}
               </div>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={saveDraft}
-                disabled={!mdContent.trim()}
-                className={
-                  btn +
-                  " text-gray-500 hover:bg-gray-100 disabled:opacity-30 dark:text-gray-400 dark:hover:bg-gray-800"
-                }
-                title="保存为临时草稿"
-              >
-                <svg
-                  className="h-3.5 w-3.5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z"
-                  />
-                </svg>
-                存草稿
-              </button>
+              {/* 清空 */}
               <button
                 onClick={clearEditor}
-                className={
-                  btn +
-                  " text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-                }
-                title="清空当前内容"
+                className="grid h-7 w-7 place-items-center rounded-lg text-gray-500 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+                title="清空"
+                aria-label="清空"
               >
                 <svg
-                  className="h-3.5 w-3.5"
+                  className="h-4 w-4"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
-                  strokeWidth="2"
+                  strokeWidth="1.8"
                 >
                   <path
                     strokeLinecap="round"
@@ -1306,15 +1310,15 @@ export function AgentPanel({
                     d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
                   />
                 </svg>
-                清空
               </button>
+              {/* 存为知识（主操作） */}
               {!activeEntry && (
                 <button
                   onClick={saveEntry}
                   disabled={!mdContent.trim() || saving}
                   className={
                     btn +
-                    " bg-gray-900 text-white hover:bg-gray-700 disabled:opacity-30 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
+                    " ml-1 bg-gray-900 text-white hover:bg-gray-700 disabled:opacity-30 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
                   }
                 >
                   {saving ? (

@@ -16,12 +16,24 @@ beforeEach(() => {
 
 describe("kb · parseKbTool（AI 创建/编辑知识库指令）", () => {
   it("解析 KB-SAVE（新建/更新）", () => {
-    const r = parseKbTool("先保存一下：[KB-SAVE:React 要点]React 是 UI 库[/KB-SAVE]");
-    expect(r).toEqual({ mode: "save", title: "React 要点", content: "React 是 UI 库" });
+    const r = parseKbTool(
+      "先保存一下：[KB-SAVE:React 要点]React 是 UI 库[/KB-SAVE]",
+    );
+    expect(r).toEqual({
+      mode: "save",
+      title: "React 要点",
+      content: "React 是 UI 库",
+    });
   });
   it("解析 KB-EDIT（修改）", () => {
-    const r = parseKbTool("更新它：[KB-EDIT:React 要点]React 是用于构建界面的库[/KB-EDIT]");
-    expect(r).toEqual({ mode: "edit", title: "React 要点", content: "React 是用于构建界面的库" });
+    const r = parseKbTool(
+      "更新它：[KB-EDIT:React 要点]React 是用于构建界面的库[/KB-EDIT]",
+    );
+    expect(r).toEqual({
+      mode: "edit",
+      title: "React 要点",
+      content: "React 是用于构建界面的库",
+    });
   });
   it("内容可含多行与括号", () => {
     const r = parseKbTool(

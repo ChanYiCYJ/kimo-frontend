@@ -50,7 +50,8 @@ import { readingTime } from "../lib/format";
 interface MdEditorProps {
   value: string;
   onChange: (value: string) => void;
-  height?: number;
+  /** 高度：数字为固定像素；"fill" 表示填满父容器（作为 flex 子项） */
+  height?: number | "fill";
   placeholder?: string;
   /** 是否显示「AI 润色」按钮（默认开启） */
   aiPolish?: boolean;
@@ -222,9 +223,10 @@ export function MdEditor({
     <div
       className={
         "flex flex-col overflow-hidden border border-gray-200 bg-white" +
-        (rounded ? " rounded-2xl" : "")
+        (rounded ? " rounded-2xl" : "") +
+        (height === "fill" ? " min-h-0 flex-1" : "")
       }
-      style={{ height }}
+      style={typeof height === "number" ? { height } : undefined}
     >
       {/* 工具栏（移动端单行横向滚动，桌面换行；可整体收起） */}
       <div className="no-scrollbar flex flex-none items-center gap-0.5 overflow-x-auto border-b border-gray-100 bg-gray-50/60 px-2 py-1.5 sm:flex-wrap">
