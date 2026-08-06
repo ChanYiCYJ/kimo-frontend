@@ -35,7 +35,6 @@ import {
   saveMemory,
   saveChatFontSize,
   compressMemory,
-  clearMemory as clearStoredMemory,
   loadAutoKnowledge,
   saveAutoKnowledge,
   loadPersonaKnowledge,
@@ -44,7 +43,6 @@ import {
   type ChatNetMode,
 } from "../lib/chatSettings";
 import { LocalApiModal } from "./LocalApiModal";
-import { UsageDocModal } from "./UsageDocModal";
 import { ArticleComposerModal } from "./ArticleComposerModal";
 import { AgentPanel } from "./AgentPanel";
 // 性能优化：AgentPanel 是重型组件（含编辑器/知识库/Live2D 等）且桌面+移动双实例渲染；
@@ -532,7 +530,6 @@ export function AIChat({
   });
   const [localCfg, setLocalCfg] = useState(() => getLocalCfg(pageId));
   const [apiModalOpen, setApiModalOpen] = useState(false);
-  const [docOpen, setDocOpen] = useState(false);
   const [articleOpen, setArticleOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(() => {
     try {
@@ -842,10 +839,6 @@ export function AIChat({
   }, [toolCalls, pageId]);
   // 卡片点击后强制重新触发浏览（避免同关键词二次点击不生效）
   const [agentSearchNonce, setAgentSearchNonce] = useState(0);
-  const clearMemory = useCallback(() => {
-    setMemory("");
-    clearStoredMemory(pageId);
-  }, [pageId]);
   const [dailyUsed, setDailyUsed] = useState(() => {
     const today = new Date().toISOString().slice(0, 10);
     try {
@@ -1894,7 +1887,6 @@ export function AIChat({
     setAgentOpen(false);
   }, [refreshKb]);
   const consumeKbOpen = useCallback(() => setAgentKbOpen(undefined), []);
-  const openDoc = useCallback(() => setDocOpen(true), []);
   const onCustomSaved = useCallback(() => {
     setLocalCfg(getLocalCfg(pageId));
   }, [pageId]);
@@ -1920,8 +1912,6 @@ export function AIChat({
       },
       onExportAll: exportAllSessions,
       onImport: () => importRef.current?.click(),
-      onOpenDoc: openDoc,
-      onClearMemory: clearMemory,
       chatFontSize,
       onSetFontSize: (v) => {
         setChatFontSize(v);
@@ -1944,8 +1934,6 @@ export function AIChat({
       kbAiReadAll,
       refreshKb,
       exportAllSessions,
-      openDoc,
-      clearMemory,
       chatFontSize,
       onCustomSaved,
       customApiEnabled,
@@ -3486,12 +3474,6 @@ export function AIChat({
         pageId={pageId}
         botName={config.botName || "AI"}
         onSaved={() => setLocalCfg(getLocalCfg(pageId))}
-      />
-      <UsageDocModal
-        open={docOpen}
-        onClose={() => setDocOpen(false)}
-        hasCustom={hasCustom}
-        canManage={!!canManage}
       />
       <ArticleComposerModal
         open={articleOpen}
