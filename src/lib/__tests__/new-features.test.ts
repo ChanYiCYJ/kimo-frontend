@@ -58,8 +58,17 @@ describe("KB 指令识别效率", () => {
     expect(r?.content).toBe("第一行\n第二行（含括号）");
   });
 
-  it("未闭合 KB-SAVE 返回 null", () => {
-    expect(parseKbTool("[KB-SAVE:未闭合]内容没有结束标签")).toBeNull();
+  it("未闭合 KB-SAVE 容错解析（AI 常漏写结束标签）", () => {
+    const r = parseKbTool("[KB-SAVE:未闭合]内容没有结束标签");
+    expect(r?.mode).toBe("save");
+    expect(r?.title).toBe("未闭合");
+    expect(r?.content).toBe("内容没有结束标签");
+  });
+
+  it("未闭合 KB-SAVE 遇下一个工具指令时截断", () => {
+    const r = parseKbTool("[KB-SAVE:未闭合]内容[SEARCH:另一个关键词]");
+    expect(r?.title).toBe("未闭合");
+    expect(r?.content).toBe("内容");
   });
 });
 

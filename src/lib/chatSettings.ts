@@ -15,15 +15,23 @@ import type { LocalAIConfig } from "./localCfg";
 
 export type ChatFontSize = "sm" | "base" | "lg";
 
+/**
+ * 网络模式：Auto=智能（默认，先按速度回答，AI 缺准确数据时自动升级搜索/文章）、search=网络搜索、view=浏览 Agent（自动生成综合文章）
+ */
+export type ChatNetMode = "auto" | "search" | "view";
+
 export const FONT_SIZES: readonly ChatFontSize[] = ["sm", "base", "lg"];
 
 // ---- key 常量（保持线上稳定，勿随意改名）----
 const KEY_FONT_SIZE = "kimo_ai_fontsize";
+const KEY_NET_MODE = "kimo_ai_net_mode";
 const KEY_WEB_SEARCH = "kimo_ai_websearch";
 const KEY_BROWSE_AGENT = "kimo_ai_browse_agent";
 const KEY_TTS = "kimo_ai_tts";
 const KEY_MEMORY_PREFIX = "kimo_chat_memory_";
 const KEY_CUSTOM_MODEL = "kimo_ai_custom_model";
+const KEY_AUTO_KNOWLEDGE = "kimo_ai_autoknow";
+const KEY_PERSONA_KNOWLEDGE_PREFIX = "kimo_ai_persona_";
 
 // ---- localStorage 安全封装 ----
 export function lsGet(key: string): string | null {
@@ -57,9 +65,24 @@ export function saveChatFontSize(v: ChatFontSize): void {
   lsSet(KEY_FONT_SIZE, v);
 }
 
-// ---- 网络搜索（默认开启）----
+// ---- 网络模式（Auto=智能(默认) / search=网络搜索 / view=浏览 Agent，三者互斥）----
+export function loadNetMode(): ChatNetMode {
+  const v = lsGet(KEY_NET_MODE);
+  if (v === "search" || v === "view" || v === "auto") return v;
+  // 兼容旧值：fast → auto（旧版 Fast=关闭网络，改名后合并为 Auto 智能模式）
+  if (v === "fast") return "auto";
+  // 迁移旧 key（无新模式时）：浏览 Agent 显式开启 → view；网络搜索显式开启 → search；否则默认 auto
+  if (lsGet(KEY_BROWSE_AGENT) === "1") return "view";
+  if (lsGet(KEY_WEB_SEARCH) === "1") return "search";
+  return "auto";
+}
+export function saveNetMode(mode: ChatNetMode): void {
+  lsSet(KEY_NET_MODE, mode);
+}
+
+// ---- 网络搜索（默认关闭，属于 search 模式）----
 export function loadWebSearchOn(): boolean {
-  return lsGet(KEY_WEB_SEARCH) !== "0";
+  return lsGet(KEY_WEB_SEARCH) === "1";
 }
 export function saveWebSearchOn(on: boolean): void {
   lsSet(KEY_WEB_SEARCH, on ? "1" : "0");
@@ -87,6 +110,25 @@ export function loadTtsPref(configAutoTTS?: boolean): TtsPref {
 }
 export function saveTtsPref(on: boolean): void {
   lsSet(KEY_TTS, on ? "1" : "0");
+}
+
+// ---- auto-knowledge（默认开启）：对话后自动学习人格笔记，越聊越贴合人设 ----
+export function loadAutoKnowledge(): boolean {
+  return lsGet(KEY_AUTO_KNOWLEDGE) !== "0";
+}
+export function saveAutoKnowledge(on: boolean): void {
+  lsSet(KEY_AUTO_KNOWLEDGE, on ? "1" : "0");
+}
+
+/** 读取人格笔记（按 pageId 隔离） */
+export function loadPersonaKnowledge(pageId: number): string {
+  return lsGet(KEY_PERSONA_KNOWLEDGE_PREFIX + pageId) || "";
+}
+export function savePersonaKnowledge(pageId: number, text: string): void {
+  lsSet(KEY_PERSONA_KNOWLEDGE_PREFIX + pageId, text);
+}
+export function clearPersonaKnowledge(pageId: number): void {
+  lsRemove(KEY_PERSONA_KNOWLEDGE_PREFIX + pageId);
 }
 
 // ---- 本机记忆（按 pageId 隔离）----

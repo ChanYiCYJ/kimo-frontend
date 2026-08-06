@@ -4,6 +4,7 @@ import {
   loadCustomModelOn,
   saveCustomModelOn,
   type ChatFontSize,
+  type ChatNetMode,
 } from "../lib/chatSettings";
 import { LocalApiForm } from "./LocalApiForm";
 
@@ -18,10 +19,10 @@ export interface AgentSettingsProps {
   botName: string;
   ttsOn: boolean;
   onToggleTts: () => void;
-  webSearchOn: boolean;
-  onToggleWebSearch: () => void;
-  browseAgentOn: boolean;
-  onToggleBrowseAgent: () => void;
+  netMode: ChatNetMode;
+  onSetNetMode: (mode: ChatNetMode) => void;
+  autoKnowledge: boolean;
+  onToggleAutoKnowledge: () => void;
   kbAiReadAll: boolean;
   onToggleKbAiReadAll: (v: boolean) => void;
   onExportAll: () => void;
@@ -97,10 +98,10 @@ export function SettingsTab({
   botName,
   ttsOn,
   onToggleTts,
-  webSearchOn,
-  onToggleWebSearch,
-  browseAgentOn,
-  onToggleBrowseAgent,
+  netMode,
+  onSetNetMode,
+  autoKnowledge,
+  onToggleAutoKnowledge,
   kbAiReadAll,
   onToggleKbAiReadAll,
   onExportAll,
@@ -125,15 +126,7 @@ export function SettingsTab({
   };
 
   return (
-    <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-      {/* 头部 */}
-      <div className="flex items-baseline justify-between px-0.5 pt-0.5">
-        <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-          设置
-        </p>
-        <p className="text-xs text-gray-400">{botName}</p>
-      </div>
-
+    <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
       {/* 通用 */}
       <Section title="通用">
         <div className="flex items-center justify-between py-1">
@@ -164,18 +157,47 @@ export function SettingsTab({
           sub="AI 回复后自动用语音朗读"
         />
         <div className="border-t border-gray-100 dark:border-gray-800" />
-        <Toggle
-          on={webSearchOn}
-          onClick={onToggleWebSearch}
-          label="网络搜索"
-          sub="开启后 AI 会联网检索最新信息"
-        />
+        <div className="flex items-center justify-between gap-3 py-1.5">
+          <span className="min-w-0">
+            <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              网络模式
+            </span>
+            <span className="mt-0.5 block text-[11px] leading-relaxed text-gray-400">
+              {netMode === "auto"
+                ? "Auto：自动调用"
+                : netMode === "search"
+                  ? "Search：联网搜索"
+                  : "View：资料统计"}
+            </span>
+          </span>
+          <div className="flex shrink-0 gap-0.5 rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800">
+            {(
+              [
+                { v: "auto", l: "Auto" },
+                { v: "search", l: "Search" },
+                { v: "view", l: "View" },
+              ] as { v: ChatNetMode; l: string }[]
+            ).map((m) => (
+              <button
+                key={m.v}
+                onClick={() => onSetNetMode(m.v)}
+                className={`px-2.5 py-1 text-xs font-medium rounded-md transition ${
+                  netMode === m.v
+                    ? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100"
+                    : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                }`}
+              >
+                {m.l}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="border-t border-gray-100 dark:border-gray-800" />
         <Toggle
-          on={browseAgentOn}
-          onClick={onToggleBrowseAgent}
-          label="浏览 Agent"
-          sub="开启后搜索会自动联网抓取并生成综合文章"
+          on={autoKnowledge}
+          onClick={onToggleAutoKnowledge}
+          label="自动学习人格"
+          sub="每次对话后自动学习并联网补充，越聊越贴合人设"
         />
         <div className="border-t border-gray-100 dark:border-gray-800" />
         <Toggle
@@ -190,7 +212,8 @@ export function SettingsTab({
       <Section title="自定义模型">
         {canManage ? (
           <p className="rounded-xl bg-gray-50 p-3 text-xs leading-relaxed text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-            当前使用管理员在「AI 管理」中配置的默认模型。
+            当前使用管理员在「AI 管理」中为「{botName}」配置的默认模型，无需在
+            本机填写。
           </p>
         ) : !allowCustomApi ? (
           <p className="rounded-xl bg-gray-50 p-3 text-xs leading-relaxed text-gray-500 dark:bg-gray-800 dark:text-gray-400">
@@ -206,6 +229,10 @@ export function SettingsTab({
             />
             {customOn && (
               <div className="rounded-xl border border-gray-100 bg-gray-50/50 p-3 dark:border-gray-800 dark:bg-gray-800/40">
+                <p className="mb-2.5 text-[11px] leading-relaxed text-gray-400">
+                  为「{botName}
+                  」配置本机模型，仅保存在当前浏览器；保存前可点击「测试连接」校验配置是否可用。
+                </p>
                 <LocalApiForm
                   pageId={pageId}
                   variant="inline"

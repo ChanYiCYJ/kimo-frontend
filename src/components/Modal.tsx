@@ -1,29 +1,36 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, type ReactNode } from "react";
 
 interface ModalProps {
-  open: boolean
-  onClose: () => void
-  title?: string
-  children: ReactNode
-  footer?: ReactNode
-  maxWidth?: string
+  open: boolean;
+  onClose: () => void;
+  title?: string;
+  children: ReactNode;
+  footer?: ReactNode;
+  maxWidth?: string;
 }
 
-export function Modal({ open, onClose, title, children, footer, maxWidth = 'max-w-md' }: ModalProps) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  footer,
+  maxWidth = "max-w-md",
+}: ModalProps) {
   useEffect(() => {
-    if (!open) return
+    if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKey)
-    document.body.style.overflow = 'hidden'
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
     return () => {
-      document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = ''
-    }
-  }, [open, onClose])
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [open, onClose]);
 
-  if (!open) return null
+  if (!open) return null;
 
   return (
     <div
@@ -31,34 +38,36 @@ export function Modal({ open, onClose, title, children, footer, maxWidth = 'max-
       onClick={onClose}
     >
       <div
-        className={`modal-in w-full ${maxWidth} rounded-2xl bg-white p-6 shadow-2xl`}
+        className={`modal-in w-full ${maxWidth} rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900`}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
-        {title && <h3 className="mb-4 text-lg font-semibold text-gray-900">{title}</h3>}
+        {title && (
+          <h3 className="mb-4 text-lg font-semibold text-gray-900">{title}</h3>
+        )}
         <div className="text-sm text-gray-600">{children}</div>
         {footer && <div className="mt-6 flex justify-end gap-3">{footer}</div>}
       </div>
     </div>
-  )
+  );
 }
 
 interface ConfirmProps {
-  open: boolean
-  title?: string
-  message: string
-  confirmText?: string
-  danger?: boolean
-  onCancel: () => void
-  onConfirm: () => void
+  open: boolean;
+  title?: string;
+  message: string;
+  confirmText?: string;
+  danger?: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
 }
 
 export function ConfirmDialog({
   open,
-  title = '确认操作',
+  title = "确认操作",
   message,
-  confirmText = '确定',
+  confirmText = "确定",
   danger = true,
   onCancel,
   onConfirm,
@@ -80,7 +89,9 @@ export function ConfirmDialog({
           <button
             onClick={onConfirm}
             className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition active:scale-[0.98] ${
-              danger ? 'bg-red-600 hover:bg-red-500' : 'bg-gray-900 hover:bg-gray-700'
+              danger
+                ? "bg-red-600 hover:bg-red-500"
+                : "bg-gray-900 hover:bg-gray-700"
             }`}
           >
             {confirmText}
@@ -90,5 +101,5 @@ export function ConfirmDialog({
     >
       <p className="leading-relaxed">{message}</p>
     </Modal>
-  )
+  );
 }

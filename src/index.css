@@ -45,6 +45,29 @@ html {
   }
 }
 
+/* 下拉/浮层平滑弹出（缩放 + 淡入） */
+@keyframes kpop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Live2D 加载占位呼吸（柔和缩放脉冲） */
+@keyframes kbreathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.07);
+  }
+}
+
 /* Editor 移动端适配 */
 @media (max-width: 768px) {
   .lobe-editor [contenteditable] {
@@ -103,16 +126,7 @@ body {
   color: #4b5563;
 }
 
-/* 暗色 — 背景色 */
-.dark .bg-white {
-  background-color: #1f2937;
-}
-.dark .bg-gray-50 {
-  background-color: #111827;
-}
-.dark .bg-gray-100 {
-  background-color: #1f2937;
-}
+/* 暗色 — 背景色：交由 Tailwind dark: 变体接管（移除全局覆盖，避免 bg-white 覆盖 dark:bg-* 选中态） */
 
 /* 暗色 — 边框 */
 .dark .border-gray-100 {
@@ -160,18 +174,11 @@ body {
   border-right-color: #374151;
 }
 
-/* ===== 暗色模式 — 标签徽标 ===== */
+/* 暗色 — 标签徽标 */
 .dark .pill-primary {
   color: #d1d5db;
   background: rgba(156, 163, 175, 0.15);
   border-color: rgba(156, 163, 175, 0.3);
-}
-.dark .rounded-full.bg-gray-100 {
-  background-color: #1f2937;
-}
-.dark .rounded-full.bg-gray-100.text-gray-500,
-.dark .rounded-full.bg-gray-100.text-gray-600 {
-  color: #9ca3af;
 }
 
 .dark .card {
@@ -678,4 +685,251 @@ body {
 }
 .dark ::-webkit-scrollbar-thumb:hover {
   background: #6b7280;
+}
+
+/* ===== Milkdown 编辑器（AI Chat agent 编辑器，@milkdown/react） ===== */
+/* 结构：编辑器区 > div[data-milkdown-root]（无类）> .milkdown 容器 > .ProseMirror
+   data-milkdown-root 需撑满父级，否则高度塌缩为内容高度 */
+[data-milkdown-root] {
+  height: 100%;
+}
+/* .milkdown 同时命中外层容器与 .ProseMirror 编辑区；外层负责滚动，编辑区撑满 */
+.milkdown {
+  height: 100%;
+  overflow-y: auto;
+  outline: none;
+  color: #1f2937;
+  font-size: 15px;
+  line-height: 1.8;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+.milkdown.ProseMirror {
+  height: auto;
+  min-height: 100%;
+  padding: 0.9rem 1.15rem 1.5rem;
+}
+.milkdown > *:first-child {
+  margin-top: 0;
+}
+.milkdown p {
+  margin: 0.6em 0;
+}
+.milkdown h1,
+.milkdown h2,
+.milkdown h3,
+.milkdown h4,
+.milkdown h5,
+.milkdown h6 {
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 1.3em 0 0.6em;
+  color: #111827;
+}
+.milkdown h1 {
+  font-size: 1.55em;
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid #e5e7eb;
+}
+.milkdown h2 {
+  font-size: 1.3em;
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid #eef0f2;
+}
+.milkdown h3 {
+  font-size: 1.12em;
+}
+.milkdown a {
+  color: #2563eb;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(37, 99, 235, 0.25);
+}
+.milkdown a:hover {
+  border-bottom-color: #2563eb;
+}
+.milkdown strong {
+  font-weight: 700;
+  color: #111827;
+}
+.milkdown blockquote {
+  margin: 1em 0;
+  padding: 0.4em 1.1em;
+  border-left: 4px solid #d1d5db;
+  background: rgba(243, 244, 246, 0.6);
+  border-radius: 0 0.75rem 0.75rem 0;
+  color: #4b5563;
+}
+.milkdown ul,
+.milkdown ol {
+  margin: 0.8em 0;
+  padding-left: 1.5em;
+}
+.milkdown ul {
+  list-style: disc;
+}
+.milkdown ol {
+  list-style: decimal;
+}
+.milkdown li {
+  margin: 0.25em 0;
+}
+.milkdown li > ul,
+.milkdown li > ol {
+  margin: 0.2em 0;
+}
+.milkdown code {
+  background: #f3f4f6;
+  color: #be185d;
+  padding: 0.12em 0.35em;
+  border-radius: 0.3rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88em;
+}
+.milkdown pre {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 1em 1.2em;
+  border-radius: 0.9rem;
+  overflow-x: auto;
+  margin: 1.1em 0;
+  line-height: 1.7;
+  font-size: 0.88em;
+}
+.milkdown pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+.milkdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.1em 0;
+  font-size: 0.93em;
+}
+.milkdown th,
+.milkdown td {
+  border: 1px solid #e5e7eb;
+  padding: 0.5em 0.85em;
+  text-align: left;
+}
+.milkdown th {
+  background: #f9fafb;
+  font-weight: 600;
+}
+.milkdown tr:nth-child(2n) td {
+  background: #fcfcfd;
+}
+.milkdown img {
+  max-width: 100%;
+  border-radius: 0.9rem;
+  margin: 1em auto;
+}
+.milkdown hr {
+  border: 0;
+  border-top: 1px solid #e5e7eb;
+  margin: 1.6em 0;
+}
+.milkdown input[type="checkbox"] {
+  margin-right: 0.4em;
+}
+.milkdown .ProseMirror-selectednode {
+  outline: 2px solid rgba(37, 99, 235, 0.4);
+  outline-offset: 2px;
+}
+
+/* Milkdown 暗色模式 */
+.dark .milkdown {
+  color: #d1d5db;
+}
+.dark .milkdown h1,
+.dark .milkdown h2,
+.dark .milkdown h3,
+.dark .milkdown h4,
+.dark .milkdown h5,
+.dark .milkdown h6 {
+  color: #f3f4f6;
+}
+.dark .milkdown h1 {
+  border-bottom-color: #374151;
+}
+.dark .milkdown h2 {
+  border-bottom-color: #1f2937;
+}
+.dark .milkdown a {
+  color: #60a5fa;
+  border-bottom-color: rgba(96, 165, 250, 0.25);
+}
+.dark .milkdown strong {
+  color: #f3f4f6;
+}
+.dark .milkdown blockquote {
+  border-left-color: #4b5563;
+  background: rgba(31, 41, 55, 0.5);
+  color: #9ca3af;
+}
+.dark .milkdown code {
+  background: #1f2937;
+  color: #f472b6;
+}
+.dark .milkdown th,
+.dark .milkdown td {
+  border-color: #374151;
+}
+.dark .milkdown th {
+  background: #1f2937;
+}
+.dark .milkdown tr:nth-child(2n) td {
+  background: #111827;
+}
+.dark .milkdown hr {
+  border-top-color: #374151;
+}
+
+/* Milkdown 代码块 prism 高亮 token（深色 pre 内，与站点配色一致的柔和色板，避免紫色） */
+.milkdown pre .token.comment,
+.milkdown pre .token.prolog,
+.milkdown pre .token.doctype,
+.milkdown pre .token.cdata {
+  color: #94a3b8;
+}
+.milkdown pre .token.punctuation {
+  color: #cbd5e1;
+}
+.milkdown pre .token.property,
+.milkdown pre .token.tag,
+.milkdown pre .token.boolean,
+.milkdown pre .token.number,
+.milkdown pre .token.constant,
+.milkdown pre .token.symbol,
+.milkdown pre .token.deleted {
+  color: #f472b6;
+}
+.milkdown pre .token.selector,
+.milkdown pre .token.attr-name,
+.milkdown pre .token.string,
+.milkdown pre .token.char,
+.milkdown pre .token.builtin,
+.milkdown pre .token.inserted {
+  color: #86efac;
+}
+.milkdown pre .token.operator,
+.milkdown pre .token.entity,
+.milkdown pre .token.url,
+.milkdown pre .token.variable {
+  color: #93c5fd;
+}
+.milkdown pre .token.atrule,
+.milkdown pre .token.attr-value,
+.milkdown pre .token.keyword {
+  color: #7dd3fc;
+}
+.milkdown pre .token.function,
+.milkdown pre .token.class-name {
+  color: #fbbf24;
+}
+.milkdown pre .token.regex,
+.milkdown pre .token.important {
+  color: #fca5a5;
 }

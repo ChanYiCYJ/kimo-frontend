@@ -1,18 +1,27 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    host: '0.0.0.0',
+    host: "0.0.0.0",
     port: 5173,
     proxy: {
+      // Live2D 资源反代（bestdori.com 无 CORS，本地开发直连；放在 /api 之前以优先匹配）
+      "/api/live2d": {
+        target: "https://bestdori.com",
+        changeOrigin: true,
+        rewrite: (p) =>
+          p
+            .replace(/^\/api\/live2d\/asset\//, "/assets/")
+            .replace(/^\/api\/live2d\/api\//, "/api/"),
+      },
       // FastAPI 后端（kimo-fastapi）
-      '/api': { target: 'http://localhost:8000', changeOrigin: true },
+      "/api": { target: "http://localhost:8000", changeOrigin: true },
       // 上传的静态图片
-      '/static': { target: 'http://localhost:8000', changeOrigin: true },
+      "/static": { target: "http://localhost:8000", changeOrigin: true },
     },
   },
-})
+});

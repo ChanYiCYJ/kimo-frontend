@@ -7,6 +7,7 @@ import {
   removeEditorDraft,
   saveKbEntry,
   loadKbEntries,
+  detectKbSaveIntent,
   type KbNote,
 } from "../kb";
 
@@ -47,8 +48,11 @@ describe("kb · parseKbTool（AI 创建/编辑知识库指令）", () => {
     expect(parseKbTool("普通回复，没有工具调用")).toBeNull();
     expect(parseKbTool("")).toBeNull();
   });
-  it("未闭合标签不匹配", () => {
-    expect(parseKbTool("[KB-SAVE:标题]没有闭合标签")).toBeNull();
+  it("未闭合标签容错（AI 常漏写结束标签）", () => {
+    const r = parseKbTool("[KB-SAVE:标题]没有闭合标签");
+    expect(r?.mode).toBe("save");
+    expect(r?.title).toBe("标题");
+    expect(r?.content).toBe("没有闭合标签");
   });
 });
 
@@ -63,6 +67,30 @@ describe("kb · findKbNoteByTitle", () => {
   });
   it("未命中返回 undefined", () => {
     expect(findKbNoteByTitle(notes, "不存在")).toBeUndefined();
+  });
+});
+
+describe("kb · detectKbSaveIntent（AI 漏发 [KB-SAVE:] 时前端兜底）", () => {
+  it("「帮我记一下：内容」提取内容与标题", () => {
+    const r = detectKbSaveIntent("帮我记一下：我喜欢柚子社的galgame，画风精致");
+    expect(r?.title).toBe("我喜欢柚子社的galgame");
+    expect(r?.content).toBe("我喜欢柚子社的galgame，画风精致");
+  });
+  it("「保存到知识库：xxx」", () => {
+    const r = detectKbSaveIntent("保存到知识库：React 的 useState 用法");
+    expect(r?.content).toBe("React 的 useState 用法");
+  });
+  it("「收藏」表达", () => {
+    const r = detectKbSaveIntent("收藏一下：这个配色方案");
+    expect(r?.content).toBe("这个配色方案");
+  });
+  it("无保存意图返回 null（避免误触发）", () => {
+    expect(detectKbSaveIntent("你好，今天天气不错")).toBeNull();
+    expect(detectKbSaveIntent("记住要幽默一点")).toBeNull();
+    expect(detectKbSaveIntent("帮我搜索一下柚子社新作")).toBeNull();
+  });
+  it("意图词但内容为空返回 null", () => {
+    expect(detectKbSaveIntent("帮我记一下")).toBeNull();
   });
 });
 

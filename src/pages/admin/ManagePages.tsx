@@ -1,50 +1,53 @@
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { pageApi } from '../../lib/api'
-import type { Page } from '../../lib/types'
-import { Badge, EmptyState, Skeleton } from '../../components/ui'
-import { ConfirmDialog } from '../../components/Modal'
-import { useToast } from '../../lib/toast'
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { pageApi } from "../../lib/api";
+import type { Page } from "../../lib/types";
+import { Badge, EmptyState, Skeleton } from "../../components/ui";
+import { ConfirmDialog } from "../../components/Modal";
+import { useToast } from "../../lib/toast";
 
-const TYPE_TONE: Record<string, 'violet' | 'blue' | 'green' | 'amber' | 'gray'> = {
-  markdown: 'gray',
-  html: 'gray',
-  list: 'gray',
-  link: 'gray',
-}
+const TYPE_TONE: Record<
+  string,
+  "violet" | "blue" | "green" | "amber" | "gray"
+> = {
+  markdown: "gray",
+  html: "gray",
+  list: "gray",
+  link: "gray",
+};
 
 export function ManagePages() {
-  const [pages, setPages] = useState<Page[]>([])
-  const [loading, setLoading] = useState(true)
-  const [deleting, setDeleting] = useState<Page | null>(null)
-  const [busy, setBusy] = useState(false)
-  const { success, error } = useToast()
+  const [pages, setPages] = useState<Page[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState<Page | null>(null);
+  const [busy, setBusy] = useState(false);
+  const { success, error } = useToast();
 
   const load = () => {
-    setLoading(true)
+    setLoading(true);
     pageApi
       .list()
       .then(setPages)
       .catch(() => setPages([]))
-      .finally(() => setLoading(false))
-  }
+      .finally(() => setLoading(false));
+  };
 
-  useEffect(load, [])
+  useEffect(load, []);
 
   const confirmDelete = async () => {
-    if (!deleting) return
-    setBusy(true)
+    if (!deleting) return;
+    setBusy(true);
     try {
-      await pageApi.remove(deleting.id)
-      success('页面已删除')
-      setDeleting(null)
-      load()
+      await pageApi.remove(deleting.id);
+      success("页面已删除");
+      setDeleting(null);
+      load();
     } catch (e) {
-      error(e instanceof Error ? e.message : '删除失败')
+      error(e instanceof Error ? e.message : "删除失败");
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
-  }
+  };
 
   return (
     <div className="fade-up space-y-5">
@@ -83,17 +86,26 @@ export function ManagePages() {
       ) : (
         <div className="space-y-3">
           {pages.map((p) => (
-            <div key={p.id} className="card card-hover flex items-center justify-between gap-3 p-4">
+            <div
+              key={p.id}
+              className="card card-hover flex items-center justify-between gap-3 p-4"
+            >
               <div className="flex min-w-0 items-center gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gray-100 text-sm font-semibold text-gray-600">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gray-100 text-sm font-semibold text-gray-600 dark:bg-gray-800 dark:text-gray-300">
                   #
                 </span>
                 <div className="min-w-0">
-                  <h3 className="truncate font-medium text-gray-800">{p.name}</h3>
+                  <h3 className="truncate font-medium text-gray-800">
+                    {p.name}
+                  </h3>
                   <div className="mt-0.5 flex items-center gap-2">
-                    <Badge tone={TYPE_TONE[p.type] ?? 'gray'}>{p.type}</Badge>
-                    {p.type !== 'link' && (
-                      <Link to={`/page/${p.name}`} target="_blank" className="text-xs text-gray-400 hover:text-gray-900">
+                    <Badge tone={TYPE_TONE[p.type] ?? "gray"}>{p.type}</Badge>
+                    {p.type !== "link" && (
+                      <Link
+                        to={`/page/${p.name}`}
+                        target="_blank"
+                        className="text-xs text-gray-400 hover:text-gray-900"
+                      >
                         预览 →
                       </Link>
                     )}
@@ -124,10 +136,10 @@ export function ManagePages() {
         open={!!deleting}
         title="删除页面"
         message={`确定要删除页面「${deleting?.name}」吗？`}
-        confirmText={busy ? '删除中...' : '删除'}
+        confirmText={busy ? "删除中..." : "删除"}
         onCancel={() => setDeleting(null)}
         onConfirm={confirmDelete}
       />
     </div>
-  )
+  );
 }

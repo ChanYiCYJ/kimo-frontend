@@ -66,8 +66,9 @@ export function UsageDocModal({
                 工具箱「设置」tab 可导出/导入全部会话。
               </li>
               <li>
-                发送框按 Enter 发送、Shift+Enter 换行；点击左侧「＋」可上传
-                Markdown、切换网络搜索、打开 Coser、导出当前对话。
+                发送框按 Enter 发送、Shift+Enter
+                换行；点击左侧「/」可切换网络模式（Auto/Search/View）、开关
+                Live2D、选择知识库条目。
               </li>
               <li>AI 生成内容带水印标注，仅供参考，请自行核实重要信息。</li>
             </ul>
@@ -86,11 +87,12 @@ export function UsageDocModal({
             </ul>
           </S>
 
-          <S title="🌐 网络搜索">
+          <S title="🔍 网络模式">
             <ul className="ml-4 list-disc space-y-1">
               <li>
-                在「＋」菜单开启网络搜索后，AI
-                会先抓取维基百科等公开内容作为上下文，回答更实时、准确。
+                <b>Auto</b>（默认）：自动调用——需要时自动联网搜索或生成文章。
+                <b>Search</b>：联网搜索，回答更实时准确。
+                <b>View</b>：资料统计，联网抓取并生成综合文章在浏览面板查看。
               </li>
               <li>搜索为匿名公开接口，不涉及您的隐私数据。</li>
             </ul>
@@ -106,7 +108,7 @@ export function UsageDocModal({
               <li>
                 <b>安全规则：</b>
                 密钥仅保存在本机浏览器（localStorage），不会上传服务器；请勿在公共电脑保存密钥；接口需为
-                OpenAI 兼容格式；如开启网络搜索/自定义
+                OpenAI 兼容格式；如开启 search/view 或自定义
                 API，请遵守您所用服务的使用条款与当地法律。
               </li>
               <li>

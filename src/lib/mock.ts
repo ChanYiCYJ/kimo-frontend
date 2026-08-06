@@ -1,6 +1,7 @@
 // ===== 演示数据（后端不可用时自动回退，便于本地预览） =====
 // 通过 VITE_USE_MOCK=1 可强制开启演示模式。
 import type {
+  AIChatConfig,
   ArticleDetail,
   ArticleListItem,
   ArticleListResult,
@@ -10,6 +11,7 @@ import type {
   Tag,
   User,
 } from "./types";
+import { AI_CHAT_MARKER } from "./types";
 
 const MOCK_ARTICLE_MD = `
 # 关于这个博客
@@ -186,6 +188,23 @@ export const mockPages: Page[] = [
     type: "link",
     status: 0,
     content: "https://github.com",
+  },
+  // 演示 AI 助手（仅本地/演示模式：后端不可用时也能打开 /ai 预览 Live2D 等功能）
+  {
+    id: 4,
+    name: "AI 助手",
+    type: "html",
+    status: 0,
+    content:
+      AI_CHAT_MARKER +
+      JSON.stringify({
+        endpoint: "https://api.openai.com/v1",
+        apiKey: "sk-demo-placeholder",
+        model: "gpt-4o-mini",
+        botName: "AI 助手",
+        systemPrompt: "你是一个友好、有辨识度的 AI 助手。",
+        maxMessages: 50,
+      } as AIChatConfig),
   },
 ];
 

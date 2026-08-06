@@ -4,11 +4,18 @@ import {
   saveChatFontSize,
   loadWebSearchOn,
   saveWebSearchOn,
+  loadNetMode,
+  saveNetMode,
   loadTtsPref,
   saveTtsPref,
   loadMemory,
   saveMemory,
   clearMemory,
+  loadAutoKnowledge,
+  saveAutoKnowledge,
+  loadPersonaKnowledge,
+  savePersonaKnowledge,
+  clearPersonaKnowledge,
   hasLocalApi,
   mergeEffCfg,
   loadCustomModelOn,
@@ -44,7 +51,7 @@ describe("chatSettings · 对话字体", () => {
 });
 
 describe("chatSettings · 网络搜索", () => {
-  it("默认关闭", () => {
+  it("默认关闭（非 search 模式）", () => {
     expect(loadWebSearchOn()).toBe(false);
   });
   it("开启后持久化", () => {
@@ -56,6 +63,45 @@ describe("chatSettings · 网络搜索", () => {
     saveWebSearchOn(true);
     saveWebSearchOn(false);
     expect(loadWebSearchOn()).toBe(false);
+  });
+});
+
+describe("chatSettings · 网络模式（Auto/search/view）", () => {
+  it("默认 Auto（先答，缺数据自动升级）", () => {
+    expect(loadNetMode()).toBe("auto");
+  });
+  it("保存后可读取", () => {
+    saveNetMode("search");
+    expect(loadNetMode()).toBe("search");
+    saveNetMode("view");
+    expect(loadNetMode()).toBe("view");
+    saveNetMode("auto");
+    expect(loadNetMode()).toBe("auto");
+  });
+  it("旧值 fast 迁移为 auto", () => {
+    localStorage.setItem("kimo_ai_net_mode", "fast");
+    expect(loadNetMode()).toBe("auto");
+  });
+  it("非法值回退 Auto", () => {
+    localStorage.setItem("kimo_ai_net_mode", "xxx");
+    expect(loadNetMode()).toBe("auto");
+  });
+  it("旧 key 迁移：浏览 Agent 开启 → view", () => {
+    localStorage.setItem("kimo_ai_browse_agent", "1");
+    expect(loadNetMode()).toBe("view");
+  });
+  it("旧 key 迁移：网络搜索显式开启 → search", () => {
+    localStorage.setItem("kimo_ai_websearch", "1");
+    expect(loadNetMode()).toBe("search");
+  });
+  it("旧 key 迁移：网络搜索显式关闭 → auto", () => {
+    localStorage.setItem("kimo_ai_websearch", "0");
+    expect(loadNetMode()).toBe("auto");
+  });
+  it("新模式优先于旧 key", () => {
+    localStorage.setItem("kimo_ai_net_mode", "search");
+    localStorage.setItem("kimo_ai_browse_agent", "1");
+    expect(loadNetMode()).toBe("search");
   });
 });
 
@@ -86,6 +132,30 @@ describe("chatSettings · 本机记忆（按 pageId 隔离）", () => {
     saveMemory(2, "x");
     clearMemory(2);
     expect(loadMemory(2)).toBe("");
+  });
+});
+
+describe("chatSettings · auto-knowledge / 人格笔记", () => {
+  it("auto-knowledge 默认开启", () => {
+    expect(loadAutoKnowledge()).toBe(true);
+  });
+  it("开启/关闭持久化", () => {
+    saveAutoKnowledge(false);
+    expect(loadAutoKnowledge()).toBe(false);
+    expect(localStorage.getItem("kimo_ai_autoknow")).toBe("0");
+    saveAutoKnowledge(true);
+    expect(loadAutoKnowledge()).toBe(true);
+  });
+  it("人格笔记按 pageId 隔离存取", () => {
+    expect(loadPersonaKnowledge(1)).toBe("");
+    savePersonaKnowledge(1, "- 笔记A");
+    expect(loadPersonaKnowledge(1)).toBe("- 笔记A");
+    expect(loadPersonaKnowledge(2)).toBe("");
+  });
+  it("清除人格笔记", () => {
+    savePersonaKnowledge(1, "- x");
+    clearPersonaKnowledge(1);
+    expect(loadPersonaKnowledge(1)).toBe("");
   });
 });
 

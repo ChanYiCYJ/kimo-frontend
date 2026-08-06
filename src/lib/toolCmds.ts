@@ -10,11 +10,16 @@ export function stripToolCmds(content: string): string {
       .replace(/\[KB-SAVE:\s*[^\]]*\]\s*[\s\S]*?\[\/KB-SAVE\]/gi, "")
       .replace(/\[KB-EDIT:\s*[^\]]*\]\s*[\s\S]*?\[\/KB-EDIT\]/gi, "")
       // 2) 闭合单行指令（[SEARCH: x] 等）
-      .replace(/\[(?:SEARCH|BROWSE|KB|OPEN_KB|知识库|EDIT):\s*[^\]]*\]/gi, "")
+      .replace(
+        /\[(?:SEARCH|BROWSE|VIEW|KB|OPEN_KB|知识库|EDIT):\s*[^\]]*\]/gi,
+        "",
+      )
+      // 2.5) 表情标签 [表情:开心] / 【表情:别扭】 / [EMOTION:开心]（由 Live2D 看板娘承载展示）
+      .replace(/[\[【]\s*(?:表情|EMOTION)\s*[:：]\s*[^\]】]*?[\]】]/gi, "")
       // 3) 未闭合指令（到行尾，兼容 AI 漏写 ]）
-      .replace(/\[(?:SEARCH|BROWSE|KB|OPEN_KB|知识库|EDIT):[^\n]*$/gi, "")
+      .replace(/\[(?:SEARCH|BROWSE|VIEW|KB|OPEN_KB|知识库|EDIT):[^\n]*$/gi, "")
       // 4) 清理孤立标记（残留 [SEARCH] / [/SEARCH] 等）
-      .replace(/\[\/?(?:SEARCH|BROWSE|KB|OPEN_KB|知识库|EDIT)\]/gi, "")
+      .replace(/\[\/?(?:SEARCH|BROWSE|VIEW|KB|OPEN_KB|知识库|EDIT)\]/gi, "")
       .replace(/\n{3,}/g, "\n\n")
       .trim()
   );

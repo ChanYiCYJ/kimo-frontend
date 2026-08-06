@@ -43,14 +43,14 @@ export interface FetchWebContentResult {
   finalUrl: string;
   contentType: string;
   title: string;
-  /** og:image 封面图（供 AI 文章插图） */
-  ogImage?: string;
-  /** 正文图片列表（worker /api/fetch 提取，含 og:image） */
-  images?: string[];
   /** 抓取方式：direct(浏览器直连) | proxy(后端代理) */
   retrievalMethod: "direct" | "proxy";
   truncated: boolean;
   content: string;
+  /** 封面图（og:image，经 Worker /api/fetch 提取） */
+  ogImage?: string;
+  /** 正文图片列表（经 Worker /api/fetch 提取，最多 8 张） */
+  images?: string[];
 }
 
 /** 搜索引擎执行器签名 */
@@ -182,23 +182,17 @@ function getAICfg() {
   return null;
 }
 
-// ======================== 引擎 1：后端搜索（多引擎代理） ========================
+// ======================== 引擎 1：后端搜索 ========================
 
-/**
- * 通过 /api/search（Worker 多引擎代理：bing/duckduckgo/wikipedia）搜索。
- * @param engines 逗号分隔，例如 "bing,duckduckgo"；省略走默认全引擎
- */
 export async function searchBackend(
   query: string,
   limit: number,
-  engines?: string,
 ): Promise<SearchResult[]> {
   try {
-    const qs = new URLSearchParams({ q: query, limit: String(limit) });
-    if (engines) qs.set("engines", engines);
-    const res = await fetchWithTimeout(`/api/search?${qs.toString()}`, {
-      headers: { Accept: "application/json" },
-    });
+    const res = await fetchWithTimeout(
+      `/api/search?q=${encodeURIComponent(query)}&limit=${limit}`,
+      { headers: { Accept: "application/json" } },
+    );
     if (!res.ok) return [];
     const data = (await res.json().catch(() => null)) as
       | { items?: SearchResult[] }
@@ -214,7 +208,7 @@ export async function searchBackend(
       url: it.url || "",
       description: it.description || "",
       source: it.source || extractSource(it.url || ""),
-      engine: it.engine || "backend",
+      engine: "backend",
     }));
   } catch {
     return [];
@@ -227,28 +221,6 @@ export async function searchDuckDuckGo(
   query: string,
   limit: number,
 ): Promise<SearchResult[]> {
-  // 优先通过 Worker 代理（/api/search），解决浏览器 CORS 问题
-  try {
-    const res = await fetchWithTimeout(
-      `/api/search?q=${encodeURIComponent(query)}&limit=${limit}&engines=duckduckgo`,
-      { headers: { Accept: "application/json" } },
-    );
-    if (res.ok) {
-      const data = await res.json().catch(() => null);
-      if (Array.isArray(data) && data.length) {
-        return data.slice(0, limit).map((it: Record<string, string>) => ({
-          title: it.title || "",
-          url: it.url || "",
-          description: it.description || "",
-          source: it.source || extractSource(it.url || ""),
-          engine: it.engine || "duckduckgo",
-        }));
-      }
-    }
-  } catch {
-    /* 代理不可用，回退直连 */
-  }
-  // 直连 DuckDuckGo Lite（仅在不跨域的环境中有效）
   try {
     const res = await fetchWithTimeout(
       `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`,
@@ -464,13 +436,8 @@ export async function searchAI(
       choices?: { message?: { content?: string } }[];
     };
     const raw = j.choices?.[0]?.message?.content || "";
-    // 尝试解析 JSON 数组（兼容 AI 用 ```json 代码块包裹的情况）
     try {
-      const jsonText = raw
-        .replace(/```json\s*/i, "")
-        .replace(/```\s*$/i, "")
-        .trim();
-      const parsed = JSON.parse(jsonText);
+      const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
         return parsed.slice(0, limit).map((it: Record<string, string>) => ({
           title: it.title || "",
@@ -792,7 +759,7 @@ export async function webSearchWithContent(
   // 1) 多引擎聚合搜索（backend/duckduckgo/wikipedia/brave）
   const multi = await searchMulti(
     query,
-    ["backend", "duckduckgo", "wikipedia"],
+    ["backend", "duckduckgo", "wikipedia", "brave"],
     8,
   );
   if (!multi.results.length) {
@@ -920,7 +887,7 @@ export async function webSearchToArticle(
   if (!results.length) {
     const multi = await searchMulti(
       query,
-      ["backend", "duckduckgo", "wikipedia"],
+      ["backend", "duckduckgo", "wikipedia", "brave"],
       10,
     );
     results = dedupeByUrl(multi.results);
@@ -994,8 +961,7 @@ export async function webSearchToArticle(
       "\n",
     )}\n\n【来源内容】\n${sourcesBlock || "(抓取失败，仅凭搜索结果)"}`;
 
-  // 3) AI 综合筛选生成标准 markdown 文章（推理模型可能把 token 用尽在思考上，
-  //    因此加大 max_tokens 并在 content 为空时自动重试一次）
+  // AI 调用（推理模型可能把 token 用尽在思考上，加大 max_tokens 并在 content 为空时重试一次）
   let article = "";
   const tryGenerate = async () => {
     try {
@@ -1101,8 +1067,7 @@ interface SearchCacheEntry {
   article: string;
   sources: SearchResult[];
   time: number;
-  /** 生成中标记：命中时避免并发重复生成 */
-  loading?: boolean;
+  loading: boolean;
 }
 
 const SEARCH_CACHE_KEY = "kimo_search_cache_v1";
@@ -1110,7 +1075,7 @@ const SEARCH_CACHE_MAX = 30;
 const SEARCH_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 小时
 
 function searchCacheKey(q: string): string {
-  return q.trim().toLowerCase().replace(/\s+/g, " ").slice(0, 80);
+  return q.trim().toLowerCase();
 }
 
 function loadSearchCache(): Record<string, SearchCacheEntry> {
@@ -1130,7 +1095,7 @@ function saveSearchCache(map: Record<string, SearchCacheEntry>): void {
   }
 }
 
-/** 读取搜索/文章缓存（命中且未过期返回内容；生成中返回 loading 标记） */
+/** 读取缓存（生成中返回 loading 标记；过期自动清理） */
 export function readSearchCache(
   query: string,
 ): (SearchCacheEntry & { cached: boolean }) | null {

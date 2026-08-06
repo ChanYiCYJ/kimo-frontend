@@ -204,7 +204,7 @@ export function parseKbTool(reply: string): KbToolCmd | null {
   // 快速失败：不含标记直接返回（避免大文本正则回溯）
   if (!reply.includes("KB-SAVE") && !reply.includes("KB-EDIT")) return null;
 
-  // 解析 [KB-SAVE:标题]内容[/KB-SAVE]
+  // 解析 [KB-SAVE:标题]内容[/KB-SAVE]（兼容漏写 [/KB-SAVE] 闭合：取到下一个工具标记或结尾）
   const saveOpen = "[KB-SAVE:";
   const saveIdx = reply.indexOf(saveOpen);
   if (saveIdx >= 0) {
@@ -213,14 +213,22 @@ export function parseKbTool(reply: string): KbToolCmd | null {
       const title = reply.slice(saveIdx + saveOpen.length, titleEnd).trim();
       const closeTag = "[/KB-SAVE]";
       const closeIdx = reply.indexOf(closeTag, titleEnd + 1);
+      let content = "";
       if (closeIdx >= 0) {
-        const content = reply.slice(titleEnd + 1, closeIdx).trim();
-        if (title) return { mode: "save", title, content };
+        content = reply.slice(titleEnd + 1, closeIdx).trim();
+      } else {
+        // 未闭合：取到下一个工具指令标记或结尾（避免把后续指令吞进内容）
+        const rest = reply.slice(titleEnd + 1);
+        const nextTool = rest.search(
+          /\[(?:SEARCH|BROWSE|VIEW|EDIT|KB-SAVE|KB-EDIT|KB|OPEN_KB|知识库):/i,
+        );
+        content = (nextTool >= 0 ? rest.slice(0, nextTool) : rest).trim();
       }
+      if (title) return { mode: "save", title, content };
     }
   }
 
-  // 解析 [KB-EDIT:标题]新内容[/KB-EDIT]
+  // 解析 [KB-EDIT:标题]新内容[/KB-EDIT]（同样兼容未闭合）
   const editOpen = "[KB-EDIT:";
   const editIdx = reply.indexOf(editOpen);
   if (editIdx >= 0) {
@@ -229,10 +237,17 @@ export function parseKbTool(reply: string): KbToolCmd | null {
       const title = reply.slice(editIdx + editOpen.length, titleEnd).trim();
       const closeTag = "[/KB-EDIT]";
       const closeIdx = reply.indexOf(closeTag, titleEnd + 1);
+      let content = "";
       if (closeIdx >= 0) {
-        const content = reply.slice(titleEnd + 1, closeIdx).trim();
-        if (title) return { mode: "edit", title, content };
+        content = reply.slice(titleEnd + 1, closeIdx).trim();
+      } else {
+        const rest = reply.slice(titleEnd + 1);
+        const nextTool = rest.search(
+          /\[(?:SEARCH|BROWSE|VIEW|EDIT|KB-SAVE|KB-EDIT|KB|OPEN_KB|知识库):/i,
+        );
+        content = (nextTool >= 0 ? rest.slice(0, nextTool) : rest).trim();
       }
+      if (title) return { mode: "edit", title, content };
     }
   }
 
@@ -246,6 +261,58 @@ export function findKbNoteByTitle(
 ): KbNote | undefined {
   const t = title.trim().toLowerCase();
   return notes.find((n) => n.title.trim().toLowerCase() === t);
+}
+
+/**
+ * 知识库保存意图检测：用户消息含明确「帮我记/保存到知识库/收藏」等表达时，提取要保存的内容。
+ * 用于 AI 漏发 [KB-SAVE:] 时的前端兜底，保证知识库操作可靠。只用明确意图词，降低误触发。
+ */
+export function detectKbSaveIntent(
+  raw: string,
+): { title: string; content: string } | null {
+  const t = raw.trim();
+  // 明确意图词（按长度降序，优先匹配更具体的表达）
+  const intents = [
+    "保存到知识库",
+    "存入知识库",
+    "存到知识库",
+    "放进知识库",
+    "加入知识库",
+    "添加到知识库",
+    "写进知识库",
+    "记入知识库",
+    "保存到笔记",
+    "存入笔记",
+    "帮我记一下",
+    "帮我记下",
+    "帮我记录一下",
+    "帮我保存",
+    "帮我存一下",
+    "帮我记",
+    "记一下",
+    "记录一下",
+    "记笔记",
+    "收藏一下",
+    "收藏",
+    "保存一下",
+    "记下来",
+    "记下",
+  ];
+  for (const kw of intents) {
+    const idx = t.indexOf(kw);
+    if (idx < 0) continue;
+    let content = t
+      .slice(idx + kw.length)
+      .replace(/^[\s:：,，。.、!！?？"'“”]+/, "")
+      .replace(/^(一下|好|了|吧)\s*[:：,，。\s]*/, "")
+      .trim();
+    if (!content || content.length < 2) continue;
+    // 标题：取第一句前 16 字（按句读/逗号切分）
+    const title =
+      content.split(/[\n，。,.、！!？?]/, 1)[0].slice(0, 16) || "我的笔记";
+    return { title, content };
+  }
+  return null;
 }
 
 // ---- 知识条目存储（与 AgentPanel 同构：kimo_kb_entries 为准 + 同步 kimo_kb_notes）----
