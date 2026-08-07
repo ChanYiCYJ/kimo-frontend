@@ -67,13 +67,18 @@ export function LocalApiForm({
   const provider = detectProvider(cfg.endpoint, cfg.model);
   const preset = PROVIDER_PRESETS.find((p) => p.id === provider);
 
-  /** 连接测试：用当前表单值发起最小请求，校验 接口/密钥/模型 是否可用 */
-  const runTest = async () => {
+  /** 测试并保存：先保存配置，再自动发起连接测试（校验 接口/密钥/模型 是否可用） */
+  const saveAndTest = async () => {
     const target = {
       endpoint: cfg.endpoint.trim(),
       apiKey: cfg.apiKey.trim(),
       model: cfg.model.trim(),
     };
+    saveLocalCfg(pageId, {
+      ...target,
+      prompt: cfg.prompt,
+    });
+    onSaved();
     setTestState("loading");
     setTestResult(null);
     const r = await testModelConnection(target);
@@ -96,15 +101,6 @@ export function LocalApiForm({
     }));
   };
 
-  const save = () => {
-    saveLocalCfg(pageId, {
-      endpoint: cfg.endpoint.trim(),
-      apiKey: cfg.apiKey.trim(),
-      model: cfg.model.trim(),
-      prompt: cfg.prompt,
-    });
-    onSaved();
-  };
   const clear = () => {
     clearLocalCfg(pageId);
     setCfg({ endpoint: "", apiKey: "", model: "", prompt: "" });
@@ -177,10 +173,44 @@ export function LocalApiForm({
             />
             <button
               onClick={() => setShowKey((v) => !v)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 hover:text-gray-600"
-              aria-label="显示/隐藏"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 transition hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+              aria-label={showKey ? "隐藏密钥" : "显示密钥"}
+              title={showKey ? "隐藏密钥" : "显示密钥"}
             >
-              {showKey ? "🙈" : "👁️"}
+              {showKey ? (
+                <svg
+                  className="h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88"
+                  />
+                </svg>
+              ) : (
+                <svg
+                  className="h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
+                </svg>
+              )}
             </button>
           </div>
         </div>
@@ -206,99 +236,25 @@ export function LocalApiForm({
             </datalist>
           )}
         </div>
-        <div>
-          {isModal && (
-            <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
-              自定义提示词（覆盖默认人设，可选）
-            </label>
-          )}
-          <textarea
-            value={cfg.prompt || ""}
-            onChange={(e) => setCfg({ ...cfg, prompt: e.target.value })}
-            rows={isModal ? 4 : 3}
-            placeholder={
-              isModal
-                ? "你是一个……（留空则使用默认人设）"
-                : "自定义提示词（可选，覆盖默认人设）"
-            }
-            className={`${inputCls} resize-none`}
-          />
-        </div>
       </div>
 
-      {/* 连接测试：校验 接口/密钥/模型 是否真实可用 */}
-      <div className="space-y-1.5">
-        <button
-          type="button"
-          onClick={runTest}
-          disabled={testState === "loading"}
-          className={`w-full rounded-xl border px-3 py-2 text-sm transition active:scale-[0.98] disabled:opacity-50 ${
-            testResult?.ok
-              ? "border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/20 dark:text-green-400"
-              : testResult
-                ? "border-red-200 bg-red-50 text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
-                : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-gray-500"
+      {/* 测试结果（保存后自动测试） */}
+      {testResult && (
+        <p
+          className={`flex items-center gap-1.5 text-[11px] leading-relaxed ${
+            testResult.ok
+              ? "text-green-600 dark:text-green-400"
+              : "text-red-500 dark:text-red-400"
           }`}
         >
-          {testState === "loading" ? (
-            <span className="inline-flex items-center gap-1.5">
-              <svg
-                className="h-3.5 w-3.5 animate-spin"
-                viewBox="0 0 24 24"
-                fill="none"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                />
-              </svg>
-              测试中…
-            </span>
-          ) : (
-            <span className="inline-flex items-center justify-center gap-1.5">
-              <svg
-                className="h-3.5 w-3.5"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5"
-                />
-              </svg>
-              测试连接
-            </span>
-          )}
-        </button>
-        {testResult && (
-          <p
-            className={`flex items-center gap-1.5 text-[11px] leading-relaxed ${
-              testResult.ok
-                ? "text-green-600 dark:text-green-400"
-                : "text-red-500 dark:text-red-400"
-            }`}
-          >
-            {testResult.ok ? "✓" : "✗"}
-            <span className="min-w-0 flex-1">
-              {testResult.message}
-              {testResult.latencyMs != null &&
-                ` · ${formatLatency(testResult.latencyMs)}`}
-            </span>
-          </p>
-        )}
-      </div>
+          {testResult.ok ? "✓" : "✗"}
+          <span className="min-w-0 flex-1">
+            {testResult.message}
+            {testResult.latencyMs != null &&
+              ` · ${formatLatency(testResult.latencyMs)}`}
+          </span>
+        </p>
+      )}
 
       {isModal ? (
         <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3 dark:border-gray-700">
@@ -309,28 +265,72 @@ export function LocalApiForm({
             清除本地配置
           </button>
           <button
-            onClick={save}
-            className="rounded-xl bg-gray-900 px-5 py-2 text-sm font-medium text-white transition hover:bg-gray-700 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
+            onClick={saveAndTest}
+            disabled={testState === "loading"}
+            className="rounded-xl bg-gray-900 px-5 py-2 text-sm font-medium text-white transition hover:bg-gray-700 disabled:opacity-60 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
           >
-            保存
+            {testState === "loading" ? (
+              <span className="inline-flex items-center gap-1.5">
+                <svg
+                  className="h-3.5 w-3.5 animate-spin"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+                测试中…
+              </span>
+            ) : (
+              "测试并保存"
+            )}
           </button>
         </div>
       ) : (
         <>
-          <div className="flex gap-2">
-            <button
-              onClick={save}
-              className="flex-1 rounded-xl bg-gray-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-gray-700 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
-            >
-              保存
-            </button>
-            <button
-              onClick={clear}
-              className="rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-500 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400"
-            >
-              清除
-            </button>
-          </div>
+          <button
+            onClick={saveAndTest}
+            disabled={testState === "loading"}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-gray-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-gray-700 disabled:opacity-60 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
+          >
+            {testState === "loading" ? (
+              <span className="inline-flex items-center gap-1.5">
+                <svg
+                  className="h-3.5 w-3.5 animate-spin"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+                测试中…
+              </span>
+            ) : (
+              "测试并保存"
+            )}
+          </button>
           {showEnabledHint && (
             <p className="text-[11px] text-indigo-500 dark:text-indigo-400">
               ✓ 自定义 API 已启用（次数/冷却限制已解除）

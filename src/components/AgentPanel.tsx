@@ -4,19 +4,11 @@ import remarkGfm from "remark-gfm";
 import { MdEditor } from "./MdEditor";
 import { TypeWriter } from "./Spinner";
 import { fetchWebpage, searchWithCache } from "../lib/search";
+import { loadSearchSpeed, loadSearchDepth } from "../lib/chatSettings";
 import { useToast } from "../lib/toast";
-import { formatDate } from "../lib/format";
 import { SettingsTab, type AgentSettingsProps } from "./SettingsTab";
 import { Live2DStage } from "./Live2DStage";
-import {
-  saveKbNotes,
-  saveKbEntry,
-  downloadText,
-  loadEditorDrafts,
-  addEditorDraft,
-  removeEditorDraft,
-  type KbDraft,
-} from "../lib/kb";
+import { saveKbNotes, saveKbEntry, downloadText } from "../lib/kb";
 
 // ===== Types =====
 interface KbEntry {
@@ -97,6 +89,7 @@ export function AgentPanel({
   searchNonce,
   live2dOn,
   onTabChange,
+  allowWebAutoDetect,
 }: {
   onClose: () => void;
   initUrl?: string;
@@ -117,10 +110,12 @@ export function AgentPanel({
   searchNonce?: number;
   /** tab 变化通知（AIChat 同步 agentTab，配合持久化让刷新后回到上次所在页） */
   onTabChange?: (t: AgentTab) => void;
+  /** 浏览 tab 自动检测（AI 回复含 URL 时自动切到 View）——仅 Deep 模式开启；auto/fast 不自动跳转 View */
+  allowWebAutoDetect?: boolean;
 }) {
   // tab 记忆：优先 AI 工具调用指定的 tab；否则恢复上次所在 tab（刷新不丢，如停留 Live2D）；否则默认知识库
   const [tab, setTab] = useState<AgentTab>(
-    () => initTab || (initUrl ? "web" : loadAgentTab(pageId) || "kb"),
+    () => initTab || (initUrl ? "web" : loadAgentTab(pageId) || "live2d"),
   );
   // 每次切 tab 都持久化 + 通知 AIChat 同步 agentTab（刷新后回到上次所在页，含 Live2D）
   const onTabChangeRef = useRef(onTabChange);
@@ -140,10 +135,9 @@ export function AgentPanel({
   const [articleMd, setArticleMd] = useState("");
   const [articleLoading, setArticleLoading] = useState(false);
   /** 本次结果是否来自历史缓存 */
-  const [fromCache, setFromCache] = useState(false);
+  const [, setFromCache] = useState(false);
   const [mdContent, setMdContent] = useState(initEditContent || "");
   const [dragOver, setDragOver] = useState(false);
-  const [saving, setSaving] = useState(false);
   const { toast } = useToast();
 
   // KB
@@ -208,11 +202,6 @@ export function AgentPanel({
   }, [mdContent]);
   const [activeEntry, setActiveEntry] = useState<KbEntry | null>(null);
 
-  // 编辑器临时草稿（存草稿/恢复/删除）
-  const [drafts, setDrafts] = useState<KbDraft[]>(loadEditorDrafts);
-  const [showDraftMenu, setShowDraftMenu] = useState(false);
-  const draftMenuRef = useRef<HTMLDivElement>(null);
-
   const [showExportMenu, setShowExportMenu] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
 
@@ -225,12 +214,13 @@ export function AgentPanel({
       return;
     }
     if (!lastAssistantContent) return;
+    if (!allowWebAutoDetect) return;
     const u = lastAssistantContent.match(/https?:\/\/[^\s<>"{}|\\^`\[\]]+/);
     if (u) {
       setWebUrl(u[0]);
       setTab("web");
     }
-  }, [lastAssistantContent]);
+  }, [lastAssistantContent, allowWebAutoDetect]);
 
   // 响应 AI 工具调用：切换 tab / 填入编辑内容（面板已挂载时也生效）
   useEffect(() => {
@@ -258,20 +248,6 @@ export function AgentPanel({
     }
     onKbOpenConsumed?.();
   }, [kbOpen]);
-
-  // 草稿菜单点击外部关闭
-  useEffect(() => {
-    if (!showDraftMenu) return;
-    const h = (e: MouseEvent) => {
-      if (
-        draftMenuRef.current &&
-        !draftMenuRef.current.contains(e.target as Node)
-      )
-        setShowDraftMenu(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, [showDraftMenu]);
 
   // Sync entries
   useEffect(() => {
@@ -340,13 +316,13 @@ export function AgentPanel({
   }, []);
 
   // ---- Entry CRUD ----
-  const saveEntry = () => {
-    if (!mdContent.trim()) return;
-    setSaving(true);
+  // 新建条目：内容非空时创建（「存为知识」按钮已由自动保存取代）
+  const createEntryFromContent = (content: string): KbEntry => {
+    const trimmed = content.trim();
     const e: KbEntry = {
       id: "e_" + Date.now(),
-      name: mdContent.trim().slice(0, 60),
-      content: mdContent.trim(),
+      name: trimmed.slice(0, 60),
+      content: trimmed,
       createdAt: Date.now(),
     };
     setEntries((prev) => {
@@ -363,8 +339,25 @@ export function AgentPanel({
       return nx;
     });
     onKbChanged?.();
-    setTimeout(() => setSaving(false), 600);
+    return e;
   };
+  // 新条目自动保存：内容非空且尚未创建时，防抖 1.2s 自动创建为知识条目
+  useEffect(() => {
+    if (activeEntry || !mdContent.trim()) return;
+    const t = setTimeout(() => {
+      // 内容与已有条目完全一致时（如刷新后恢复草稿），只打开不重复创建
+      const trimmed = mdContent.trim();
+      const existing = entries.find((e) => e.content === trimmed);
+      if (existing) {
+        setActiveEntry(existing);
+        return;
+      }
+      const e = createEntryFromContent(mdContent);
+      setActiveEntry(e);
+    }, 1200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mdContent, activeEntry]);
   // ---- 多选删除 ----
   const visibleEntries = entries.filter(
     (entry) =>
@@ -458,21 +451,7 @@ export function AgentPanel({
       return nx;
     });
   };
-  // ---- 编辑器临时草稿 / 清空 ----
-  const saveDraft = () => {
-    if (!mdContent.trim()) return;
-    setDrafts(addEditorDraft(mdContent));
-    setShowDraftMenu(false);
-  };
-  const restoreDraft = (d: KbDraft) => {
-    setActiveEntry(null);
-    setMdContent(d.content);
-    setTab("edit");
-    setShowDraftMenu(false);
-  };
-  const deleteDraft = (id: string) => {
-    setDrafts(removeEditorDraft(id));
-  };
+  // ---- 编辑器：清空 / 返回 ----
   const clearEditor = () => {
     const hasContent =
       (mdContent || "").trim() || (activeEntry?.content || "").trim();
@@ -480,6 +459,16 @@ export function AgentPanel({
     if (!window.confirm("确定清空当前编辑内容？")) return;
     if (activeEntry) updateEntry("");
     else setMdContent("");
+  };
+  /** 返回知识库列表：尚未落库的新内容先自动保存为新条目 */
+  const goBackToKb = () => {
+    if (!activeEntry && mdContent.trim()) {
+      const e = createEntryFromContent(mdContent);
+      setActiveEntry(e);
+    }
+    setActiveEntry(null);
+    setMdContent("");
+    setTab("kb");
   };
 
   // ---- Export/Import ----
@@ -613,7 +602,8 @@ export function AgentPanel({
   };
 
   // ---- Browse（带历史缓存 + 增量展示：先出搜索结果，AI 文章就绪后原地补上）----
-  const browse = async (q?: string) => {
+  // force=true 时强制刷新（绕过缓存重新搜索 + 生成，保证数据实时更新）
+  const browse = async (q?: string, force = false) => {
     const u = (q ?? webUrl).trim();
     if (!u) return;
     activeBrowseRef.current = u;
@@ -623,10 +613,17 @@ export function AgentPanel({
     setArticleMd("");
     setArticleLoading(false);
     // 关键词搜索（复用缓存；生成中时轮询等待，保证「加载页不提前消失」）
-    const runKeyword = async (kw: string) => {
+    const runKeyword = async (kw: string, firstForce = false) => {
       setWebUrl(kw);
-      const opts = { maxSources: 4, perSourceChars: 2200 };
-      let r = await searchWithCache(kw, opts);
+      // 按搜索速度/深度调整来源数与正文长度：Fast 精简、deep 加量
+      const speed = loadSearchSpeed();
+      const depth = loadSearchDepth();
+      const maxSources = speed === "fast" ? 3 : depth === "deep" ? 6 : 4;
+      const perSourceChars =
+        speed === "fast" ? 1400 : depth === "deep" ? 2600 : 2200;
+      const opts = { maxSources, perSourceChars };
+      // 首次调用：firstForce 时绕过缓存强制生成；后续轮询读缓存（loading 标记防并发重复生成）
+      let r = await searchWithCache(kw, { ...opts, force: firstForce });
       // 阶段1：等待拿到搜索结果内容（最多约 55s；期间保持加载页）
       if (r.loading && !r.content) {
         const deadline = Date.now() + 55_000;
@@ -681,7 +678,7 @@ export function AgentPanel({
           try {
             const qp = new URL(u).searchParams.get("q");
             if (qp) {
-              await runKeyword(qp);
+              await runKeyword(qp, force);
               return;
             }
           } catch {}
@@ -705,7 +702,7 @@ export function AgentPanel({
               .replace(/^www\./i, "")
               .replace(/\/.*$/, "");
           }
-          await runKeyword(q2);
+          await runKeyword(q2, force);
         }
       } else if (
         /^[a-zA-Z0-9][-a-zA-Z0-9]*(\.[a-zA-Z0-9][-a-zA-Z0-9]*)+\.?$/.test(u)
@@ -719,7 +716,7 @@ export function AgentPanel({
         if (!text) setWebError("无法获取内容，请点击重试");
       } else {
         // 关键词搜索：抓取多个结果正文 + AI 综合文章，带历史缓存
-        await runKeyword(u);
+        await runKeyword(u, force);
       }
     } catch {
       if (activeBrowseRef.current !== u) return;
@@ -752,9 +749,6 @@ export function AgentPanel({
     setEntries(loadEntries());
     toast("已保存到知识库");
   };
-
-  const btn =
-    "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors";
 
   return (
     // 学习 Live2D 角色卡片的卡片样式：小外边距 + 大圆角 + 边框，让 Agent 面板整体浮起
@@ -923,7 +917,7 @@ export function AgentPanel({
                     {webError}
                   </p>
                   <button
-                    onClick={() => browse(webUrl)}
+                    onClick={() => browse(webUrl, true)}
                     className="rounded-full border border-gray-200 bg-white px-4 py-1.5 text-xs text-gray-600 transition hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-gray-500"
                   >
                     重新搜索
@@ -936,51 +930,7 @@ export function AgentPanel({
                   {/* AI 综合文章（主角） */}
                   {(articleMd || articleLoading) && (
                     <article className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                      <div className="flex items-center gap-2 border-b border-gray-100 px-3.5 py-2 dark:border-gray-800">
-                        <svg
-                          className="h-3.5 w-3.5 shrink-0 text-gray-400"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"
-                          />
-                        </svg>
-                        <span
-                          className="min-w-0 flex-1 truncate text-[11px] font-medium text-gray-500 dark:text-gray-400"
-                          title={webUrl}
-                        >
-                          {webUrl}
-                        </span>
-                        {fromCache && articleMd && (
-                          <span
-                            title="已加载历史记录"
-                            className="h-1.5 w-1.5 shrink-0 rounded-full bg-green-400"
-                          />
-                        )}
-                        <button
-                          onClick={() => browse(webUrl)}
-                          title="重新生成"
-                          className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800"
-                        >
-                          <svg
-                            className="h-3.5 w-3.5"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.8"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
-                            />
-                          </svg>
-                        </button>
+                      <div className="flex items-center justify-end gap-2 border-b border-gray-100 px-3.5 py-2 dark:border-gray-800">
                         {articleMd && (
                           <button
                             onClick={saveArticle}
@@ -999,7 +949,7 @@ export function AgentPanel({
                                 d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z"
                               />
                             </svg>
-                            保存
+                            保存到知识库
                           </button>
                         )}
                       </div>
@@ -1024,7 +974,7 @@ export function AgentPanel({
                   {/* 文章生成失败兜底：重试 */}
                   {!articleMd && !articleLoading && (
                     <button
-                      onClick={() => browse(webUrl)}
+                      onClick={() => browse(webUrl, true)}
                       className="w-full rounded-2xl border border-dashed border-gray-200 bg-white/50 px-3.5 py-2.5 text-center text-[11px] text-gray-400 transition hover:border-gray-300 hover:text-gray-600 dark:border-gray-700 dark:bg-gray-900/50 dark:text-gray-500 dark:hover:border-gray-500 dark:hover:text-gray-300"
                     >
                       AI 文章生成失败，点击重新生成
@@ -1050,6 +1000,44 @@ export function AgentPanel({
           <div className="flex min-h-0 flex-1 flex-col">
             {/* 知识条目：搜索 + 网格 */}
             <div className="relative flex min-h-0 flex-1 flex-col">
+              {/* 多选模式顶部条：已选计数 + 全选 + 完成 */}
+              {selectMode && (
+                <div className="flex flex-none items-center gap-2 border-b border-gray-100 bg-gray-50/60 px-3 py-2 dark:border-gray-800">
+                  <span className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-300">
+                    <svg
+                      className="h-3.5 w-3.5 text-gray-400"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    已选 {selected.size} 条
+                  </span>
+                  <div className="ml-auto flex items-center gap-1">
+                    <button
+                      onClick={toggleSelectAll}
+                      className="rounded-full px-2.5 py-1 text-[11px] text-gray-500 transition hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                    >
+                      {visibleEntries.length > 0 &&
+                      visibleEntries.every((e) => selected.has(e.id))
+                        ? "取消全选"
+                        : "全选"}
+                    </button>
+                    <button
+                      onClick={exitSelectMode}
+                      className="rounded-full px-2.5 py-1 text-[11px] font-medium text-gray-600 transition hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                    >
+                      完成
+                    </button>
+                  </div>
+                </div>
+              )}
               {/* 条目网格（底部预留胶囊空间） */}
               <div className="min-h-0 flex-1 overflow-y-auto p-3 pb-16">
                 {entries.length === 0 ? (
@@ -1070,7 +1058,7 @@ export function AgentPanel({
                       </svg>
                     </div>
                     <p className="text-sm text-gray-400">
-                      暂无条目，点击右上角「新建」创建
+                      暂无条目，点击下方 + 新建，或在对话中让 AI 帮你保存
                     </p>
                   </div>
                 ) : (
@@ -1154,36 +1142,6 @@ export function AgentPanel({
               <div className="absolute inset-x-0 bottom-4 z-20 flex flex-col items-center px-3">
                 {kbPanelOpen && (
                   <div className="mb-2 w-full max-w-xs animate-[kpop_0.25s_ease-out] rounded-2xl border border-gray-200 bg-white/95 shadow-lg backdrop-blur dark:border-gray-700 dark:bg-gray-800/95">
-                    {/* 头部：多选时显示已选计数 + 全选（已删除“知识库操作”字样） */}
-                    {selectMode && (
-                      <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 dark:border-gray-800">
-                        <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
-                          已选 {selected.size} 条
-                        </span>
-                        <button
-                          onClick={toggleSelectAll}
-                          className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] text-gray-500 transition hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
-                        >
-                          <svg
-                            className="h-3 w-3"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M8.5 12l2.5 2.5 4.5-5M21 8.25V17a4 4 0 01-4 4H7a4 4 0 01-4-4V7a4 4 0 014-4h8.75"
-                            />
-                          </svg>
-                          {visibleEntries.length > 0 &&
-                          visibleEntries.every((e) => selected.has(e.id))
-                            ? "取消全选"
-                            : "全选"}
-                        </button>
-                      </div>
-                    )}
                     <div className="p-2">
                       {multiSearchOpen ? (
                         <>
@@ -1236,7 +1194,7 @@ export function AgentPanel({
                         <>
                           {selectMode ? (
                             <>
-                              {/* 多选：删除 + 完成 */}
+                              {/* 多选：删除选中（完成已移到顶部条） */}
                               <button
                                 onClick={deleteSelected}
                                 disabled={!selected.size}
@@ -1257,12 +1215,6 @@ export function AgentPanel({
                                 </svg>
                                 删除选中
                                 {selected.size ? `(${selected.size})` : ""}
-                              </button>
-                              <button
-                                onClick={exitSelectMode}
-                                className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50 active:scale-[0.98] dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
-                              >
-                                完成
                               </button>
                               <div className="mt-1.5 flex items-center gap-1.5">
                                 <button
@@ -1287,69 +1239,6 @@ export function AgentPanel({
                                   </svg>
                                   搜索
                                 </button>
-                                <div
-                                  className="relative flex-1"
-                                  ref={exportRef}
-                                >
-                                  <button
-                                    onClick={() =>
-                                      setShowExportMenu(!showExportMenu)
-                                    }
-                                    title="导入 / 导出"
-                                    className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 transition hover:bg-gray-50 active:scale-[0.98] dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
-                                  >
-                                    <svg
-                                      className="h-3.5 w-3.5"
-                                      viewBox="0 0 24 24"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      strokeWidth="1.8"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
-                                      />
-                                    </svg>
-                                    导入/导出
-                                  </button>
-                                  {showExportMenu && (
-                                    <div className="absolute right-0 top-full z-30 mt-1 w-40 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-gray-700 dark:bg-gray-900">
-                                      <button
-                                        onClick={exportJSON}
-                                        className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-                                      >
-                                        JSON
-                                      </button>
-                                      <button
-                                        onClick={exportMD}
-                                        className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-                                      >
-                                        Markdown
-                                      </button>
-                                      <div className="border-t border-gray-100 dark:border-gray-800" />
-                                      <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800">
-                                        导入 JSON
-                                        <input
-                                          type="file"
-                                          accept=".json"
-                                          multiple
-                                          onChange={importJSON}
-                                          className="hidden"
-                                        />
-                                      </label>
-                                      <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800">
-                                        导入 Markdown
-                                        <input
-                                          type="file"
-                                          accept=".md,.markdown,.txt"
-                                          onChange={importMarkdown}
-                                          className="hidden"
-                                        />
-                                      </label>
-                                    </div>
-                                  )}
-                                </div>
                               </div>
                             </>
                           ) : (
@@ -1380,6 +1269,29 @@ export function AgentPanel({
                               </button>
                               <div className="mt-1.5 flex items-center gap-1.5">
                                 <button
+                                  onClick={() => {
+                                    setSelectMode(true);
+                                    setKbPanelOpen(false);
+                                  }}
+                                  title="多选删除"
+                                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 transition hover:bg-gray-50 active:scale-[0.98] dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+                                >
+                                  <svg
+                                    className="h-3.5 w-3.5"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                    />
+                                  </svg>
+                                  多选
+                                </button>
+                                <button
                                   onClick={() => setMultiSearchOpen((v) => !v)}
                                   title={
                                     multiSearchOpen ? "收起搜索" : "搜索条目"
@@ -1401,75 +1313,77 @@ export function AgentPanel({
                                   </svg>
                                   搜索
                                 </button>
-                                <div
-                                  className="relative flex-1"
-                                  ref={exportRef}
-                                >
-                                  <button
-                                    onClick={() =>
-                                      setShowExportMenu(!showExportMenu)
-                                    }
-                                    title="导入 / 导出"
-                                    className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 transition hover:bg-gray-50 active:scale-[0.98] dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
-                                  >
-                                    <svg
-                                      className="h-3.5 w-3.5"
-                                      viewBox="0 0 24 24"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      strokeWidth="1.8"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
-                                      />
-                                    </svg>
-                                    导入/导出
-                                  </button>
-                                  {showExportMenu && (
-                                    <div className="absolute right-0 top-full z-30 mt-1 w-40 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-gray-700 dark:bg-gray-900">
-                                      <button
-                                        onClick={exportJSON}
-                                        className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-                                      >
-                                        JSON
-                                      </button>
-                                      <button
-                                        onClick={exportMD}
-                                        className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-                                      >
-                                        Markdown
-                                      </button>
-                                      <div className="border-t border-gray-100 dark:border-gray-800" />
-                                      <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800">
-                                        导入 JSON
-                                        <input
-                                          type="file"
-                                          accept=".json"
-                                          multiple
-                                          onChange={importJSON}
-                                          className="hidden"
-                                        />
-                                      </label>
-                                      <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800">
-                                        导入 Markdown
-                                        <input
-                                          type="file"
-                                          accept=".md,.markdown,.txt"
-                                          onChange={importMarkdown}
-                                          className="hidden"
-                                        />
-                                      </label>
-                                    </div>
-                                  )}
-                                </div>
                               </div>
                             </>
                           )}
                         </>
                       )}
                     </div>
+                    {/* 底部：导入/导出（低调右对齐；菜单向上弹出避免手机溢出） */}
+                    {!multiSearchOpen && (
+                      <div className="px-2 pb-2">
+                        <div className="flex items-center justify-end border-t border-gray-100 pt-1.5 dark:border-gray-800">
+                          <div className="relative" ref={exportRef}>
+                            <button
+                              onClick={() => setShowExportMenu(!showExportMenu)}
+                              title="导入 / 导出"
+                              className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+                            >
+                              <svg
+                                className="h-3.5 w-3.5"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+                                />
+                              </svg>
+                              导入 / 导出
+                            </button>
+                            {showExportMenu && (
+                              <div className="absolute bottom-full right-0 z-30 mb-1 max-h-[50vh] w-40 overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+                                <button
+                                  onClick={exportJSON}
+                                  className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                                >
+                                  JSON
+                                </button>
+                                <button
+                                  onClick={exportMD}
+                                  className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                                >
+                                  Markdown
+                                </button>
+                                <div className="border-t border-gray-100 dark:border-gray-800" />
+                                <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800">
+                                  导入 JSON
+                                  <input
+                                    type="file"
+                                    accept=".json"
+                                    multiple
+                                    onChange={importJSON}
+                                    className="hidden"
+                                  />
+                                </label>
+                                <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800">
+                                  导入 Markdown
+                                  <input
+                                    type="file"
+                                    accept=".md,.markdown,.txt"
+                                    onChange={importMarkdown}
+                                    className="hidden"
+                                  />
+                                </label>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
                 {/* 单个胶囊按钮（无文字；点开时加号变上方向键） */}
@@ -1515,43 +1429,45 @@ export function AgentPanel({
           </div>
         )}
 
-        {/* TAB 3: Editor（编辑器填满面板剩余空间） */}
+        {/* TAB 3: Editor（自动保存 + 返回知识库；已删除草稿/存为知识按钮） */}
         {tab === "edit" && (
           <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex flex-none items-center gap-2 border-b border-gray-50 px-2 py-1.5 dark:border-gray-800">
+              <button
+                onClick={goBackToKb}
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+                title="返回知识库"
+                aria-label="返回知识库"
+              >
+                <svg
+                  className="h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path strokeLinecap="round" d="M19 12H5m7-7l-7 7 7 7" />
+                </svg>
+              </button>
+              <span className="min-w-0 truncate text-xs font-medium text-gray-600 dark:text-gray-300">
+                {activeEntry ? activeEntry.name : "新建条目"}
+              </span>
+              {!activeEntry && mdContent.trim() && (
+                <span className="ml-auto shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-400 dark:bg-gray-800 dark:text-gray-500">
+                  自动保存
+                </span>
+              )}
+            </div>
             {activeEntry ? (
-              <>
-                <div className="flex flex-none items-center gap-2 border-b border-gray-50 px-3 py-1.5 dark:border-gray-800">
-                  <button
-                    onClick={() => {
-                      setActiveEntry(null);
-                      setMdContent("");
-                    }}
-                    className="rounded p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                  >
-                    <svg
-                      className="h-4 w-4"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path strokeLinecap="round" d="M19 12H5m7-7l-7 7 7 7" />
-                    </svg>
-                  </button>
-                  <span className="truncate text-xs font-medium text-gray-600 dark:text-gray-300">
-                    {activeEntry.name}
-                  </span>
-                </div>
-                <MdEditor
-                  value={activeEntry.content}
-                  onChange={updateEntry}
-                  height="fill"
-                  placeholder="在此编辑内容…"
-                  aiPolish={false}
-                  showStatusBar={false}
-                  rounded={false}
-                />
-              </>
+              <MdEditor
+                value={activeEntry.content}
+                onChange={updateEntry}
+                height="fill"
+                placeholder="在此编辑内容…"
+                aiPolish={false}
+                showStatusBar={false}
+                rounded={false}
+              />
             ) : (
               <MdEditor
                 value={mdContent}
@@ -1611,121 +1527,6 @@ export function AgentPanel({
                 </span>
               </span>
               <div className="flex items-center gap-0.5">
-                {/* 草稿菜单（保存当前为草稿 + 草稿列表） */}
-                <div className="relative" ref={draftMenuRef}>
-                  <button
-                    onClick={() => setShowDraftMenu((v) => !v)}
-                    className="grid h-7 w-7 place-items-center rounded-lg text-gray-500 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-                    title="草稿"
-                    aria-label="草稿"
-                  >
-                    <svg
-                      className="h-4 w-4"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z"
-                      />
-                    </svg>
-                    {drafts.length > 0 && (
-                      <span className="absolute -right-0.5 -top-0.5 grid h-3.5 min-w-3.5 place-items-center rounded-full bg-gray-900 px-0.5 text-[8px] font-medium text-white dark:bg-gray-200 dark:text-gray-900">
-                        {drafts.length}
-                      </span>
-                    )}
-                  </button>
-                  {showDraftMenu && (
-                    <div className="absolute bottom-full right-0 z-20 mb-1 w-72 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl animate-[kpop_0.18s_ease-out] dark:border-gray-700 dark:bg-gray-900">
-                      <button
-                        onClick={saveDraft}
-                        disabled={!mdContent.trim()}
-                        className="flex w-full items-center gap-2.5 px-3 py-2.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-40 dark:text-gray-200 dark:hover:bg-gray-800"
-                      >
-                        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-                          <svg
-                            className="h-3.5 w-3.5"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.8"
-                          >
-                            <path strokeLinecap="round" d="M12 4.5v15m7.5-7.5h-15" />
-                          </svg>
-                        </span>
-                        保存当前为草稿
-                      </button>
-                      <div className="border-t border-gray-100 dark:border-gray-800" />
-                      <div className="flex items-center justify-between px-3 pb-1 pt-1.5">
-                        <span className="text-[10px] font-semibold tracking-wide text-gray-400 dark:text-gray-500">
-                          草稿列表
-                        </span>
-                        {drafts.length > 0 && (
-                          <span className="text-[10px] text-gray-400">
-                            {drafts.length} 份
-                          </span>
-                        )}
-                      </div>
-                      {drafts.length === 0 ? (
-                        <p className="px-3 pb-3 pt-0.5 text-[11px] text-gray-400">
-                          暂无草稿，编辑后可保存为草稿备用
-                        </p>
-                      ) : (
-                        <div className="max-h-56 overflow-y-auto px-1.5 pb-1.5">
-                          {drafts.map((d) => (
-                            <div
-                              key={d.id}
-                              className="group relative flex items-center gap-2 rounded-lg px-2 py-2 transition hover:bg-gray-50 active:scale-[0.995] dark:hover:bg-gray-800"
-                            >
-                              <button
-                                onClick={() => restoreDraft(d)}
-                                className="min-w-0 flex-1 pr-4 text-left"
-                                title="恢复此草稿"
-                              >
-                                <span className="block truncate text-xs font-medium text-gray-700 dark:text-gray-200">
-                                  {d.name}
-                                </span>
-                                <span className="mt-0.5 block truncate text-[11px] text-gray-400 dark:text-gray-500">
-                                  {d.content
-                                    .replace(/```[\s\S]*?```/g, " ")
-                                    .replace(/[#>*`\-\[\]()!]/g, "")
-                                    .trim()
-                                    .slice(0, 40) || "（空内容）"}
-                                </span>
-                                <span className="mt-0.5 block text-[10px] text-gray-300 dark:text-gray-600">
-                                  {d.content.replace(/\s/g, "").length} 字 ·{" "}
-                                  {formatDate(new Date(d.createdAt))}
-                                </span>
-                              </button>
-                              <button
-                                onClick={() => deleteDraft(d.id)}
-                                className="absolute right-1 top-1 grid h-6 w-6 shrink-0 place-items-center rounded-full text-gray-300 opacity-100 transition hover:bg-red-50 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100 dark:text-gray-600 dark:hover:bg-red-900/30 dark:hover:text-red-400"
-                                title="删除草稿"
-                                aria-label="删除草稿"
-                              >
-                                <svg
-                                  className="h-3.5 w-3.5"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    d="M6 18L18 6M6 6l12 12"
-                                  />
-                                </svg>
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
                 {/* 清空 */}
                 <button
                   onClick={clearEditor}
@@ -1747,59 +1548,12 @@ export function AgentPanel({
                     />
                   </svg>
                 </button>
-                {/* 存为知识（主操作） */}
-                {!activeEntry && (
-                  <button
-                    onClick={saveEntry}
-                    disabled={!mdContent.trim() || saving}
-                    className={
-                      btn +
-                      " ml-1 bg-gray-900 text-white hover:bg-gray-700 disabled:opacity-30 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
-                    }
-                  >
-                    {saving ? (
-                      <svg
-                        className="h-3.5 w-3.5 animate-spin"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                      >
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        />
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                        />
-                      </svg>
-                    ) : (
-                      <svg
-                        className="h-3.5 w-3.5"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          d="M12 4.5v15m7.5-7.5h-15"
-                        />
-                      </svg>
-                    )}
-                    {saving ? "保存中" : "存为知识"}
-                  </button>
-                )}
               </div>
             </div>
           </div>
         )}
 
-        {/* TAB: Live2D（AI 化身，表情由 AI 对话驱动；未开启时显示空态提示） */}
+        {/* TAB: Live2D（AI 化身；未开启时显示空态提示） */}
         {tab === "live2d" && <Live2DStage enabled={live2dOn} />}
 
         {/* TAB 4: Settings（用户设置迁入 Agent 面板） */}

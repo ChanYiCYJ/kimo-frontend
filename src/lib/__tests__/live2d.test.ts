@@ -9,11 +9,13 @@ import {
   groupModels,
   loadLive2dModel,
   modelInfo,
+  parseActionCommands,
   parseCharacters,
   parseEmotionTag,
   parseModelNames,
   resolveLive2dConfig,
   saveLive2dModel,
+  stripActionCommands,
   stripEmotionTag,
   DEFAULT_LIVE2D_MODEL,
   EMOTION_MOTIONS,
@@ -271,6 +273,77 @@ describe("live2d · AI 表情标签（AI Chat 控制表情）", () => {
     expect(parseEmotionTag("哈哈【表情:高兴】")).toBe("happy");
     expect(stripEmotionTag("好的【表情:别扭】")).toBe("好的");
     expect(stripEmotionTag("正文【EMOTION:开心】结尾")).toBe("正文结尾");
+  });
+});
+
+describe("live2d · AI 动作指令（参数级精细控制）", () => {
+  it("解析 [PARAM:参数:数值] 指令", () => {
+    const cmds = parseActionCommands(
+      "哈哈[PARAM:ParamMouthOpenY:0.8][PARAM:ParamEyeLOpen:0.5]",
+    );
+    expect(cmds.params).toHaveLength(2);
+    expect(cmds.params[0]).toEqual({ id: "ParamMouthOpenY", value: 0.8 });
+    expect(cmds.params[1]).toEqual({ id: "ParamEyeLOpen", value: 0.5 });
+    expect(cmds.motion).toBeUndefined();
+  });
+  it("解析 [MOTION:动作] 与 [EXPRESSION:表情预设]", () => {
+    const cmds = parseActionCommands(
+      "[MOTION:smile01][EXPRESSION:niyaniya01]正文",
+    );
+    expect(cmds.motion).toBe("smile01");
+    expect(cmds.expression).toBe("niyaniya01");
+    expect(cmds.params).toHaveLength(0);
+  });
+  it("中文别名：[参数:…]/[动作:…]/[表情预设:…] 与中文括号", () => {
+    const cmds = parseActionCommands(
+      "【参数:ParamAngleX:0.4】【动作: nod01 】【表情预设:serious01】",
+    );
+    expect(cmds.params).toEqual([{ id: "ParamAngleX", value: 0.4 }]);
+    expect(cmds.motion).toBe("nod01");
+    expect(cmds.expression).toBe("serious01");
+  });
+  it("负值/小数/越界 clamp", () => {
+    const cmds = parseActionCommands(
+      "[PARAM:ParamBrowLY:-0.5][PARAM:ParamMouthOpenY:2.5]",
+    );
+    expect(cmds.params.find((p) => p.id === "ParamBrowLY")?.value).toBe(-0.5);
+    // 2.5 越界 → clamp 到 1
+    expect(cmds.params.find((p) => p.id === "ParamMouthOpenY")?.value).toBe(1);
+  });
+  it("同名参数多次出现保留最后一个", () => {
+    const cmds = parseActionCommands(
+      "[PARAM:ParamMouthOpenY:0.2][PARAM:ParamMouthOpenY:0.9]",
+    );
+    expect(cmds.params).toHaveLength(1);
+    expect(cmds.params[0].value).toBe(0.9);
+  });
+  it("无指令 → 空结果", () => {
+    const cmds = parseActionCommands("只是普通的回复，没有指令");
+    expect(cmds.params).toHaveLength(0);
+    expect(cmds.motion).toBeUndefined();
+    expect(cmds.expression).toBeUndefined();
+  });
+  it("剥离动作指令保留正文", () => {
+    expect(stripActionCommands("哈哈[PARAM:ParamMouthOpenY:0.8]")).toBe("哈哈");
+    expect(stripActionCommands("[MOTION:smile01]你好")).toBe("你好");
+    expect(stripActionCommands("正文[参数:ParamAngleX:0.4]结尾")).toBe(
+      "正文结尾",
+    );
+    expect(stripActionCommands("无指令正文")).toBe("无指令正文");
+  });
+  it("与表情标签共存：动作指令解析不受 [表情:] 影响", () => {
+    const cmds = parseActionCommands(
+      "哈哈[PARAM:ParamMouthOpenY:0.6][表情:开心]",
+    );
+    expect(cmds.params).toEqual([{ id: "ParamMouthOpenY", value: 0.6 }]);
+    expect(cmds.motion).toBeUndefined();
+    // 表情标签由 stripEmotionTag 剥离，动作指令由 stripActionCommands 剥离，互不干扰
+    expect(
+      stripActionCommands("哈哈[PARAM:ParamMouthOpenY:0.6][表情:开心]"),
+    ).toBe("哈哈[表情:开心]");
+    expect(stripEmotionTag("哈哈[PARAM:ParamMouthOpenY:0.6][表情:开心]")).toBe(
+      "哈哈[PARAM:ParamMouthOpenY:0.6]",
+    );
   });
 });
 

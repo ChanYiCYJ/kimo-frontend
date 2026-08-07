@@ -11,18 +11,22 @@
  *   - fetchWebpage() 保持向后兼容
  *
  * 搜索引擎：
- *   1. backend  — /api/search（Vite proxy → 本地后端）
+ *   1. backend  — /api/search（Worker 多引擎；可携带用户自配的搜索 API 平台 Tavily/Brave/SearXNG）
  *   2. duckduckgo — DuckDuckGo Lite HTML 版（浏览器直连）
  *   3. wikipedia — Wikipedia opensearch API（CORS 友好）
  *   4. brave     — Brave Search 抓取（需后端代理转接）
  *   5. ai        — AI 模型生成搜索结果（回退）
  *
- * 代理端点（通过 Vite proxy 或 Worker 转发到 api.yogofor.top）：
- *   /api/search        — 后端搜索
- *   /api/fetch         — 后端网页抓取
- *   /api/proxy/search  — 通用搜索代理（转发到各搜索引擎）
- *   /api/proxy/fetch   — 通用网页抓取代理
+ * 设计原则：被网络拦截/失败时一律优雅降级（免费引擎 + AI 兜底），不硬刚、不做绕过。
  */
+
+import {
+  loadSearchApiCfg,
+  hasSearchApi,
+  cacheTtlMs,
+  todayStr,
+} from "./searchApi";
+import { loadSearchSpeed } from "./chatSettings";
 
 // ======================== 类型定义 ========================
 
@@ -68,10 +72,58 @@ export interface MultiSearchResult {
   partialFailures: Array<{ engine: string; message: string }>;
 }
 
+// ======================== 查询类型 / 语言检测 ========================
+
+/** 查询类型：用于决定引擎组合（时敏/天气/新番/新闻走专用引擎） */
+export interface QueryType {
+  /** 需要最新/实时数据（天气、新番、新闻等） */
+  fresh: boolean;
+  /** 天气查询 */
+  weather: boolean;
+  /** 新番/番剧查询 */
+  anime: boolean;
+  /** 新闻/资讯查询 */
+  news: boolean;
+}
+
+const WEATHER_RE =
+  /天气|气温|温度|下雨|降水|降雨|湿度|风力|台风|weather|forecast|temperature|rain|humidity|wind/i;
+const ANIME_RE =
+  /新番|本季|当季|番剧|夏番|冬番|春番|秋番|动漫新|anime|season|animation/i;
+const NEWS_RE =
+  /今天|今日|最新|新闻|突发|实时|刚刚|昨天|昨日|新作|上市|发布|发售|更新|近期|today|now|recent|latest|news|break/i;
+
+/** 检测查询类型（天气/新番/新闻/其他），供引擎组合与深度判断 */
+export function detectQueryType(q: string): QueryType {
+  const s = q || "";
+  const weather = WEATHER_RE.test(s);
+  const anime = ANIME_RE.test(s);
+  const news = NEWS_RE.test(s);
+  return { fresh: weather || anime || news, weather, anime, news };
+}
+
+/**
+ * 检测查询语言：中文/日文/韩文/英文（用于后端 mkt/locale 自适应）。
+ * 多语言混合关键词时取主要语言：日文假名（平/片假名）→ ja；韩文谚文 → ko；中文汉字 → zh；其余 → en。
+ * （日文汉字也在 CJK 区间，但含假名的日文查询优先判 ja）
+ */
+export function detectQueryLang(q: string): "zh" | "en" | "ja" | "ko" {
+  const s = q || "";
+  if (/[\u3040-\u30ff\u31f0-\u31ff]/.test(s)) return "ja";
+  if (/[\uac00-\ud7af\u1100-\u11ff\u3130-\u318f]/.test(s)) return "ko";
+  if (/[\u4e00-\u9fff]/.test(s)) return "zh";
+  return "en";
+}
+
 // ======================== 工具函数 ========================
 
 const MAX_CHARS_DEFAULT = 30000;
 const FETCH_TIMEOUT_MS = 8000;
+
+/** 后端 /api/search（Worker 多引擎 / Tavily 等第三方 API）超时：放宽到 20s——
+ *  Tavily 经 Cloudflare Worker 中转常需 ~8s+，8s 默认超时会导致请求被中止、
+ *  搜索回退到 searchAI 垃圾结果（线上实测：worker 带 Tavily 返回 8.4s） */
+const SEARCH_TIMEOUT_MS = 20000;
 
 /** 带超时的 fetch */
 async function fetchWithTimeout(
@@ -147,7 +199,9 @@ function diversifyByDomain(
     try {
       host = new URL(r.url).hostname.replace(/^www\./i, "");
     } catch {}
-    if ((hostCount[host] || 0) >= perDomain) continue;
+    // bilibili 站内源时效性/相关性优先，放宽每站条数（避免被"每站≤perDomain"稀释）
+    const cap = host.includes("bilibili.com") ? 4 : perDomain;
+    if ((hostCount[host] || 0) >= cap) continue;
     hostCount[host] = (hostCount[host] || 0) + 1;
     out.push(r);
     if (out.length >= max) break;
@@ -189,27 +243,70 @@ export async function searchBackend(
   limit: number,
 ): Promise<SearchResult[]> {
   try {
-    const res = await fetchWithTimeout(
-      `/api/search?q=${encodeURIComponent(query)}&limit=${limit}`,
-      { headers: { Accept: "application/json" } },
+    // 携带用户自配的搜索 API 平台（Tavily/Brave/SearXNG），Worker 代理执行免 CORS
+    const cfg = loadSearchApiCfg();
+    const params = new URLSearchParams({ q: query, limit: String(limit) });
+    if (hasSearchApi(cfg)) {
+      params.set("provider", cfg.provider);
+      if (cfg.provider === "tavily" || cfg.provider === "brave")
+        params.set("apiKey", cfg.apiKey.trim());
+      if (cfg.provider === "searxng")
+        params.set("instance", cfg.instance.trim());
+    }
+    // 查询类型 → 引擎组合（时敏/天气/新番/新闻用专用引擎；Fast 精简引擎集提速度）
+    const type = detectQueryType(query);
+    const lang = detectQueryLang(query);
+    const fast = loadSearchSpeed() === "fast";
+    let engines: string;
+    if (type.weather) engines = "weather,wikipedia,googlenews";
+    else if (type.anime) engines = "bangumi,bilibili,wikipedia";
+    else if (type.news || type.fresh)
+      engines = "googlenews,bingnews,bing,duckduckgo,wikipedia";
+    else if (fast) engines = "duckduckgo,wikipedia,bing";
+    else
+      engines =
+        "bilibili,baidu,bing,googlenews,mojeek,qwant,duckduckgo,brave,wikipedia";
+    params.set("engines", engines);
+    params.set("lang", lang);
+    if (fast) params.set("fast", "1");
+
+    // 多语言搜索：非英文查询额外并行一次 lang=en（关键词本身已是多语言混合时，
+    // 英文 mkt/locale 能命中英文数据库/海外源，显著提升多语言准确度），结果合并去重
+    const langs = lang === "en" ? ["en"] : [lang, "en"];
+    const settled = await Promise.allSettled(
+      langs.map((l) => {
+        const p = new URLSearchParams(params);
+        p.set("lang", l);
+        return fetchWithTimeout(
+          `/api/search?${p.toString()}`,
+          { headers: { Accept: "application/json" } },
+          SEARCH_TIMEOUT_MS,
+        );
+      }),
     );
-    if (!res.ok) return [];
-    const data = (await res.json().catch(() => null)) as
-      | { items?: SearchResult[] }
-      | SearchResult[]
-      | null;
-    const items: SearchResult[] = Array.isArray(data)
-      ? data
-      : Array.isArray(data?.items)
-        ? data.items
-        : [];
-    return items.slice(0, limit).map((it) => ({
-      title: it.title || "",
-      url: it.url || "",
-      description: it.description || "",
-      source: it.source || extractSource(it.url || ""),
-      engine: "backend",
-    }));
+    const items: SearchResult[] = [];
+    for (const s of settled) {
+      if (s.status !== "fulfilled" || !s.value.ok) continue;
+      const data = (await s.value.json().catch(() => null)) as
+        | { items?: SearchResult[] }
+        | SearchResult[]
+        | null;
+      const arr = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.items)
+          ? data.items
+          : [];
+      items.push(
+        ...arr.slice(0, limit).map((it) => ({
+          title: it.title || "",
+          url: it.url || "",
+          description: it.description || "",
+          source: it.source || extractSource(it.url || ""),
+          engine: "backend",
+        })),
+      );
+    }
+    return dedupeByUrl(items).slice(0, limit);
   } catch {
     return [];
   }
@@ -419,9 +516,13 @@ export async function searchAI(
             {
               role: "system",
               content:
-                "你是搜索引擎助手。用户查询后，请以JSON数组格式返回搜索结果，每条包含title、url、description字段。URL使用真实存在的网站链接。最多返回" +
+                "你是搜索引擎助手。今天是 " +
+                todayStr() +
+                "。用户查询后，请以JSON数组格式返回搜索结果，每条包含title、url、description字段。" +
+                "**只能输出你非常有把握真实存在、且与查询直接相关的网站 URL（如知名官网/百科/主流媒体域名）；若不确定某个 URL 是否真实存在，绝对不要编造或拼凑看似合理的链接**。" +
+                "最多返回" +
                 limit +
-                "条。只返回JSON数组，不要其他内容。",
+                "条；若确实找不到可靠来源，请返回空数组 []。只返回JSON数组，不要其他内容。",
             },
             { role: "user", content: "查询：" + query },
           ],
@@ -497,6 +598,53 @@ function parseTextResults(raw: string, limit: number): SearchResult[] {
   return results;
 }
 
+// ======================== 引擎 6：Tavily（前端直连） ========================
+
+/**
+ * Tavily Search API 客户端（浏览器直连，免 Worker 代理）。
+ * 配置 Tavily API Key 后自动启用，支持 search_depth/topic/include_answer。
+ */
+export async function searchTavilyClient(
+  query: string,
+  limit: number,
+): Promise<SearchResult[]> {
+  try {
+    const cfg = loadSearchApiCfg();
+    if (cfg.provider !== "tavily" || !cfg.apiKey?.trim()) return [];
+    const res = await fetchWithTimeout(
+      "https://api.tavily.com/search",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + cfg.apiKey.trim(),
+        },
+        body: JSON.stringify({
+          query,
+          search_depth: "advanced",
+          max_results: Math.min(limit, 10),
+          topic: "general",
+          include_answer: "advanced",
+          include_raw_content: false,
+        }),
+      },
+      8000,
+    );
+    if (!res.ok) return [];
+    const j = await res.json().catch(() => null);
+    if (!j?.results || !Array.isArray(j.results)) return [];
+    return j.results.slice(0, limit).map((it: Record<string, string>) => ({
+      title: it.title || "",
+      url: it.url || "",
+      description: it.content || it.description || "",
+      source: extractSource(it.url || ""),
+      engine: "tavily",
+    }));
+  } catch {
+    return [];
+  }
+}
+
 // ======================== 多引擎聚合搜索 ========================
 
 export const SEARCH_ENGINES: Record<string, SearchEngineExecutor> = {
@@ -505,6 +653,7 @@ export const SEARCH_ENGINES: Record<string, SearchEngineExecutor> = {
   wikipedia: searchWikipedia,
   brave: searchBrave,
   ai: searchAI,
+  tavily: searchTavilyClient,
 };
 
 export async function searchMulti(
@@ -564,14 +713,24 @@ export function formatResults(results: SearchResult[]): string {
 // ======================== 向后兼容：webSearch ========================
 
 export async function webSearch(query: string): Promise<string> {
-  const backend = await searchBackend(query, 6);
-  if (backend.length) return formatResults(backend);
+  // 并行：后端多引擎 + Tavily 前端直连（若已配置），取最先返回的结果
+  const tasks: Promise<SearchResult[]>[] = [searchBackend(query, 6)];
+  if (
+    hasSearchApi(loadSearchApiCfg()) &&
+    loadSearchApiCfg().provider === "tavily"
+  ) {
+    tasks.push(searchTavilyClient(query, 6));
+  }
+  const settled = await Promise.allSettled(tasks);
+  const all: SearchResult[] = [];
+  for (const s of settled) {
+    if (s.status === "fulfilled") all.push(...s.value);
+  }
+  const merged = dedupeByUrl(all).slice(0, 6);
+  if (merged.length) return formatResults(merged);
 
-  const multi = await searchMulti(
-    query,
-    ["duckduckgo", "wikipedia", "brave"],
-    6,
-  );
+  // 客户端直连引擎仅保留 CORS 友好的 Wikipedia（duckduckgo/brave 浏览器直连被 CORS 拦截，已由 backend 覆盖）
+  const multi = await searchMulti(query, ["wikipedia"], 6);
   if (multi.results.length) return formatResults(multi.results);
 
   const ai = await searchAI(query, 6);
@@ -600,7 +759,7 @@ export async function fetchWebContent(
     const res = await fetchWithTimeout(
       `/api/fetch?url=${encodeURIComponent(u)}&maxChars=${maxChars}`,
       { headers: { Accept: "text/plain,application/json" } },
-      15000,
+      12000,
     );
     if (res.ok) {
       const ct = res.headers.get("content-type") || "";
@@ -646,7 +805,7 @@ export async function fetchWebContent(
               "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
           },
         },
-        15000,
+        12000,
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       finalUrl = res.url || u;
@@ -756,12 +915,15 @@ export async function webSearchWithContent(
   maxSources: number = 3,
   perSourceChars: number = 2500,
 ): Promise<string> {
-  // 1) 多引擎聚合搜索（backend/duckduckgo/wikipedia/brave）
-  const multi = await searchMulti(
-    query,
-    ["backend", "duckduckgo", "wikipedia", "brave"],
-    8,
-  );
+  // 1) 多引擎聚合搜索（backend 已含 bing/duckduckgo/brave/news 等；Tavily 前端直连提供深度搜索；wikipedia 为 CORS 友好兜底）
+  const engines = ["backend", "wikipedia"];
+  if (
+    hasSearchApi(loadSearchApiCfg()) &&
+    loadSearchApiCfg().provider === "tavily"
+  ) {
+    engines.unshift("tavily");
+  }
+  const multi = await searchMulti(query, engines, 10);
   if (!multi.results.length) {
     // 回退 AI 生成列表
     const ai = await searchAI(query, 6);
@@ -885,11 +1047,15 @@ export async function webSearchToArticle(
     };
   });
   if (!results.length) {
-    const multi = await searchMulti(
-      query,
-      ["backend", "duckduckgo", "wikipedia", "brave"],
-      10,
-    );
+    // backend 已含 bing/duckduckgo/brave/news 等；Tavily 前端直连提供深度搜索；wikipedia 为 CORS 友好兜底
+    const engines = ["backend", "wikipedia"];
+    if (
+      hasSearchApi(loadSearchApiCfg()) &&
+      loadSearchApiCfg().provider === "tavily"
+    ) {
+      engines.unshift("tavily");
+    }
+    const multi = await searchMulti(query, engines, 10);
     results = dedupeByUrl(multi.results);
     if (!results.length) {
       const ai = await searchAI(query, 6);
@@ -934,32 +1100,37 @@ export async function webSearchToArticle(
         .slice(0, 5)
         .map((u: string) => `\n[图片]: ${u}`)
         .join("");
-      return `来源${i + 1} (${f.url} | ${f.title})${imgs}：\n${(f.content || "").slice(0, 2200)}`;
+      return `来源${i + 1} (${f.url} | ${f.title})${imgs}：\n${(f.content || "").slice(0, 2200) || "(内容抓取失败或为空——资料有限，请勿编造该来源的细节，可明确标注资料不足)"}`;
     })
     .filter(Boolean)
     .join("\n\n");
 
   // 3) AI 综合筛选生成标准 markdown 文章
   const sys =
-    "你是资深内容研究员。基于用户提供的【搜索结果】与【来源内容】，筛选、交叉验证并综合多个资料，" +
+    "你是资深内容研究员。今天是 " +
+    todayStr() +
+    "（检索时间）。基于用户提供的【搜索结果】与【来源内容】，筛选、交叉验证并综合多个资料，" +
     "用**标准 Markdown 格式**生成一篇结构化文章。要求：\n" +
     "- 首行 H1 标题（中文，概括主题）\n" +
     "- 开头 2-3 句引言摘要（加粗要点）\n" +
     "- 用 H2 分节（3-5 节），每节用有序/无序列表或短段落呈现关键信息\n" +
-    "- 尽量引用具体数据/版本号/日期/数字/案例，内容充实有料，避免空泛套话\n" +
+    "- 尽量引用具体数据/版本号/日期/数字/案例，内容充实有料，避免空泛套话；信息可能已过时请如实说明（资料检索于 " +
+    todayStr() +
+    "）\n" +
+    "- **来源约束（重要）：文章中的事实、数据、日期只能来自【来源内容】与【搜索结果】；来源未覆盖的信息绝对不要编造，明确标注『资料有限，未能核实』；禁止凭空编造来源 URL、机构名、版本号或数据**\n" +
     "- 若提供了来源图片（[图片]: URL），请把多张图片分布到文章各处（封面放 H1 标题后，其余每节各插 1 张），用 `![配图](图片URL)` 插入\n" +
-    "- 引用事实时用 `> 引用` 块，末尾附「参考来源」列表（Markdown 链接）\n" +
+    "- 引用事实时用 `> 引用` 块，末尾附「参考来源」列表（Markdown 链接，只能列真实来源）\n" +
     "- 安全合规：若主题涉及成人/敏感/争议内容，仅做客观克制的信息介绍，绝不输出露骨、色情、暴力、仇恨或违法违规内容；资料不足时如实说明\n" +
     "- 只输出文章正文，不要额外说明";
   const userMsg = `查询主题：${query}\n\n【搜索结果】\n${results
     .slice(0, 10)
     .map(
       (r, i) =>
-        `${i + 1}. ${r.title} (${r.url})\n   ${r.description?.slice(0, 200)}`,
+        `${i + 1}. ${r.title} (${r.url})${r.engine === "ai" ? "（AI 补充，未经抓取验证）" : ""}\n   ${r.description?.slice(0, 200)}`,
     )
     .join(
       "\n",
-    )}\n\n【来源内容】\n${sourcesBlock || "(抓取失败，仅凭搜索结果)"}`;
+    )}\n\n【来源内容】\n${sourcesBlock || "(未能抓取到来源正文。不要编造来源内容与数据，请仅基于搜索结果条目的标题/摘要作有限作答，并在文末注明『资料有限，未能核实』)"}`;
 
   // AI 调用（推理模型可能把 token 用尽在思考上，加大 max_tokens 并在 content 为空时重试一次）
   let article = "";
@@ -1068,11 +1239,15 @@ interface SearchCacheEntry {
   sources: SearchResult[];
   time: number;
   loading: boolean;
+  /** 标记 loading 的时间戳：搜索被中断（关页/报错）时条目可能永久停在 loading，靠它判定过期并重试 */
+  loadingAt?: number;
 }
 
 const SEARCH_CACHE_KEY = "kimo_search_cache_v1";
 const SEARCH_CACHE_MAX = 30;
-const SEARCH_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 小时
+const SEARCH_CACHE_TTL = 60 * 60 * 1000; // 默认 1 小时（保证能获取当天信息，可在设置中调整）
+/** loading 条目超过该时长视为"卡死"（搜索被中断），清理后允许重新搜索 */
+const LOADING_STALE_MS = 5 * 60 * 1000;
 
 function searchCacheKey(q: string): string {
   return q.trim().toLowerCase();
@@ -1102,10 +1277,28 @@ export function readSearchCache(
   const map = loadSearchCache();
   const e = map[searchCacheKey(query)];
   if (!e) return null;
-  // 生成中：返回 loading，不当作完成
-  if (e.loading) return { ...e, cached: false, loading: true };
-  // 过期清理
-  if (Date.now() - e.time > SEARCH_CACHE_TTL) {
+  // 生成中：返回 loading，不当作完成；但若卡死超时（搜索被中断）则清理，允许重新搜索
+  if (e.loading) {
+    const startedAt = e.loadingAt || e.time || 0;
+    if (Date.now() - startedAt > LOADING_STALE_MS) {
+      delete map[searchCacheKey(query)];
+      saveSearchCache(map);
+      return null;
+    }
+    return { ...e, cached: false, loading: true };
+  }
+  // 过期清理（TTL 默认 1 小时，可在设置中调整为 15min/6h；bilibili 站内源时效性要求更高 → 30min）
+  const hasBili = (e.sources || []).some((s) => {
+    try {
+      return /bilibili\.com/i.test(new URL(s.url || "").hostname);
+    } catch {
+      return false;
+    }
+  });
+  const ttl = hasBili
+    ? 30 * 60 * 1000
+    : cacheTtlMs(loadSearchApiCfg()) || SEARCH_CACHE_TTL;
+  if (Date.now() - e.time > ttl) {
     delete map[searchCacheKey(query)];
     saveSearchCache(map);
     return null;
@@ -1121,7 +1314,11 @@ export function writeSearchCache(
   const map = loadSearchCache();
   const key = searchCacheKey(query);
   const prev = map[key] || {};
-  map[key] = { ...prev, ...entry, time: Date.now() };
+  const merged: SearchCacheEntry = { ...prev, ...entry, time: Date.now() };
+  // 进入 loading 时记录起始时间（用于"卡死"判定）；完成时清除
+  if (entry.loading === true) merged.loadingAt = Date.now();
+  else if (entry.loading === false) delete merged.loadingAt;
+  map[key] = merged;
   // 限制条数：超限删最旧
   const keys = Object.keys(map);
   if (keys.length > SEARCH_CACHE_MAX) {
@@ -1174,35 +1371,43 @@ export type SearchWithCacheResult = {
 
 export async function searchWithCache(
   query: string,
-  opts: { maxSources?: number; perSourceChars?: number } = {},
+  opts: {
+    maxSources?: number;
+    perSourceChars?: number;
+    /** 强制刷新：绕过缓存重新搜索 + 生成（实时更新用） */
+    force?: boolean;
+  } = {},
 ): Promise<SearchWithCacheResult> {
-  const hit = readSearchCache(query);
-  // 命中缓存：有文章（或没有内容）直接返回；有内容但文章为空（上次生成失败）→ 补生成文章，
-  // 避免空文章长期占位导致永远不生成
-  if (hit && (hit.article || !hit.content)) {
-    return { ...hit, loading: !!hit.loading, fresh: false };
-  }
-  if (hit) {
-    writeSearchCache(query, { loading: true });
-    try {
-      const articleRes = await webSearchToArticle(
-        query,
-        opts.maxSources ?? 6,
-        extractSourceUrls(hit.content, opts.maxSources ?? 6),
-      );
-      const entry: SearchCacheEntry = {
-        content: hit.content,
-        article: articleRes.article || "",
-        sources:
-          articleRes.sources?.length > 0 ? articleRes.sources : hit.sources,
-        time: Date.now(),
-        loading: false,
-      };
-      writeSearchCache(query, entry);
-      return { ...entry, loading: false, cached: true, fresh: false };
-    } catch {
-      writeSearchCache(query, { loading: false });
-      return { ...hit, loading: false, cached: true, fresh: false };
+  // 非强制刷新时先查缓存
+  if (!opts.force) {
+    const hit = readSearchCache(query);
+    // 命中缓存：有文章（或没有内容）直接返回；有内容但文章为空（上次生成失败）→ 补生成文章，
+    // 避免空文章长期占位导致永远不生成
+    if (hit && (hit.article || !hit.content)) {
+      return { ...hit, loading: !!hit.loading, fresh: false };
+    }
+    if (hit) {
+      writeSearchCache(query, { loading: true });
+      try {
+        const articleRes = await webSearchToArticle(
+          query,
+          opts.maxSources ?? 6,
+          extractSourceUrls(hit.content, opts.maxSources ?? 6),
+        );
+        const entry: SearchCacheEntry = {
+          content: hit.content,
+          article: articleRes.article || "",
+          sources:
+            articleRes.sources?.length > 0 ? articleRes.sources : hit.sources,
+          time: Date.now(),
+          loading: false,
+        };
+        writeSearchCache(query, entry);
+        return { ...entry, loading: false, cached: true, fresh: false };
+      } catch {
+        writeSearchCache(query, { loading: false });
+        return { ...hit, loading: false, cached: true, fresh: false };
+      }
     }
   }
 

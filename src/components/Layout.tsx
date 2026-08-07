@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
 import { TypeWriter } from "./Spinner";
-import { useSite } from "../lib/site";
+import { useSite, resolveLandingRoute } from "../lib/site";
 import { pageApi, resolveAsset } from "../lib/api";
 import { AI_CHAT_MARKER } from "../lib/types";
 
@@ -14,30 +14,16 @@ export function Layout() {
   const [isAIChat, setIsAIChat] = useState(false);
 
   // 默认落地页：按域名映射（任意域名，不限 Vercel）→ 回退 default_route（国内/海外分站合规）
+  // 首次访问（无缓存）时 settings 需要网络加载，loaded 为 false 时下方会先显示加载页，
+  // 设置到位后这里再跳转；已缓存时 main.tsx 在挂载前已改写 URL，此处直接跳过。
   useEffect(() => {
     const host = window.location.hostname;
     if (location.pathname !== "/") return;
-    let route = "";
-    // 1) 域名 → 落地页映射表（精确匹配优先，再子域名后缀匹配）
-    //    避免 v2.yogofor.top 被父域 yogofor.top 的后缀匹配抢先导致跳到 '/'
-    try {
-      const map = JSON.parse(settings.route_map || "{}") as Record<
-        string,
-        string
-      >;
-      const keys = Object.keys(map);
-      const key =
-        keys.find((k) => host === k) ||
-        keys.find((k) => host.endsWith("." + k));
-      if (key && map[key]) route = map[key];
-    } catch (e) {
-      console.warn(
-        "[route_map] JSON 解析失败，请检查后台设置的 route_map：",
-        e,
-      );
-    }
-    // 2) 回退：默认落地页
-    if (!route) route = settings.default_route || "";
+    const route = resolveLandingRoute(
+      host,
+      settings.route_map,
+      settings.default_route,
+    );
     if (route && route !== "/") {
       navigate(route, { replace: true });
     }

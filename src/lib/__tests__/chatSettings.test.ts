@@ -6,6 +6,10 @@ import {
   saveWebSearchOn,
   loadNetMode,
   saveNetMode,
+  loadSearchSpeed,
+  saveSearchSpeed,
+  loadSearchDepth,
+  saveSearchDepth,
   loadTtsPref,
   saveTtsPref,
   loadMemory,
@@ -66,15 +70,13 @@ describe("chatSettings · 网络搜索", () => {
   });
 });
 
-describe("chatSettings · 网络模式（Auto/search/view）", () => {
+describe("chatSettings · 网络模式（Auto/search，原 view 已整合进 search）", () => {
   it("默认 Auto（先答，缺数据自动升级）", () => {
     expect(loadNetMode()).toBe("auto");
   });
   it("保存后可读取", () => {
     saveNetMode("search");
     expect(loadNetMode()).toBe("search");
-    saveNetMode("view");
-    expect(loadNetMode()).toBe("view");
     saveNetMode("auto");
     expect(loadNetMode()).toBe("auto");
   });
@@ -82,13 +84,17 @@ describe("chatSettings · 网络模式（Auto/search/view）", () => {
     localStorage.setItem("kimo_ai_net_mode", "fast");
     expect(loadNetMode()).toBe("auto");
   });
+  it("旧值 view 迁移为 search（view 已整合进 search）", () => {
+    localStorage.setItem("kimo_ai_net_mode", "view");
+    expect(loadNetMode()).toBe("search");
+  });
   it("非法值回退 Auto", () => {
     localStorage.setItem("kimo_ai_net_mode", "xxx");
     expect(loadNetMode()).toBe("auto");
   });
-  it("旧 key 迁移：浏览 Agent 开启 → view", () => {
+  it("旧 key 迁移：浏览 Agent 开启 → search", () => {
     localStorage.setItem("kimo_ai_browse_agent", "1");
-    expect(loadNetMode()).toBe("view");
+    expect(loadNetMode()).toBe("search");
   });
   it("旧 key 迁移：网络搜索显式开启 → search", () => {
     localStorage.setItem("kimo_ai_websearch", "1");
@@ -102,6 +108,38 @@ describe("chatSettings · 网络模式（Auto/search/view）", () => {
     localStorage.setItem("kimo_ai_net_mode", "search");
     localStorage.setItem("kimo_ai_browse_agent", "1");
     expect(loadNetMode()).toBe("search");
+  });
+});
+
+describe("chatSettings · 搜索速度（Fast/标准）", () => {
+  it("默认标准 standard", () => {
+    expect(loadSearchSpeed()).toBe("standard");
+  });
+  it("保存后可读取", () => {
+    saveSearchSpeed("fast");
+    expect(loadSearchSpeed()).toBe("fast");
+    saveSearchSpeed("standard");
+    expect(loadSearchSpeed()).toBe("standard");
+  });
+  it("非法值回退标准", () => {
+    localStorage.setItem("kimo_ai_search_speed", "ultra");
+    expect(loadSearchSpeed()).toBe("standard");
+  });
+});
+
+describe("chatSettings · 搜索深度（Auto/深度）", () => {
+  it("默认自动 auto", () => {
+    expect(loadSearchDepth()).toBe("auto");
+  });
+  it("保存后可读取", () => {
+    saveSearchDepth("deep");
+    expect(loadSearchDepth()).toBe("deep");
+    saveSearchDepth("auto");
+    expect(loadSearchDepth()).toBe("auto");
+  });
+  it("非法值回退 auto", () => {
+    localStorage.setItem("kimo_ai_search_depth", "shallow");
+    expect(loadSearchDepth()).toBe("auto");
   });
 });
 

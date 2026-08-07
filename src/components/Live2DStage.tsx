@@ -17,6 +17,7 @@ import {
   LIVE2D_MODEL_AUTO,
   THIRD_PARTY_DEMO_MODEL,
   addCustomModel,
+  characterNameOf,
   loadCustomModels,
   loadLive2dModel,
   randomLive2dModel,
@@ -25,12 +26,97 @@ import {
   resolveLive2dModel,
   saveLive2dModel,
 } from "../lib/live2d";
+import { loadLore } from "../lib/live2dLore";
+
+/** Live2D 角色设定详情：分项展示世界观/性格/人物资料/朋友关系（深度思考 + 网络搜索生成） */
+function LoreDetail() {
+  const { settings } = useSite();
+  const [core, setCore] = useState<Live2dCoreState>(() => getState());
+  useEffect(() => {
+    const unsub = subscribe(() => setCore(getState()));
+    return unsub;
+  }, []);
+  const model = core.modelName || resolveLive2dModel(settings.live2d_model);
+  const lore = loadLore(model);
+  const name = characterNameOf(model);
+  if (!lore) {
+    return (
+      <div className="px-3 py-3">
+        <div className="flex items-center gap-1.5 pb-1.5">
+          <span className="text-[11px] font-semibold text-gray-400">
+            角色设定
+          </span>
+        </div>
+        <div className="rounded-xl border border-dashed border-gray-200 p-4 text-center dark:border-gray-700">
+          <p className="text-xs font-medium text-gray-500 dark:text-gray-300">
+            暂无「{name}」的角色设定档案
+          </p>
+          <p className="mt-1 text-[11px] text-gray-400">
+            首次会结合网络搜索与深度思考，自动生成完整的世界观与人物资料
+          </p>
+        </div>
+      </div>
+    );
+  }
+  const rows = (
+    [
+      ["世界观", lore.world],
+      ["性格", lore.personality],
+      ["语气", lore.tone],
+      ["背景故事", lore.background],
+      ["喜好与擅长", lore.likes],
+      ["朋友与关系", lore.relations],
+      ["资料要点", lore.notes],
+    ] as [string, string][]
+  ).filter(([, v]) => v && v.trim());
+  return (
+    <div className="px-3 py-3">
+      <div className="flex items-center gap-1.5 pb-1.5">
+        <svg
+          className="h-3.5 w-3.5 text-gray-400"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+          />
+        </svg>
+        <span className="text-[11px] font-semibold text-gray-400">
+          角色设定
+        </span>
+        <span className="ml-auto truncate text-[10px] text-gray-400">
+          {name}
+        </span>
+      </div>
+      <div className="space-y-1.5">
+        {rows.map(([label, text]) => (
+          <div
+            key={label}
+            className="rounded-lg bg-gray-50/60 px-2.5 py-2 dark:bg-gray-800/40"
+          >
+            <p className="text-[10px] font-semibold text-gray-400">{label}</p>
+            <p className="mt-0.5 whitespace-pre-wrap text-xs leading-relaxed text-gray-700 dark:text-gray-300">
+              {text}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function Live2DStage({ enabled = true }: { enabled?: boolean }) {
   const { settings } = useSite();
   const containerRef = useRef<HTMLDivElement>(null);
   const [core, setCore] = useState<Live2dCoreState>(() => getState());
-  const [charOpen, setCharOpen] = useState(false);
+  /** 角色/资料下拉面板开关 */
+  const [panelOpen, setPanelOpen] = useState(false);
+  /** 下拉面板内容：char=选择角色 / lore=角色资料 */
+  const [panelTab, setPanelTab] = useState<"char" | "lore">("char");
   /** 自定义导入模型（localStorage 持久化） */
   const [customs, setCustoms] = useState(() => loadCustomModels());
   const [importOpen, setImportOpen] = useState(false);
@@ -65,6 +151,7 @@ export function Live2DStage({ enabled = true }: { enabled?: boolean }) {
   }, []);
 
   // 挂载 canvas + 首次加载模型；卸载 detach（单例 app 保留避免重载）
+  // 依赖含 enabled：关闭再打开（enabled 切换）时重新 attach，否则 canvas 不会挂回容器导致空白
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -80,7 +167,7 @@ export function Live2DStage({ enabled = true }: { enabled?: boolean }) {
       loadModel(name).catch(() => {});
     }
     return () => detach(el);
-  }, [settings.live2d_model]);
+  }, [settings.live2d_model, enabled]);
 
   const retry = () => {
     loadModel(resolveLive2dModel(settings.live2d_model)).catch(() => {});
@@ -108,7 +195,7 @@ export function Live2DStage({ enabled = true }: { enabled?: boolean }) {
     loadModel(m)
       .then(() => setIsAuto(false))
       .catch(() => setImportErr("加载失败：网址无效或不是 Cubism2 model.json"));
-    setCharOpen(false);
+    setPanelOpen(false);
   };
 
   // 未开启 Live2D：空态提示（tab 常显，避免空白突兀）
@@ -169,7 +256,7 @@ export function Live2DStage({ enabled = true }: { enabled?: boolean }) {
       loadModel(model).catch(() => {});
       setIsAuto(false);
     }
-    setCharOpen(false);
+    setPanelOpen(false);
   };
 
   return (
@@ -196,25 +283,21 @@ export function Live2DStage({ enabled = true }: { enabled?: boolean }) {
         )}
         {/* 换角色：悬浮胶囊叠加在 Live2D 画面上（适配角色画面），下拉面板浮在胶囊上方 */}
         <div className="absolute inset-x-0 bottom-6 z-10 flex flex-col items-center px-3">
-          {charOpen && (
+          {panelOpen && (
             <div className="mb-2 w-full max-w-xs animate-[kpop_0.25s_ease-out] overflow-hidden rounded-2xl border border-gray-200 bg-white/95 backdrop-blur dark:border-gray-700 dark:bg-gray-800/95">
-              {/* 头部：标题 + 自动开关 */}
-              <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 dark:border-gray-800">
-                <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
-                  选择角色
-                </span>
+              {/* 头部：选择角色 / 角色资料 分段切换 */}
+              <div className="flex gap-1 border-b border-gray-100 p-1.5 dark:border-gray-800">
                 <button
-                  onClick={() => pickChar(LIVE2D_MODEL_AUTO)}
-                  title="让 AI 按记忆/知识库选角"
+                  onClick={() => setPanelTab("char")}
                   className={
-                    "flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] transition " +
-                    (isAuto
+                    "flex min-w-0 flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-medium transition " +
+                    (panelTab === "char"
                       ? "bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-gray-100"
-                      : "bg-gray-50 text-gray-500 hover:bg-gray-100 dark:bg-gray-700/60 dark:text-gray-300")
+                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:hover:bg-gray-700/40 dark:hover:text-gray-300")
                   }
                 >
                   <svg
-                    className="h-3 w-3"
+                    className="h-3.5 w-3.5 shrink-0"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -223,14 +306,70 @@ export function Live2DStage({ enabled = true }: { enabled?: boolean }) {
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      d="M19.5 12c0 4.142-3.358 7.5-7.5 7.5S4.5 16.142 4.5 12 7.858 4.5 12 4.5M15 3.5l3 3-3 3M18 6.5h-6"
+                      d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"
                     />
                   </svg>
-                  自动
+                  选择角色
+                </button>
+                <button
+                  onClick={() => setPanelTab("lore")}
+                  className={
+                    "flex min-w-0 flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-medium transition " +
+                    (panelTab === "lore"
+                      ? "bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-gray-100"
+                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:hover:bg-gray-700/40 dark:hover:text-gray-300")
+                  }
+                >
+                  <svg
+                    className="h-3.5 w-3.5 shrink-0"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+                    />
+                  </svg>
+                  角色资料
                 </button>
               </div>
-              {/* 按乐队分组的角色列表（手风琴，默认收起；当前角色所在乐队展开） */}
-              <div className="max-h-56 overflow-y-auto p-2">
+              {panelTab === "char" && (
+                <div className="max-h-56 overflow-y-auto p-2">
+                  {/* 自动开关行 */}
+                  <div className="mb-1 flex items-center justify-between rounded-lg px-1.5 py-1">
+                    <span className="text-[11px] font-semibold text-gray-400">
+                      自动选角
+                    </span>
+                    <button
+                      onClick={() => pickChar(LIVE2D_MODEL_AUTO)}
+                      title="让 AI 按记忆/知识库选角"
+                      className={
+                        "flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] transition " +
+                        (isAuto
+                          ? "bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-gray-100"
+                          : "bg-gray-50 text-gray-500 hover:bg-gray-100 dark:bg-gray-700/60 dark:text-gray-300")
+                      }
+                    >
+                      <svg
+                        className="h-3 w-3"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M19.5 12c0 4.142-3.358 7.5-7.5 7.5S4.5 16.142 4.5 12 7.858 4.5 12 4.5M15 3.5l3 3-3 3M18 6.5h-6"
+                        />
+                      </svg>
+                      自动
+                    </button>
+                  </div>
+                  {/* 按乐队分组的角色列表（手风琴，默认收起；当前角色所在乐队展开） */}
                 {groups.map((g) => {
                   const open = expandedBands.includes(g.band);
                   return (
@@ -484,12 +623,18 @@ export function Live2DStage({ enabled = true }: { enabled?: boolean }) {
                   )}
                 </div>
               </div>
+            )}
+            {panelTab === "lore" && (
+              <div className="max-h-56 overflow-y-auto">
+                <LoreDetail />
+              </div>
+            )}
             </div>
           )}
           <button
-            onClick={() => setCharOpen((v) => !v)}
+            onClick={() => setPanelOpen((v) => !v)}
             className="group flex max-w-full animate-[kfade_0.3s_ease-out] items-center gap-1.5 rounded-full border border-gray-200/80 bg-white/95 px-3 py-2 text-sm text-gray-600 shadow-sm backdrop-blur transition hover:border-gray-300 hover:bg-white hover:shadow active:scale-[0.98] dark:border-gray-700 dark:bg-gray-800/95 dark:text-gray-300"
-            title="切换角色"
+            title="切换角色 / 角色资料"
           >
             <svg
               className="h-4 w-4 shrink-0 text-gray-400 transition group-hover:text-gray-600 dark:text-gray-500"
@@ -512,7 +657,7 @@ export function Live2DStage({ enabled = true }: { enabled?: boolean }) {
             <svg
               className={
                 "h-4 w-4 shrink-0 text-gray-400 transition-transform group-hover:text-gray-600 dark:text-gray-500 " +
-                (charOpen ? "rotate-180" : "")
+                (panelOpen ? "rotate-180" : "")
               }
               viewBox="0 0 24 24"
               fill="none"

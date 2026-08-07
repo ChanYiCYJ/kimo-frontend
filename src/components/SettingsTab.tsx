@@ -4,9 +4,10 @@ import {
   loadCustomModelOn,
   saveCustomModelOn,
   type ChatFontSize,
-  type ChatNetMode,
 } from "../lib/chatSettings";
 import { LocalApiForm } from "./LocalApiForm";
+import { SearchApiForm } from "./SearchApiForm";
+import { DataModal } from "./DataModal";
 
 /**
  * Agent 面板「设置」tab 的数据/回调集合。
@@ -17,26 +18,22 @@ export interface AgentSettingsProps {
   canManage: boolean;
   hasCustom: boolean;
   botName: string;
-  ttsOn: boolean;
-  onToggleTts: () => void;
-  netMode: ChatNetMode;
-  onSetNetMode: (mode: ChatNetMode) => void;
-  autoKnowledge: boolean;
-  onToggleAutoKnowledge: () => void;
-  kbAiReadAll: boolean;
-  onToggleKbAiReadAll: (v: boolean) => void;
-  onExportAll: () => void;
-  onImport: () => void;
+  /** 搜索模式（设置页与「/」弹窗共用同一单选，双向同步） */
+  searchMode: "fast" | "auto" | "deep";
+  onSetSearchMode: (m: "fast" | "auto" | "deep") => void;
   chatFontSize?: ChatFontSize;
   onSetFontSize?: (v: ChatFontSize) => void;
   onCustomSaved: () => void;
+  /** 自定义模型开关（由 AIChat 统一管理：关闭后不再识别为自定义，本地配置保留） */
+  customModelOn?: boolean;
+  onToggleCustomModel?: () => void;
   allowCustomApi?: boolean;
 }
 
-/** Kimo 风格设置卡片：圆角 + 浅边框 + 轻阴影，左侧灰色条作为区块标识 */
+/** 设置卡片：细边框 + 无阴影（对齐 Live2D 面板质感），左侧灰色条作为区块标识 */
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+    <section className="rounded-2xl border border-gray-200/60 bg-white p-3 dark:border-gray-800 dark:bg-gray-900">
       <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-gray-400 dark:text-gray-500">
         <span className="h-3 w-1 rounded-full bg-gray-300 dark:bg-gray-600" />
         {title}
@@ -94,32 +91,36 @@ export function SettingsTab({
   canManage,
   hasCustom,
   botName,
-  ttsOn,
-  onToggleTts,
-  netMode,
-  onSetNetMode,
-  autoKnowledge,
-  onToggleAutoKnowledge,
-  kbAiReadAll,
-  onToggleKbAiReadAll,
-  onExportAll,
-  onImport,
+  searchMode,
+  onSetSearchMode,
   chatFontSize = "base",
   onSetFontSize,
   onCustomSaved,
+  customModelOn,
+  onToggleCustomModel,
   allowCustomApi = true,
 }: AgentSettingsProps) {
-  // 自定义模型开关：默认关闭（表单隐藏）；若已配置本地 API 则默认展开
-  const [customOn, setCustomOn] = useState(
-    () => loadCustomModelOn() || hasCustom,
-  );
+  // 自定义模型开关：由 AIChat 统一管理（props 驱动，关闭后不再识别为自定义）；
+  // 未传 props 时回退本地逻辑（兼容旧用法）
+  const customOn = customModelOn ?? (loadCustomModelOn() || hasCustom);
   const toggleCustom = () => {
-    setCustomOn((v) => {
-      const n = !v;
-      saveCustomModelOn(n);
-      return n;
-    });
+    if (onToggleCustomModel) {
+      onToggleCustomModel();
+    } else {
+      saveCustomModelOn(!customOn);
+    }
   };
+  const [dataOpen, setDataOpen] = useState(false);
+  // 高级设置：模型API配置 / 搜索 API 配置 均默认收起，仅高级用户手动展开
+  const [modelApiOpen, setModelApiOpen] = useState(false);
+  const [searchApiOpen, setSearchApiOpen] = useState(false);
+  /** 搜索模式说明文案 */
+  const searchModeDesc =
+    searchMode === "fast"
+      ? "纯本地快速：不联网、不生成文章，直接基于本地知识回答"
+      : searchMode === "deep"
+        ? "深度联网：搜索并生成完整综合文章（View 页面），仅此模式可生成文章"
+        : "适当联网搜索：需要时自动联网搜索快速回答，不生成完整文章";
 
   return (
     <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
@@ -145,40 +146,24 @@ export function SettingsTab({
             ))}
           </div>
         </div>
-        <div className="border-t border-gray-100 dark:border-gray-800" />
-        <Toggle
-          on={ttsOn}
-          onClick={onToggleTts}
-          label="自动朗读回复"
-          sub="AI 回复后自动用语音朗读"
-        />
-        <div className="border-t border-gray-100 dark:border-gray-800" />
-        <div className="flex items-center justify-between gap-3 py-1.5">
-          <span className="min-w-0">
-            <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              网络模式
-            </span>
-            <span className="mt-0.5 block text-[11px] leading-relaxed text-gray-400">
-              {netMode === "auto"
-                ? "Auto：自动调用"
-                : netMode === "search"
-                  ? "Search：联网搜索"
-                  : "View：资料统计"}
-            </span>
-          </span>
-          <div className="flex shrink-0 gap-0.5 rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800">
+      </Section>
+
+      {/* 搜索模式：网络模式 + 搜索速度 + 搜索深度 合并为 Fast/Auto/Deep 单选 */}
+      <Section title="搜索模式">
+        <div className="space-y-1.5">
+          <div className="flex gap-0.5 rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800">
             {(
               [
+                { v: "fast", l: "Fast" },
                 { v: "auto", l: "Auto" },
-                { v: "search", l: "Search" },
-                { v: "view", l: "View" },
-              ] as { v: ChatNetMode; l: string }[]
+                { v: "deep", l: "Deep" },
+              ] as { v: "fast" | "auto" | "deep"; l: string }[]
             ).map((m) => (
               <button
                 key={m.v}
-                onClick={() => onSetNetMode(m.v)}
-                className={`px-2.5 py-1 text-xs font-medium rounded-md transition ${
-                  netMode === m.v
+                onClick={() => onSetSearchMode(m.v)}
+                className={`flex-1 px-2.5 py-1.5 text-xs font-medium rounded-md transition ${
+                  searchMode === m.v
                     ? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100"
                     : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
                 }`}
@@ -187,63 +172,121 @@ export function SettingsTab({
               </button>
             ))}
           </div>
+          <p className="text-[11px] leading-relaxed text-gray-400">
+            {searchModeDesc}
+          </p>
         </div>
-        <div className="border-t border-gray-100 dark:border-gray-800" />
-        <Toggle
-          on={autoKnowledge}
-          onClick={onToggleAutoKnowledge}
-          label="自动学习人格"
-          sub="对话后自动学习，越聊越贴合人设"
-        />
-        <div className="border-t border-gray-100 dark:border-gray-800" />
-        <Toggle
-          on={kbAiReadAll}
-          onClick={() => onToggleKbAiReadAll(!kbAiReadAll)}
-          label="AI 读取知识库"
-          sub="AI 回答自动参考知识库"
-        />
       </Section>
 
-      {/* 自定义模型 */}
-      <Section title="自定义模型">
-        {canManage ? (
-          <p className="rounded-xl bg-gray-50 p-3 text-xs leading-relaxed text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-            当前使用管理员在「AI 管理」中为「{botName}」配置的默认模型，无需在
-            本机填写。
-          </p>
-        ) : !allowCustomApi ? (
-          <p className="rounded-xl bg-gray-50 p-3 text-xs leading-relaxed text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-            管理员已关闭访客自定义模型。
-          </p>
-        ) : (
-          <>
-            <Toggle
-              on={customOn}
-              onClick={toggleCustom}
-              label="使用自定义模型"
-              sub="填入自己的接口/密钥/模型，自动解除次数与冷却限制"
-            />
-            {customOn && (
-              <div className="rounded-xl border border-gray-100 bg-gray-50/50 p-3 dark:border-gray-800 dark:bg-gray-800/40">
-                <p className="mb-2.5 text-[11px] leading-relaxed text-gray-400">
-                  为「{botName}」配置本机模型，仅保存在当前浏览器
+      {/* 高级设置：模型API配置（原自定义模型）+ 搜索 API 配置，均默认收起 */}
+      <Section title="高级设置">
+        {/* 模型API配置：使用自己的接口与密钥（原「自定义模型」并入高级设置） */}
+        <div>
+          <button
+            type="button"
+            onClick={() => setModelApiOpen((v) => !v)}
+            className="flex w-full items-center justify-between py-1 text-left"
+          >
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                模型API配置
+              </span>
+              <span className="mt-0.5 block text-[11px] leading-relaxed text-gray-400">
+                使用自己的接口与密钥
+              </span>
+            </span>
+            <svg
+              className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${modelApiOpen ? "rotate-180" : ""}`}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+          </button>
+          {modelApiOpen && (
+            <div className="space-y-2 pt-1">
+              {canManage ? (
+                <p className="rounded-xl bg-gray-50 p-3 text-xs leading-relaxed text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                  当前使用管理员在「AI 管理」中为「{botName}
+                  」配置的默认模型，无需在 本机填写。
                 </p>
-                <LocalApiForm
-                  pageId={pageId}
-                  variant="inline"
-                  showEnabledHint={hasCustom}
-                  onSaved={onCustomSaved}
-                />
-              </div>
-            )}
-          </>
-        )}
+              ) : !allowCustomApi ? (
+                <p className="rounded-xl bg-gray-50 p-3 text-xs leading-relaxed text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                  管理员已关闭访客自定义模型。
+                </p>
+              ) : (
+                <>
+                  <Toggle
+                    on={customOn}
+                    onClick={toggleCustom}
+                    label="使用自定义模型"
+                  />
+                  {customOn && (
+                    <LocalApiForm
+                      pageId={pageId}
+                      variant="inline"
+                      showEnabledHint={hasCustom}
+                      onSaved={onCustomSaved}
+                    />
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-gray-100 dark:border-gray-800" />
+
+        {/* 搜索 API 配置：自由接入 Tavily/Brave/SearXNG */}
+        <div>
+          <button
+            type="button"
+            onClick={() => setSearchApiOpen((v) => !v)}
+            className="flex w-full items-center justify-between py-1 text-left"
+          >
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                搜索 API 配置
+              </span>
+              <span className="mt-0.5 block text-[11px] leading-relaxed text-gray-400">
+                自由接入第三方搜索平台（Tavily/Brave/SearXNG）
+              </span>
+            </span>
+            <svg
+              className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${searchApiOpen ? "rotate-180" : ""}`}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+          </button>
+          {searchApiOpen && (
+            <div className="space-y-2 pt-1">
+              <SearchApiForm />
+              <p className="text-[11px] leading-relaxed text-gray-400">
+                配置后优先走所选平台，实时获取当天信息；未配置或被拦自动降级。
+              </p>
+            </div>
+          )}
+        </div>
       </Section>
 
-      {/* 会话数据 */}
-      <Section title="会话数据">
+      {/* 数据：导出 / 导入 本机数据（知识库/对话/网页/自定义AI/Live2D） */}
+      <Section title="数据">
         <div className="grid grid-cols-2 gap-2">
-          <button onClick={onExportAll} className={ghostBtn}>
+          <button onClick={() => setDataOpen(true)} className={ghostBtn}>
             <svg
               className="h-4 w-4"
               viewBox="0 0 24 24"
@@ -257,9 +300,9 @@ export function SettingsTab({
                 d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
               />
             </svg>
-            导出全部
+            导出数据
           </button>
-          <button onClick={onImport} className={ghostBtn}>
+          <button onClick={() => setDataOpen(true)} className={ghostBtn}>
             <svg
               className="h-4 w-4"
               viewBox="0 0 24 24"
@@ -273,29 +316,16 @@ export function SettingsTab({
                 d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M7.5 12a4.5 4.5 0 109 0m-4.5-9v13.5"
               />
             </svg>
-            导入会话
+            导入数据
           </button>
         </div>
-      </Section>
-
-      {/* 文档与开源 */}
-      <Section title="文档与开源">
-        <a
-          href="https://github.com/ChanYiCYJ/kimo-frontend"
-          target="_blank"
-          rel="noreferrer"
-          className={ghostBtn}
-        >
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58 0-.29-.01-1.04-.02-2.05-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.21.08 1.85 1.24 1.85 1.24 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.34-5.47-5.95 0-1.31.47-2.39 1.24-3.23-.13-.3-.54-1.53.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 016 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.65.25 2.88.12 3.18.77.84 1.24 1.92 1.24 3.23 0 4.62-2.8 5.64-5.48 5.94.43.37.81 1.1.81 2.22 0 1.6-.01 2.89-.01 3.28 0 .32.21.7.83.58A12.01 12.01 0 0024 12.5C24 5.87 18.63.5 12 .5z" />
-          </svg>
-          GitHub
-        </a>
       </Section>
 
       <p className="pt-1 text-center text-[11px] text-gray-400 dark:text-gray-500">
         AI 生成内容仅供参考
       </p>
+
+      <DataModal open={dataOpen} onClose={() => setDataOpen(false)} />
     </div>
   );
 }

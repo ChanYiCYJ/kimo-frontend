@@ -426,6 +426,11 @@ function MilkdownEditorInner({
     if (!ed || ed.status !== "Created") return;
     try {
       const md = getEditorMarkdown(ed);
+      // 外部 value 是权威：无论内容是否一致都同步 empty。
+      // 修复：empty 原先只靠 markdownUpdated（用户输入/文档变化）更新，
+      // 外部赋值（AI 保存文章 / 切换条目 / 恢复草稿）时 markdownUpdated 可能不触发，
+      // 导致「内容已显示但占位符（在此编辑内容…）仍盖在上面」，看起来像空编辑器。
+      setEmpty(!value.trim());
       if (value.trim() === (md || "").trim()) return;
       setEditorMarkdown(ed, value);
       // 以编辑器实际输出为准，避免 markdown 规范化差异导致误判循环

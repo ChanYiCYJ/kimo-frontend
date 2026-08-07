@@ -13,8 +13,11 @@ import {
   buildLive2dSettings,
   fetchBuildData,
   fetchThirdPartyModel,
+  parseActionCommands,
   type Emotion,
 } from "./live2d";
+// 低性能设备检测：用于降分辨率/限帧率/流式期间暂停渲染等降级策略
+import { isLowPerfDevice } from "./perf";
 
 export type Live2dStatus = "idle" | "loading" | "ready" | "error";
 
@@ -46,6 +49,10 @@ const listeners = new Set<() => void>();
 let animationId = 0;
 let resetTimer: number | null = null;
 let ro: ResizeObserver | null = null;
+/** 低性能设备（进程内缓存）：创建 PIXI 时决定分辨率/抗锯齿/帧率降级 */
+let lowPerf = false;
+/** 主线程繁忙（AI 流式生成）时的渲染暂停标记 */
+let busy = false;
 /** 当前模型真实存在的表情参数集合（getParamIndex 探测），null=未探测 */
 let availableParams: Set<string> | null = null;
 /** 当前模型自带动作名集合（settings.motions 的 key） */
@@ -191,8 +198,9 @@ function fitModel(): void {
   // 水平居中
   model.x = w / 2;
   if (centerVertically) {
-    // 手机沉浸全屏：角色整体垂直居中（避免顶到导航栏/画布顶，人物更居中自然）
-    model.y = h / 2 - baseTopOffset * s;
+    // 手机沉浸全屏：角色主体略偏上居中——底部空间留给浮空对话卡片，
+    // 长回复限高滚动时不再遮挡角色脸部/上半身（底部腿部可被卡片覆盖）
+    model.y = h * 0.42 - baseTopOffset * s;
   } else {
     // 默认：让角色可见区顶部留 ~5% 边距（Live2D 角色头部常贴近画布顶，
     // 垂直居中会在小窗如手机 dock 裁头——故 dock/面板用顶部对齐）
@@ -357,17 +365,29 @@ export async function loadModel(name: string): Promise<void> {
       // 用当前容器尺寸初始化，避免 PIXI 默认 800×600 撑爆窄容器（配合容器 min-w-0/overflow-hidden）
       const cw = attachedEl ? Math.max(1, attachedEl.clientWidth) : 1;
       const ch = attachedEl ? Math.max(1, attachedEl.clientHeight) : 1;
+      // 低性能设备降级：分辨率固定 1x（不跟随 devicePixelRatio）+ 关闭抗锯齿，显著降低 GPU/CPU 负载
+      lowPerf = isLowPerfDevice();
       app = new PIXI.Application({
         view: canvas,
         transparent: true,
-        antialias: true,
+        antialias: !lowPerf,
         autoStart: true,
         width: cw,
         height: ch,
-        resolution: Math.max(1, window.devicePixelRatio || 1),
+        resolution: lowPerf
+          ? 1
+          : Math.min(
+              Math.max(1, window.devicePixelRatio || 1),
+              // 沉浸全屏（centerVertically）钳制 ≤1.5 减 GPU 负载；其余 ≤2x（Retina 足够）
+              centerVertically ? 1.5 : 2,
+            ),
         autoDensity: true,
       });
       app.stage.sortableChildren = true;
+      // 低性能设备限制渲染帧率（30fps 对角色展示足够，减半 GPU 负载）
+      if (lowPerf && app.ticker && typeof app.ticker.maxFPS === "number") {
+        app.ticker.maxFPS = 30;
+      }
       if (attachedEl) attachedEl.appendChild(canvas);
     }
 
@@ -430,6 +450,8 @@ export async function loadModel(name: string): Promise<void> {
     scheduleFit();
     setState({ status: "ready", error: undefined, modelName: clean });
     startAmbient();
+    // 后台预取常用动作文件（降低首次播放动作的网络延迟；低性能设备跳过）
+    prefetchMotions(settings, motionNames);
     if (state.emotion !== "neutral") setEmotion(state.emotion);
   } catch (e) {
     setState({
@@ -551,6 +573,44 @@ function playAmbientMotion(): void {
   } catch {}
 }
 
+/**
+ * 预取常用动作文件（后台预热浏览器缓存，降低首次播放动作的网络延迟）。
+ * 只预取「情绪/环境会用到的」动作；低性能设备跳过（省流量与带宽）。
+ */
+function prefetchMotions(settings: any, names: Set<string> | null): void {
+  try {
+    if (!settings?.motions || lowPerf) return;
+    const want = new Set<string>();
+    for (const arr of Object.values(EMOTION_MOTIONS)) {
+      for (const n of arr) want.add(n);
+    }
+    for (const n of AMBIENT_MOTIONS) want.add(n);
+    const urls: string[] = [];
+    for (const n of want) {
+      if (!names || names.has(n)) {
+        const f = settings.motions[n]?.[0]?.file;
+        if (f && /^https?:\/\//i.test(f)) urls.push(f);
+      }
+    }
+    // 并发 2 条，逐条 fetch 预热 HTTP 缓存（no-cors 只入缓存不影响功能；失败静默）
+    let i = 0;
+    const next = () => {
+      if (i >= urls.length) return;
+      const u = urls[i++];
+      try {
+        fetch(u, { mode: "no-cors" })
+          .catch(() => {})
+          .finally(next);
+      } catch {
+        next();
+      }
+    };
+    for (let k = 0; k < 2 && k < urls.length; k++) next();
+  } catch {
+    /* 预取失败不影响模型 */
+  }
+}
+
 /** 旧模型平滑淡出后销毁（切换角色/重载不突兀）；新模型淡入时两者交叉淡化 */
 function fadeOutOldModel(): void {
   if (fadingModel) {
@@ -601,6 +661,40 @@ function fadeModelIn(m: any): void {
   fadeId = requestAnimationFrame(step);
 }
 
+// ---- 渲染循环集中控制：页面不可见 / 无容器 / 主线程忙时停 ticker（性能优化）----
+// 原先 PIXI ticker 常驻全帧率渲染（切后台/收起面板仍在跑），这里统一收敛：
+// ticker 仅在「有 attach 容器 + 页面可见 + 未 busy」时运行。
+let documentVisible = true;
+let visibilityBound = false;
+
+function syncTicker(): void {
+  if (!app?.ticker) return;
+  const run = !!attachedEl && documentVisible && !busy;
+  try {
+    if (run) app.ticker.start();
+    else app.ticker.stop();
+  } catch {}
+}
+
+/** 绑定页面可见性监听（一次即可）：切后台停渲染/动画，回前台恢复 */
+function bindVisibility(): void {
+  if (visibilityBound) return;
+  visibilityBound = true;
+  document.addEventListener("visibilitychange", () => {
+    documentVisible = document.visibilityState !== "hidden";
+    if (documentVisible) {
+      if (attachedEl) {
+        startAmbient();
+        startGaze();
+      }
+    } else {
+      stopAmbient();
+      stopGaze();
+    }
+    syncTicker();
+  });
+}
+
 // ---- 挂载 / 卸载 ----
 export function attach(container: HTMLElement): void {
   attachedEl = container;
@@ -614,7 +708,10 @@ export function attach(container: HTMLElement): void {
     ro = new ResizeObserver(() => scheduleFit());
     ro.observe(container);
   }
+  bindVisibility();
   startAmbient();
+  startGaze();
+  syncTicker(); // 有容器 + 可见 + 未 busy → 恢复渲染
 }
 
 export function detach(container: HTMLElement): void {
@@ -625,6 +722,25 @@ export function detach(container: HTMLElement): void {
     } catch {}
   }
   stopAmbient();
+  stopGaze();
+  syncTicker(); // 无 attach 容器 → 停 PIXI 渲染，避免白耗 GPU
+}
+
+/**
+ * 主线程繁忙降级（低性能设备在 AI 流式生成期间调用）：
+ * 暂停 PIXI 渲染循环与 ambient 小动作，把主线程让给 React 重渲染；结束后恢复。
+ * 非低性能设备帧率/分辨率足够，一般不调用，调用也无害。
+ */
+export function setLive2dBusy(v: boolean): void {
+  if (busy === v) return;
+  busy = v;
+  if (!app) return;
+  if (v) {
+    stopAmbient();
+  } else if (documentVisible && attachedEl) {
+    startAmbient();
+  }
+  syncTicker();
 }
 
 export function dispose(): void {
@@ -664,6 +780,230 @@ export function dispose(): void {
   if (canvas) {
     canvas = null;
   }
+  stopSpeaking();
+  stopGaze();
+  if (cmdAnimId) cancelAnimationFrame(cmdAnimId);
+  cmdAnimId = 0;
   attachedEl = null;
   setState({ status: "idle", emotion: "neutral", modelName: "" });
+}
+
+// ---- AI 动作指令执行（[PARAM:…] / [MOTION:…] / [EXPRESSION:…]）----
+// 解析由 live2d.ts 的 parseActionCommands 完成；这里只负责执行：
+//   参数 → 平滑插值（独立 cmdAnimId，与表情动画互不打断）
+//   动作 → 播模型自带动作（存在才播）
+//   表情预设 → 切换（模型有才切）
+
+let cmdAnimId = 0;
+
+function paramExists(core: any, id: string): boolean {
+  try {
+    return (
+      typeof core.getParamIndex === "function" && core.getParamIndex(id) >= 0
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** 执行 AI 回复里的动作指令（参数/动作/表情预设），无指令则什么都不做 */
+export function applyActionCommands(text: string): void {
+  const cmds = parseActionCommands(text);
+  if (!cmds.params.length && !cmds.motion && !cmds.expression) return;
+  // 动作：只播模型真实存在的动作
+  if (cmds.motion && motionNames?.has(cmds.motion) && model?.motion) {
+    try {
+      model.motion(cmds.motion).catch(() => {});
+    } catch {}
+  }
+  // 表情预设：pixi-live2d-display 的 model.expression(name)
+  if (cmds.expression && typeof model?.expression === "function") {
+    try {
+      model.expression(cmds.expression).catch(() => {});
+    } catch {}
+  }
+  // 参数：平滑插值到目标值（只作用于真实存在的参数）
+  const core = getCoreModel();
+  if (!core || !cmds.params.length) return;
+  const targets = cmds.params.filter((p) => paramExists(core, p.id));
+  if (!targets.length) return;
+  const from: Record<string, number> = {};
+  for (const p of targets) {
+    try {
+      const v = core.getParamFloat ? core.getParamFloat(p.id) : 0;
+      from[p.id] = typeof v === "number" && Number.isFinite(v) ? v : 0;
+    } catch {
+      from[p.id] = 0;
+    }
+  }
+  const duration = 420;
+  const start = performance.now();
+  if (cmdAnimId) cancelAnimationFrame(cmdAnimId);
+  const step = (now: number) => {
+    const t = Math.min(1, (now - start) / duration);
+    const k = easeInOutCubic(t);
+    for (const p of targets) {
+      const f = from[p.id] ?? 0;
+      try {
+        core.setParamFloat(p.id, f + (p.value - f) * k);
+      } catch {}
+    }
+    if (t < 1) cmdAnimId = requestAnimationFrame(step);
+    else cmdAnimId = 0;
+  };
+  cmdAnimId = requestAnimationFrame(step);
+}
+
+// ---- 口型同步（文本/时长驱动 ParamMouthOpenY，TTS 播放时嘴部跟着动）----
+// 浏览器内置 speechSynthesis 无音频流可分析，故用「时长估算 + 随机音节节奏」驱动：
+//   每 ~180ms 切换一个嘴张目标（0~0.55 随机），平滑逼近 → 有自然说话感。
+// 未来接入真实 TTS URL 音频时，可在 speakAudio(url) 里用 Web Audio API 的 RMS 驱动。
+
+let lipSyncId = 0;
+let lipSyncUntil = 0;
+const MOUTH_PARAM = "ParamMouthOpenY";
+
+/** 估算中文文本说话时长（ms）：每字 ~220ms + 基础 600ms，上限 30s */
+export function estimateSpeakDuration(text: string): number {
+  const len = (text || "").length;
+  if (len <= 0) return 1200;
+  return Math.max(1200, Math.min(30000, len * 220 + 600));
+}
+
+/** 开始口型同步（TTS/朗读开始时调用）；durationMs 缺省按文本估算 */
+export function speakText(text: string, durationMs?: number): void {
+  stopSpeaking();
+  const core = getCoreModel();
+  if (!core || !paramExists(core, MOUTH_PARAM)) return;
+  const dur =
+    durationMs && durationMs > 0
+      ? durationMs
+      : estimateSpeakDuration(text || "");
+  lipSyncUntil = performance.now() + dur;
+  let cur = 0;
+  let target = 0;
+  let lastPick = performance.now();
+  const step = (now: number) => {
+    if (now >= lipSyncUntil) {
+      lipSyncId = 0;
+      try {
+        core.setParamFloat(MOUTH_PARAM, 0);
+      } catch {}
+      return;
+    }
+    // 每 ~180ms 换一个新嘴张目标（模拟音节节奏），平滑逼近 → 自然说话感
+    if (now - lastPick > 180) {
+      lastPick = now;
+      target = Math.random() * 0.55;
+    }
+    cur += (target - cur) * 0.35;
+    try {
+      core.setParamFloat(MOUTH_PARAM, cur);
+    } catch {}
+    lipSyncId = requestAnimationFrame(step);
+  };
+  lipSyncId = requestAnimationFrame(step);
+}
+
+/** 停止口型同步并复位嘴部 */
+export function stopSpeaking(): void {
+  if (lipSyncId) cancelAnimationFrame(lipSyncId);
+  lipSyncId = 0;
+  lipSyncUntil = 0;
+  const core = getCoreModel();
+  if (core) {
+    try {
+      core.setParamFloat(MOUTH_PARAM, 0);
+    } catch {}
+  }
+}
+
+// ---- 鼠标凝视（桌面：角色头部/身体跟随鼠标，更"活"）----
+// 只驱动 ParamAngleX/ParamAngleY（头/身体角度），不碰眼睛（避免与眨眼/表情冲突）。
+// 低性能设备跳过；attach 时绑定容器 mousemove，detach/dispose 解除。
+
+let gazeEl: HTMLElement | null = null;
+let gazeId = 0;
+let gazeTarget = { x: 0, y: 0 };
+let gazeCur = { x: 0, y: 0 };
+let gazeLastMove = 0;
+/** 鼠标静止超过该时长后停止凝视驱动（回正角度，避免持续覆盖动作播放的角度参数） */
+const GAZE_IDLE_MS = 2000;
+
+function onGazeMove(e: MouseEvent): void {
+  const el = attachedEl;
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  const nx = ((e.clientX - r.left) / r.width) * 2 - 1;
+  const ny = ((e.clientY - r.top) / r.height) * 2 - 1;
+  gazeTarget = {
+    x: Math.max(-1, Math.min(1, nx)),
+    y: Math.max(-1, Math.min(1, ny)),
+  };
+  gazeLastMove = performance.now();
+  // 静止期间循环已停 → 鼠标再动时重启
+  if (!gazeId) gazeId = requestAnimationFrame(gazeStep);
+}
+
+function gazeStep(): void {
+  if (performance.now() - gazeLastMove > GAZE_IDLE_MS) {
+    // 静止超时：停止循环并回正（把控制权还给动作播放）
+    gazeId = 0;
+    gazeCur = { x: 0, y: 0 };
+    const core = getCoreModel();
+    if (core) {
+      if (paramExists(core, "ParamAngleX")) {
+        try {
+          core.setParamFloat("ParamAngleX", 0);
+        } catch {}
+      }
+      if (paramExists(core, "ParamAngleY")) {
+        try {
+          core.setParamFloat("ParamAngleY", 0);
+        } catch {}
+      }
+    }
+    return;
+  }
+  gazeId = requestAnimationFrame(gazeStep);
+  const core = getCoreModel();
+  if (!core) return;
+  gazeCur.x += (gazeTarget.x - gazeCur.x) * 0.08;
+  gazeCur.y += (gazeTarget.y - gazeCur.y) * 0.08;
+  if (paramExists(core, "ParamAngleX")) {
+    try {
+      core.setParamFloat("ParamAngleX", gazeCur.x * 18);
+    } catch {}
+  }
+  if (paramExists(core, "ParamAngleY")) {
+    try {
+      core.setParamFloat("ParamAngleY", gazeCur.y * 14);
+    } catch {}
+  }
+}
+
+function startGaze(): void {
+  if (lowPerf) return;
+  if (!attachedEl || gazeEl === attachedEl) return;
+  stopGaze();
+  gazeEl = attachedEl;
+  gazeEl.addEventListener("mousemove", onGazeMove);
+  gazeCur = { x: 0, y: 0 };
+  gazeTarget = { x: 0, y: 0 };
+  gazeLastMove = performance.now();
+  gazeId = requestAnimationFrame(gazeStep);
+}
+
+function stopGaze(): void {
+  if (gazeId) cancelAnimationFrame(gazeId);
+  gazeId = 0;
+  if (gazeEl) {
+    try {
+      gazeEl.removeEventListener("mousemove", onGazeMove);
+    } catch {}
+    gazeEl = null;
+  }
+  gazeTarget = { x: 0, y: 0 };
+  gazeCur = { x: 0, y: 0 };
 }

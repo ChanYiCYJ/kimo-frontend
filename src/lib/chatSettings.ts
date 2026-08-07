@@ -16,9 +16,9 @@ import type { LocalAIConfig } from "./localCfg";
 export type ChatFontSize = "sm" | "base" | "lg";
 
 /**
- * 网络模式：Auto=智能（默认，先按速度回答，AI 缺准确数据时自动升级搜索/文章）、search=网络搜索、view=浏览 Agent（自动生成综合文章）
+ * 网络模式：auto=智能（默认，Fast/Auto 模式用；AI 缺准确数据时自动联网搜索重答，不生成完整文章）、search=深度联网（Deep 模式用；搜索并自动生成综合文章，View 页面仅此模式可调用）
  */
-export type ChatNetMode = "auto" | "search" | "view";
+export type ChatNetMode = "auto" | "search";
 
 export const FONT_SIZES: readonly ChatFontSize[] = ["sm", "base", "lg"];
 
@@ -65,19 +65,48 @@ export function saveChatFontSize(v: ChatFontSize): void {
   lsSet(KEY_FONT_SIZE, v);
 }
 
-// ---- 网络模式（Auto=智能(默认) / search=网络搜索 / view=浏览 Agent，三者互斥）----
+// ---- 网络模式（auto=智能(默认，适当联网搜索重答) / search=深度联网并生成文章，View 仅此模式）----
 export function loadNetMode(): ChatNetMode {
   const v = lsGet(KEY_NET_MODE);
-  if (v === "search" || v === "view" || v === "auto") return v;
-  // 兼容旧值：fast → auto（旧版 Fast=关闭网络，改名后合并为 Auto 智能模式）
+  if (v === "search" || v === "auto") return v;
+  // 兼容旧值：view（浏览 Agent）已整合进 search；fast → auto（旧版 Fast=关闭网络，合并为 Auto 智能模式）
+  if (v === "view") return "search";
   if (v === "fast") return "auto";
-  // 迁移旧 key（无新模式时）：浏览 Agent 显式开启 → view；网络搜索显式开启 → search；否则默认 auto
-  if (lsGet(KEY_BROWSE_AGENT) === "1") return "view";
+  // 迁移旧 key（无新模式时）：浏览 Agent / 网络搜索 任一显式开启 → search；否则默认 auto
+  if (lsGet(KEY_BROWSE_AGENT) === "1") return "search";
   if (lsGet(KEY_WEB_SEARCH) === "1") return "search";
   return "auto";
 }
 export function saveNetMode(mode: ChatNetMode): void {
   lsSet(KEY_NET_MODE, mode);
+}
+
+// ---- 搜索速度（Fast=纯本地快速：不联网不生成文章；默认 standard，仅 Auto/Deep 用）----
+export type ChatSearchSpeed = "fast" | "standard";
+const KEY_SEARCH_SPEED = "kimo_ai_search_speed";
+const SEARCH_SPEEDS: readonly ChatSearchSpeed[] = ["fast", "standard"];
+export function loadSearchSpeed(): ChatSearchSpeed {
+  const v = lsGet(KEY_SEARCH_SPEED);
+  return SEARCH_SPEEDS.includes(v as ChatSearchSpeed)
+    ? (v as ChatSearchSpeed)
+    : "standard";
+}
+export function saveSearchSpeed(v: ChatSearchSpeed): void {
+  lsSet(KEY_SEARCH_SPEED, v);
+}
+
+// ---- 搜索深度（auto=适当联网搜索重答(默认) / deep=深度：搜索并生成完整文章，仅 Deep 模式）----
+export type ChatSearchDepth = "auto" | "deep";
+const KEY_SEARCH_DEPTH = "kimo_ai_search_depth";
+const SEARCH_DEPTHS: readonly ChatSearchDepth[] = ["auto", "deep"];
+export function loadSearchDepth(): ChatSearchDepth {
+  const v = lsGet(KEY_SEARCH_DEPTH);
+  return SEARCH_DEPTHS.includes(v as ChatSearchDepth)
+    ? (v as ChatSearchDepth)
+    : "auto";
+}
+export function saveSearchDepth(v: ChatSearchDepth): void {
+  lsSet(KEY_SEARCH_DEPTH, v);
 }
 
 // ---- 网络搜索（默认关闭，属于 search 模式）----

@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from "react";
 import { createPortal } from "react-dom";
-import type { ChatNetMode } from "../lib/chatSettings";
 
 interface KbNote {
   id: string;
@@ -85,8 +84,9 @@ export function KbPicker({
   selected: string[];
   onToggle: (id: string) => void;
   onInsert: (notes: KbNote[]) => void;
-  mode: ChatNetMode;
-  onModeChange: (mode: ChatNetMode) => void;
+  /** 搜索模式（与设置页「搜索模式」卡片共用同一单选，Fast/Auto/Deep 保持同步） */
+  mode: "fast" | "auto" | "deep";
+  onModeChange: (mode: "fast" | "auto" | "deep") => void;
   /** 「/」按钮 ref：弹窗锚定在按钮上方，避免遮盖聊天框 */
   anchorRef?: React.RefObject<HTMLButtonElement | null>;
   /** Live2D 看板娘开关（默认开启，随对话换表情） */
@@ -167,11 +167,15 @@ export function KbPicker({
     [onToggle, onInsert],
   );
 
-  // 网络模式（说明文字：Auto 自动调用 / Search 联网搜索 / View 资料统计）
-  const modes: { value: ChatNetMode; label: string; desc: string }[] = [
-    { value: "auto", label: "Auto", desc: "自动调用" },
-    { value: "search", label: "Search", desc: "联网搜索" },
-    { value: "view", label: "View", desc: "资料统计" },
+  // 搜索模式（与设置页「搜索模式」卡片同一组选项：Fast/Auto/Deep，desc 为按钮 tooltip）
+  const modes: {
+    value: "fast" | "auto" | "deep";
+    label: string;
+    desc: string;
+  }[] = [
+    { value: "fast", label: "Fast", desc: "本地快速：不联网、不生成文章" },
+    { value: "auto", label: "Auto", desc: "适当联网搜索快速回答，不生成文章" },
+    { value: "deep", label: "Deep", desc: "联网并生成完整文章（仅此模式）" },
   ];
 
   return createPortal(
@@ -190,7 +194,7 @@ export function KbPicker({
       }
     >
       <div className="max-h-[calc(100vh-180px)] overflow-y-auto px-3 pt-3 pb-5">
-        {/* 网络模式：Auto / Search / View 三段互斥切换（已去掉「网络模式」标题字样，desc 为按钮 tooltip） */}
+        {/* 搜索模式：Fast / Auto / Deep 三段互斥切换（与设置页搜索模式卡片同步） */}
         <div className="flex items-center gap-1 rounded-xl bg-gray-100 p-1 dark:bg-gray-800">
           {modes.map((m) => (
             <button

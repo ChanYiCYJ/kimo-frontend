@@ -795,3 +795,74 @@ export async function fetchCharacters(): Promise<unknown> {
   if (!res.ok) throw new Error(`characters HTTP ${res.status}`);
   return res.json();
 }
+
+// ---- AI 动作指令（AI 直接控制 Live2D 参数级动作，绕过客户端情感推断）----
+// AI 回复中可附加：
+//   [PARAM:ParamEyeLOpen:0.8]   参数名:目标值（-1~1，越界自动 clamp）
+//   [MOTION:smile01]             播放模型自带动作（存在才播）
+//   [EXPRESSION:niyaniya01]      切换表情预设（模型有才切换）
+// 支持中文别名：[参数:…] / [动作:…] / [表情预设:…]，方/中文括号均可。
+
+export interface Live2dParamCmd {
+  id: string;
+  value: number;
+}
+export interface Live2dActionCommands {
+  params: Live2dParamCmd[];
+  motion?: string;
+  expression?: string;
+}
+
+const ACTION_TAG_NAMES = "(?:PARAM|参数|MOTION|动作|EXPRESSION|表情预设)";
+
+/** 单条指令正则（[PARAM:ParamEyeLOpen:0.8] 等；值可带小数/负号/空格） */
+const ACTION_CMD_RE = new RegExp(
+  `[\\[【]\\s*(${ACTION_TAG_NAMES})\\s*[:：]\\s*([^\\]】\\n]{1,40}?)\\s*[\\]】]`,
+  "gi",
+);
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+/** 从 AI 回复解析全部动作指令（参数按出现顺序去重保留最后一个；动作/表情取最后一个） */
+export function parseActionCommands(text: string): Live2dActionCommands {
+  const params = new Map<string, number>();
+  let motion: string | undefined;
+  let expression: string | undefined;
+  const t = text || "";
+  ACTION_CMD_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = ACTION_CMD_RE.exec(t)) !== null) {
+    const kind = m[1].toUpperCase();
+    const body = m[2].trim();
+    if (kind === "PARAM" || kind === "参数") {
+      // body 形如 "ParamEyeLOpen:0.8"（冒号分隔 id 与值）
+      const sep = body.search(/[:：]/);
+      if (sep <= 0) continue;
+      const id = body.slice(0, sep).trim();
+      const raw = parseFloat(body.slice(sep + 1).replace(/[^\d.\-]/g, ""));
+      if (!id || !Number.isFinite(raw)) continue;
+      params.set(id, clamp(raw, -1, 1));
+    } else if (kind === "MOTION" || kind === "动作") {
+      if (body) motion = body;
+    } else if (kind === "EXPRESSION" || kind === "表情预设") {
+      if (body) expression = body;
+    }
+  }
+  return {
+    params: [...params.entries()].map(([id, value]) => ({ id, value })),
+    motion,
+    expression,
+  };
+}
+
+/** 剥离显示文本中的动作指令标记（消息展示用，不露出 [PARAM:…] 原始标记） */
+export function stripActionCommands(text: string): string {
+  return (text || "")
+    .replace(
+      /[\[【]\s*(?:PARAM|参数|MOTION|动作|EXPRESSION|表情预设)\s*[:：]\s*[^\]】\n]{1,60}?[\]】]/gi,
+      "",
+    )
+    .trim();
+}

@@ -7,13 +7,27 @@ import type { AIChatConfig, Page } from "../lib/types";
 import { useSite } from "../lib/site";
 import { useTheme } from "../lib/theme";
 import {
-  webSearch,
+  searchBackend,
+  searchAI,
   fetchWebpage,
   searchWithCache,
   readSearchCache,
   writeSearchCache,
   webSearchWithContent,
 } from "../lib/search";
+import { todayStr } from "../lib/searchApi";
+import { searchSegmented } from "../lib/searchPlanner";
+import type { SearchProgress } from "../lib/searchPlanner";
+import {
+  hashMessage,
+  saveFeedbackEntry,
+  loadFeedback,
+  getRating,
+  extractPositivePattern,
+  extractNegativePattern,
+} from "../lib/feedback";
+import { applyFeedbackToSearch } from "../lib/searchPlanner";
+import { detectQueryType, detectQueryLang } from "../lib/search";
 import {
   getKbSelections,
   getKbNotes,
@@ -22,25 +36,29 @@ import {
   saveKbEntry,
   detectKbSaveIntent,
 } from "../lib/kb";
-import { getLocalCfg } from "../lib/localCfg";
+import { getLocalCfg, type LocalAIConfig } from "../lib/localCfg";
 import {
   mergeEffCfg,
   hasLocalApi,
+  lsGet,
+  saveCustomModelOn,
   loadChatFontSize,
   loadNetMode,
   saveNetMode,
-  loadTtsPref,
-  saveTtsPref,
+  loadSearchSpeed,
+  saveSearchSpeed,
+  loadSearchDepth,
+  saveSearchDepth,
   loadMemory,
   saveMemory,
   saveChatFontSize,
   compressMemory,
-  loadAutoKnowledge,
-  saveAutoKnowledge,
   loadPersonaKnowledge,
   savePersonaKnowledge,
   type ChatFontSize,
   type ChatNetMode,
+  type ChatSearchSpeed,
+  type ChatSearchDepth,
 } from "../lib/chatSettings";
 import { LocalApiModal } from "./LocalApiModal";
 import { ArticleComposerModal } from "./ArticleComposerModal";
@@ -52,23 +70,43 @@ import { KbPicker } from "./KbPicker";
 import {
   detectEmotion,
   detectReplyEmotion,
+  characterNameOf,
   LIVE2D_CHARACTERS,
   LIVE2D_MODEL_AUTO,
   loadLive2dModel,
   onAutoPickRequest,
   parseEmotionTag,
+  resolveLive2dModel,
   saveAutoPick,
   stripEmotionTag,
   type Emotion,
 } from "../lib/live2d";
 import {
+  applyActionCommands,
   getState,
   loadModel,
   setEmotion as applyL2dModelEmotion,
+  setLive2dBusy,
+  speakText,
+  stopSpeaking,
+  subscribe,
 } from "../lib/live2dCore";
+import {
+  buildLorePrompt,
+  loadLore,
+  loadLoreToKb,
+  loadPersonaMode,
+  loreSearchQuery,
+  loreToText,
+  saveLore,
+  type Live2dLore,
+  type Live2dLoreDraft,
+  type Live2dPersonaMode,
+} from "../lib/live2dLore";
 import { pickLive2dCharacter } from "../lib/ai";
 import { parseDelta, resolveMaxTokens } from "../lib/providerPresets";
 import type { AgentSettingsProps } from "./SettingsTab";
+import { useToast } from "../lib/toast";
 import { Live2DBackground } from "./Live2DBackground";
 
 interface Message {
@@ -83,6 +121,18 @@ interface Message {
  * 它们由 toolCalls 小卡片承载展示，避免在消息里露出原始标记。
  */
 import { stripToolCmds } from "../lib/toolCmds";
+// 性能优化：低性能设备检测 + 流式更新节流（同一帧/短窗口内合并多次 chunk 更新）
+import {
+  createStreamThrottle,
+  isLowPerfDevice,
+  trackAICall,
+} from "../lib/perf";
+// skill 模块化提示词：每个功能一个独立提示词段，按轮次 just-in-time 组装 system
+import { assembleSystem } from "../lib/skills";
+// 多模型角色路由（单模型时回落 primary，行为不变）
+import { resolveModelRoles, routeModel } from "../lib/modelRouter";
+// auto-knowledge 人格笔记：Mem0 风格实体抽取/去重
+import { mergePersonaNote } from "../lib/persona";
 
 interface Session {
   id: string;
@@ -108,6 +158,387 @@ const MarkdownContent = memo(function MarkdownContent({
     <ReactMarkdown remarkPlugins={[remarkGfm]}>
       {stripToolCmds(content) || fallback}
     </ReactMarkdown>
+  );
+});
+
+/** 工具调用卡片（挂到 AI 消息底部，可点击打开 Agent 面板） */
+interface ChatToolCall {
+  msgIdx: number;
+  type: string;
+  detail: string;
+  tab?: "web" | "kb" | "edit" | "settings";
+  /** 浏览/搜索关键词（点击卡片时传给 Agent 面板触发 AI 搜索） */
+  query?: string;
+  /** 文章后台生成中（卡片显示「生成中…」） */
+  pending?: boolean;
+  /** 所属会话 id（刷新后按会话恢复工具卡历史） */
+  sessionId?: string;
+}
+
+/** 工具卡片类型颜色（模块级常量，避免每次渲染重建） */
+const TOOL_DOT: Record<string, string> = {
+  保存知识库: "bg-emerald-500",
+  编辑知识库: "bg-emerald-500",
+  View: "bg-sky-500",
+  Search: "bg-blue-500",
+  优化文章: "bg-indigo-500",
+  网络资料: "bg-amber-500",
+  编辑文档: "bg-orange-500",
+  打开知识库: "bg-teal-500",
+};
+
+/**
+ * 单条消息（memo 化）：性能优化——
+ * 流式生成/长会话时父组件每次重渲染都会重建整条消息 DOM（头像/附件/工具卡/操作按钮等）。
+ * 抽成 memo 后，仅 content 变化的最后一条消息重渲染，其余消息直接跳过协调；
+ * 同时把工具卡预计算好传入（toolCalls 数组引用稳定），进一步减少父组件的重复过滤开销。
+ * 流式中的最后一条用纯文本渲染（不做 ReactMarkdown/语法高亮），完成后切换完整 Markdown。
+ */
+const MessageItem = memo(function MessageItem({
+  m,
+  index,
+  isStreamingMsg,
+  avatar,
+  botName,
+  fontSizeCls,
+  toolCalls,
+  speakingIdx,
+  onSpeak,
+  onOpenAgent,
+  onToolClick,
+  feedbackRating,
+  onFeedback,
+}: {
+  m: Message;
+  index: number;
+  isStreamingMsg: boolean;
+  avatar?: string;
+  botName: string;
+  fontSizeCls: string;
+  toolCalls: ChatToolCall[];
+  speakingIdx: number;
+  onSpeak: (text: string, idx: number) => void;
+  onOpenAgent: (url: string | undefined) => void;
+  onToolClick: (tc: ChatToolCall) => void;
+  feedbackRating: 0 | 1 | -1;
+  onFeedback: (rating: 1 | -1) => void;
+}) {
+  return (
+    <div
+      className={`group flex animate-[kfade_0.3s_ease-out] gap-3 py-4 ${
+        m.role === "user" ? "justify-end" : ""
+      } sm:py-5`}
+    >
+      {m.role === "assistant" &&
+        (avatar ? (
+          <img
+            src={avatar}
+            alt=""
+            className="mt-0.5 h-8 w-8 shrink-0 rounded-full object-cover"
+          />
+        ) : (
+          <span className="mt-0.5 grid h-8 w-8 shrink-0 place-content-center rounded-full bg-gray-200 text-xs font-bold text-gray-500 dark:bg-gray-800">
+            {botName.slice(0, 2) || "AI"}
+          </span>
+        ))}
+      <div
+        className={`min-w-0 ${m.role === "user" ? `max-w-[85%] rounded-2xl border border-gray-200 bg-gray-100 px-4 py-2.5 leading-relaxed text-gray-800 sm:max-w-[70%] dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 ${fontSizeCls}` : `flex-1 leading-relaxed text-gray-800 dark:text-gray-100 ${fontSizeCls}`}`}
+      >
+        {m.role === "assistant" ? (
+          <div className="chat-md">
+            {isStreamingMsg ? (
+              /* 流式进行中：纯文本渲染（跳过 Markdown 解析/语法高亮），完成后切回 Markdown */
+              <span className="whitespace-pre-wrap">
+                {stripToolCmds(stripEmotionTag(m.content))}
+              </span>
+            ) : (
+              <MarkdownContent
+                content={m.content}
+                fallback={
+                  toolCalls.length
+                    ? `（${toolCalls[0].type}：${toolCalls[0].detail}）`
+                    : ""
+                }
+              />
+            )}
+          </div>
+        ) : (
+          <>
+            {m.attachments && m.attachments.length > 0 && (
+              <div className="mb-1.5 flex flex-wrap gap-1.5">
+                {m.attachments.map((a) => (
+                  <span
+                    key={a.id}
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                    title={a.content.slice(0, 200)}
+                  >
+                    <svg
+                      className="h-3.5 w-3.5 shrink-0"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"
+                      />
+                    </svg>
+                    <span className="truncate">{a.title}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+            <span className="whitespace-pre-wrap">{m.content}</span>
+          </>
+        )}
+        {/* 工具调用小卡片：可点击（带箭头 + 按压反馈），不可点击则平淡 */}
+        {/* 手机适配：flex-nowrap + 横向滚动，多张卡片不换行挤占空间（缩成一行滚动查看） */}
+        {toolCalls.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1.5 max-sm:flex-nowrap max-sm:overflow-x-auto no-scrollbar">
+            {toolCalls.map((tc, j) => (
+              <button
+                key={j}
+                onClick={() => onToolClick(tc)}
+                title={tc.tab ? "点击打开 Agent 面板" : undefined}
+                className={`group inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs transition max-sm:shrink-0 max-sm:max-w-[70%] max-sm:px-2 max-sm:py-1 ${
+                  tc.tab
+                    ? "cursor-pointer border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50/50 hover:text-blue-600 active:scale-95 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-blue-700 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
+                    : "cursor-default border-gray-100 bg-gray-50 text-gray-400 dark:border-gray-800 dark:bg-gray-800/40 dark:text-gray-500"
+                }`}
+              >
+                <span
+                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${TOOL_DOT[tc.type] || "bg-gray-400"}`}
+                />
+                <span className="shrink-0 font-medium">{tc.type}</span>
+                {tc.pending ? (
+                  <span className="flex shrink-0 items-center gap-1 text-gray-400 dark:text-gray-500">
+                    <svg
+                      className="h-3 w-3 animate-spin"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                      />
+                    </svg>
+                    生成中…
+                  </span>
+                ) : (
+                  <span className="min-w-0 truncate text-gray-400 dark:text-gray-500">
+                    {tc.detail}
+                  </span>
+                )}
+                {tc.tab && (
+                  <svg
+                    className="h-3.5 w-3.5 shrink-0 text-gray-300 transition group-hover:text-blue-500 dark:text-gray-600"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M9 5l7 7-7 7"
+                    />
+                  </svg>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {m.role === "assistant" && (
+          <div
+            className={`mt-1 flex items-center gap-1 opacity-0 transition group-hover:opacity-100 ${speakingIdx === index ? "opacity-100" : ""}`}
+          >
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(m.content).catch(() => {});
+              }}
+              className="rounded-md p-1 text-gray-400 transition hover:text-gray-600 dark:hover:text-gray-300"
+              title="复制回复"
+            >
+              <svg
+                className="h-3.5 w-3.5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                />
+              </svg>
+            </button>
+            <button
+              onClick={() => onSpeak(m.content, index)}
+              className={`rounded-md p-1 transition ${speakingIdx === index ? "text-blue-600 dark:text-blue-400" : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"}`}
+              title="朗读"
+            >
+              <svg
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z"
+                />
+              </svg>
+            </button>
+            <button
+              onClick={() => {
+                const urls = m.content.match(
+                  /https?:\/\/[^\s<>"{}|\\^`\[\]]+/g,
+                );
+                onOpenAgent(urls?.[0]);
+              }}
+              className="rounded-md p-1 text-gray-400 transition hover:text-blue-600 dark:hover:text-blue-400"
+              title="在 Agent 中打开"
+            >
+              <svg
+                className="h-3.5 w-3.5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21"
+                />
+              </svg>
+            </button>
+            {/* 满意度反馈 */}
+            <span className="mx-0.5 h-4 w-px bg-gray-200 dark:bg-gray-700" />
+            <button
+              onClick={() => onFeedback(1)}
+              className={`rounded-md p-1 transition ${
+                feedbackRating === 1
+                  ? "text-gray-700 dark:text-gray-300"
+                  : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              }`}
+              title="满意"
+            >
+              <svg
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" />
+              </svg>
+            </button>
+            <button
+              onClick={() => onFeedback(-1)}
+              className={`rounded-md p-1 transition ${
+                feedbackRating === -1
+                  ? "text-gray-700 dark:text-gray-300"
+                  : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              }`}
+              title="不满意"
+            >
+              <svg
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3H10zM17 2h3a2 2 0 012 2v7a2 2 0 01-2 2h-3" />
+              </svg>
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+
+/** auto 模式搜索结果卡：搜索后把资料直接显示在对话中（简洁、可点击、无 emoji、不展开） */
+const SearchResultsCard = memo(function SearchResultsCard({
+  results,
+}: {
+  results: { title: string; url: string; source: string }[];
+}) {
+  const items = results.map((r) => {
+    let host = r.source || "";
+    if (!host) {
+      try {
+        host = new URL(r.url).hostname.replace(/^www\./i, "");
+      } catch {
+        host = r.url;
+      }
+    }
+    return { ...r, host };
+  });
+  return (
+    <div className="mt-2 flex gap-3">
+      <span className="mt-0.5 h-8 w-8 shrink-0" />
+      <div className="min-w-0 flex-1 overflow-hidden rounded-2xl border border-gray-200 bg-white/80 dark:border-gray-700 dark:bg-gray-800/80">
+        <p className="border-b border-gray-100 px-3 py-2 text-[11px] font-medium text-gray-400 dark:border-gray-700 dark:text-gray-500">
+          已搜索到 {items.length} 条资料
+        </p>
+        <div className="divide-y divide-gray-100 dark:divide-gray-700">
+          {items.map((r, i) => (
+            <a
+              key={i}
+              href={r.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2.5 px-3 py-2 transition hover:bg-gray-50 dark:hover:bg-gray-700/50"
+            >
+              <span className="grid h-5 w-5 shrink-0 place-content-center rounded-md bg-gray-100 text-[10px] font-semibold text-gray-500 dark:bg-gray-700 dark:text-gray-300">
+                {(r.host || "网").slice(0, 2).toUpperCase()}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-xs text-gray-700 dark:text-gray-200">
+                {r.title || r.url}
+              </span>
+              <span className="max-w-[35%] shrink-0 truncate text-[10px] text-gray-400 dark:text-gray-500">
+                {r.host}
+              </span>
+              <svg
+                className="h-3 w-3 shrink-0 text-gray-400 dark:text-gray-500"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M7 17L17 7M9 7h8v8"
+                />
+              </svg>
+            </a>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 });
 
@@ -175,6 +606,104 @@ function clamp(text: string, max: number): string {
 const AGENT_STATE_KEY = (pageId: number) => `kimo_ai_agent_state_${pageId}`;
 /** 各会话最近生成的 View 文章话题持久化 key */
 const VIEW_TOPIC_KEY = (pageId: number) => `kimo_ai_viewtopic_${pageId}`;
+/** 各会话最近生成的 View 文章简介持久化 key（AI 记忆用，避免每次对话重读整篇文章） */
+const VIEW_INTRO_KEY = (pageId: number) => `kimo_view_intro_${pageId}`;
+
+/** 判断用户消息是否与当前 View 文章相关（决定是否注入整篇全文 —— token 优化） */
+function viewArticleRelevant(userMsg: string, topic: string): boolean {
+  const t = userMsg || "";
+  if (
+    /文章|总结|优化|修改|精简|改|上文|这篇|那篇|内容|继续|展开|详细|推荐|介绍|讲讲|说说|作品|资料|补充|哪几部|列表|清单|整理/.test(
+      t,
+    )
+  )
+    return true;
+  // 话题任意 ≥2 字片段命中（跳过通用词，避免误判）：如话题「2026年7月新番」→ 用户说「新番」命中
+  const tk = (topic || "").replace(/[，。、；：""''（）()·\-—\s]+/g, "");
+  const stop = new Set([
+    "今天",
+    "昨天",
+    "最新",
+    "今年",
+    "什么",
+    "怎么",
+    "还有",
+    "那个",
+    "这个",
+    "关于",
+    "一个",
+    "一下",
+    "2026",
+    "2025",
+    "推荐",
+    "介绍",
+  ]);
+  for (let i = 0; i + 2 <= tk.length; i++) {
+    const seg = tk.slice(i, i + 2);
+    if (stop.has(seg) || /^[\d]+$/.test(seg)) continue;
+    if (t.includes(seg)) return true;
+  }
+  return false;
+}
+
+/**
+ * View 文章生成完整后，AI 以「角色人格」提炼一段简短介绍（供聊天展示 + 记忆注入）。
+ * persona 传角色人格（role 档案 buildLorePrompt 或系统提示词），让简介像角色本人说话，
+ * 而非千篇一律的"已为你整理好…"。失败返回空串（不阻塞浏览流程）。
+ */
+async function deriveViewIntro(
+  cfg: AIChatConfig,
+  topic: string,
+  article: string,
+  persona: string,
+): Promise<string> {
+  try {
+    const body = () =>
+      JSON.stringify({
+        model: cfg.model,
+        messages: [
+          {
+            role: "system",
+            content:
+              (persona ? persona + "\n\n" : "") +
+              "今天是 " +
+              todayStr() +
+              "。你刚帮用户查到了关于「" +
+              topic +
+              "」的资料（综合研究文章，含多语言来源资料）。请以**你自己的性格与语气**（平时怎么跟用户聊天就怎么说），用 1-3 句简短自然地向用户介绍查到的核心内容与亮点（涉及具体数据/日期/来源站名时保留并注明）。要求：像角色本人说话，有辨识度；不要输出 Markdown 标题；不要出现「已为你整理好/简介如下/文章生成/完整文章请看面板」这类说明性套话；不要用 📋 等 emoji 前缀；不要附 [表情:] 或任何工具指令。",
+          },
+          { role: "user", content: clamp(article, 3000) },
+        ],
+        temperature: 0.7,
+        // 推理模型会先消耗 reasoning token，按模型调大避免 content 为空
+        max_tokens: resolveMaxTokens(cfg.model, 400),
+        stream: false,
+      });
+    const fetchOnce = async () => {
+      const res = await fetch(
+        cfg.endpoint.replace(/\/+$/, "") + "/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${cfg.apiKey}`,
+          },
+          body: body(),
+        },
+      );
+      if (!res.ok) return "";
+      const j = (await res.json()) as {
+        choices?: { message?: { content?: string } }[];
+      };
+      return String(j?.choices?.[0]?.message?.content || "").trim();
+    };
+    let raw = await fetchOnce();
+    if (!raw) raw = await fetchOnce();
+    return stripToolCmds(raw).replace(/\s+/g, " ").slice(0, 300);
+  } catch {
+    return "";
+  }
+}
 
 async function streamChat(
   cfg: AIChatConfig,
@@ -188,50 +717,36 @@ async function streamChat(
   webTools = true,
   browseMode = false,
   viewArticle = "",
+  viewIntro = "",
   personaKnowledge = "",
   autoMode = false,
+  fastMode = false,
+  lorePrompt = "",
+  pureRole = false,
+  l2dEnabled = false,
 ) {
-  // Token 优化：注入的上下文统一截断上限，控制单次请求 token 消耗
-  const capKnowledge = clamp(knowledge, 6000);
-  const capMemory = clamp(memory, 2000);
-  const capPersona = clamp(personaKnowledge, 2000);
-  const capSummary = clamp(summary, 1500);
-  const capWeb = clamp(web, 6000);
-  const capView = clamp(viewArticle, 5000);
-  const sys =
-    (capKnowledge
-      ? `【重要】你必须优先基于以下用户知识库回答。如果知识库有相关信息，请以此为权威来源：\n${capKnowledge}\n\n---\n\n`
-      : "") +
-    (cfg.systemPrompt || "") +
-    (capMemory
-      ? `\n\n以下是过往对话中学习到的用户偏好与经验，请据此优化你的回答：\n${capMemory}`
-      : "") +
-    (capPersona
-      ? `\n\n【auto-knowledge 人格笔记】以下是你越聊越懂用户、越贴合人设的自动学习笔记（每条为一段对话后提炼）。请自然地融入你的性格与回答，不要提及这些笔记本身：\n${capPersona}`
-      : "") +
-    (capSummary ? `\n\n对话上下文摘要：\n${capSummary}` : "") +
-    (capWeb
-      ? `\n\n以下是来自网络的最新搜索结果，请基于它们回答（并在适当时注明来源）：\n${capWeb}`
-      : "") +
-    (capView
-      ? `\n\n【当前浏览文章】以下是 View 面板中当前生成的综合文章，用户可能会基于它继续提问、总结或要求优化。请以它为事实基础作答；**当用户要求修改/优化这篇文章时，直接输出修改后的完整文章并用 [VIEW:内容] 括起（不要用 [EDIT:]），我会更新 View 面板中的文章**。\n${capView}`
-      : "") +
-    (autoMode
-      ? `\n\n【智能模式 Auto】当前为智能模式：默认直接基于你的知识快速、简洁地回答（不需要联网就绝不联网）。但如果你对用户的问题**没有准确、可靠或最新的数据**，必须主动升级，二选一：
-① 需要实时/最新资讯，或只需简单事实核查 → 先输出 1-2 句中文说明，然后附上 [SEARCH:关键词]（简短关键词即可），我会联网搜索并让你基于结果准确回答；
-② 问题适合生成一篇**完整的综合文章**（介绍/盘点/攻略/评测等长篇内容）→ **先输出 1-2 句中文说明并询问用户是否要生成**（如“要我为你整理一篇关于 X 的完整文章吗？”），**不要立即附 [VIEW:]**；等用户明确同意/要求生成后，下一条回复再附 [VIEW:关键词]（简短关键词即可，**不要**输出整篇文章）来生成综合文章。若用户一开始就已明确要求“生成/写一篇 X 文章”，则直接附 [VIEW:关键词]。
-判断原则：能直接回答就回答（快）；拿不准/信息过时/不熟悉才升级。不要为了联网而联网。`
-      : "") +
-    (browseMode
-      ? `\n\n【联网浏览模式】当前已开启「view」，详细内容由 view 生成文章，你只需简短引导。规则：当用户提问需要查询外部/最新/不熟悉的信息时，只允许输出 1-2 句简短的中文说明（不超过 50 字），然后必须附上 [SEARCH:关键词]；严禁自行展开成长篇回答，详细内容一律交给 view 生成。**这 1-2 句说明请严格保持你一贯的语气与性格（按你的系统人设来回应，自然、有辨识度），不要用生硬的套话。**若问题不需要联网（寒暄、写代码、简单常识等），正常按你的风格简短回答即可。`
-      : "") +
-    `\n\n工具使用说明：${webTools ? "当用户询问实时动态、最新资讯、或不熟悉的时效性信息时，请主动联网搜索并回复 [SEARCH:关键词]（直接给出简洁关键词，不要构造或浏览搜索引擎 URL）；当用户明确给出某个网页链接并要求获取其内容时，回复 [BROWSE:url]；" : ""}当需要帮你写作文档或编辑内容时，用 [EDIT:内容] 括起完整内容（必须用 ] 闭合，且编辑内容之后不要再追加其他文字）；当需要更新当前浏览文章（View 面板中的文章）时，用 [VIEW:修改后的完整文章] 括起。
-
-【知识库操作（重要，务必遵循）】用户用「帮我记/记一下/保存到知识库/存入知识库/整理要点/记笔记/沉淀知识/收藏这段」等表达时，你**必须**把内容保存进知识库，用 [KB-SAVE:标题]内容[/KB-SAVE]（标题要简短概括，内容是完整要点；同名标题会更新，不要新建重复条目）；用户要求「修改/更新知识库里的 xxx」时，用 [KB-EDIT:标题]新内容[/KB-EDIT]（按标题匹配改写）；用户需要「查看/整理/用到知识库」时，回复 [KB:说明]（会自动打开知识库面板）。注意：以上三个指令都**必须写完整闭合标签**，保存/编辑内容要紧跟在标题后，否则无法识别。
-
-重要：使用任何工具指令时，必须先输出一两句面向用户的中文说明文字（如"好的，我帮你记一下"），再附上工具指令，禁止只输出工具标记。一次只回复一个工具指令。
-
-【Live2D 角色】你现在以一个 Live2D 角色（对话界面旁显示的虚拟形象）的身份与用户对话，让这个形象配合你的情绪。思考/组织语言时形象会自动显示"思考"；**每次回复时请在回复最末尾附一个表情标记 [表情:名称]**，名称只能是：平静/开心/难过/生气/惊讶/害羞/思考/困倦/眨眼。例如：开心地回应 → [表情:开心]；安慰难过的用户 → [表情:难过] 或 [表情:平静]；被夸奖而害羞 → [表情:害羞]；遇到惊讶的事 → [表情:惊讶]。标记必须放在末尾、不要影响正文。`;
+  // skill 模块化：按轮次上下文与开关「just-in-time」组装 system 提示词。
+  // 每个功能一个独立 skill 段（搜索/知识库/View/人格/记忆/Live2D），只注入相关段，
+  // 减少「多 skill 拼一条」造成的混乱与 token 浪费（参考 Anthropic context engineering）。
+  // 上下文段各自 clamp（可压缩段），指令段不 clamp（保留段）；Live2D 段仅开启时注入。
+  const sys = assembleSystem({
+    knowledge,
+    memory,
+    personaKnowledge,
+    summary,
+    web,
+    viewArticle,
+    viewIntro,
+    lorePrompt,
+    systemPrompt: cfg.systemPrompt,
+    pureRole,
+    webTools,
+    browseMode,
+    autoMode,
+    fastMode,
+    l2dEnabled,
+  });
+  const t0 = performance.now();
   const res = await fetch(
     cfg.endpoint.replace(/\/+$/, "") + "/chat/completions",
     {
@@ -314,6 +829,14 @@ async function streamChat(
       } catch {}
     }
   }
+  // 埋点：记录 system 字符数（≈token）与耗时，供优化前后对比（不影响功能）
+  trackAICall({
+    task: "chat",
+    model: cfg.model,
+    sysChars: sys.length,
+    ms: Math.round(performance.now() - t0),
+    ts: Date.now(),
+  });
   return { content: full };
 }
 
@@ -340,6 +863,7 @@ async function deriveSearchKeyword(
   msgs: Message[],
 ): Promise<string> {
   try {
+    const t0 = performance.now();
     const convo = msgs
       .slice(-5)
       .map(
@@ -351,7 +875,9 @@ async function deriveSearchKeyword(
       .join("\n");
     if (!convo.trim()) return "";
     const sys =
-      "你是搜索关键词提取器。根据下面这段对话，提炼 1 个最合适的网络搜索关键词（中文或英文，5-20 字，可直接用于搜索引擎）。只输出关键词本身，不要引号、不要解释、不要换行。";
+      "你是搜索关键词提取器。今天是 " +
+      todayStr() +
+      "。根据下面这段对话，提炼 1 个最合适的网络搜索关键词，**必须多语言混合**：保留用户原语言关键词 + 空格 + 英文翻译（整体 5-40 字，可直接用于搜索引擎）；若话题涉及日本动漫/新番/日文资料，再附日文关键词；涉及韩国内容附韩文。示例：中文「2026年7月新番」→「2026年7月新番 anime summer 2026 夏アニメ」；日文「2026年夏アニメ」→「2026年夏アニメ 一覧 anime summer 2026 2026年7月新番」；英文「summer anime lineup」→「2026 summer anime lineup 2026年7月新番 夏アニメ」。这样中英日多语源都能命中；若涉及近期/最新事件，关键词里带上日期如 2026年8月。只输出关键词本身，不要引号、不要解释、不要换行。";
     const body = () =>
       JSON.stringify({
         model: cfg.model,
@@ -386,6 +912,13 @@ async function deriveSearchKeyword(
     let raw = await fetchOnce();
     if (!raw) raw = await fetchOnce();
     const kw = raw.replace(/["'“”]/g, "").replace(/\n+/g, " ");
+    trackAICall({
+      task: "deriveKeyword",
+      model: cfg.model,
+      sysChars: sys.length,
+      ms: Math.round(performance.now() - t0),
+      ts: Date.now(),
+    });
     return kw.slice(0, 40);
   } catch {
     return "";
@@ -402,6 +935,7 @@ async function derivePersonaKnowledge(
   currentKnowledge: string,
 ): Promise<{ note: string; keyword: string }> {
   try {
+    const t0 = performance.now();
     const convo = msgs
       .slice(-6)
       .map(
@@ -476,10 +1010,141 @@ async function derivePersonaKnowledge(
       .replace(/\n+/g, " ")
       .trim();
     const kw = kwRaw && kwRaw !== "无" ? kwRaw.slice(0, 40) : "";
+    trackAICall({
+      task: "personaNote",
+      model: cfg.model,
+      sysChars: sys.length,
+      ms: Math.round(performance.now() - t0),
+      ts: Date.now(),
+    });
     return { note, keyword: kw };
   } catch {
     return { note: "", keyword: "" };
   }
+}
+
+/**
+ * Live2D 角色设定：根据（可空的）网络资料 + AI 既有知识，生成「人物世界观·人格档案」。
+ * 只输出 JSON（world/personality/tone/background/likes/relations/notes），失败返回 null。
+ */
+/**
+ * Live2D 角色设定：分项生成「人物世界观·人格档案」。
+ * 为避免一次生成敷衍，按维度分开调用 AI：①世界观与性格 ②人物资料（背景/喜好） ③朋友与重要关系 ④资料要点。
+ * 每维度独立 JSON 输出、独立容错（失败返回空字段），合并后整体校验。
+ */
+async function deriveLive2dLore(
+  cfg: AIChatConfig,
+  name: string,
+  webText: string,
+): Promise<Live2dLoreDraft | null> {
+  const slice = (s: string, n = 320) => (s || "").trim().slice(0, n);
+  const baseUser = webText
+    ? `角色：${name}\n\n===== 网络资料 =====\n${clamp(webText, 6000)}\n===== 资料结束 =====`
+    : `角色：${name}\n\n（未搜索到网络资料，请基于你的既有认知整理。）`;
+
+  /** 单次分项调用：返回 JSON 字段，失败返回 null（内部重试一次） */
+  const gen = async (
+    system: string,
+  ): Promise<Record<string, string> | null> => {
+    const body = () =>
+      JSON.stringify({
+        model: cfg.model,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: baseUser },
+        ],
+        temperature: 0.6,
+        // 推理模型会先消耗 reasoning token，按模型调大避免 content 为空
+        max_tokens: resolveMaxTokens(cfg.model, 1200),
+        stream: false,
+      });
+    const fetchOnce = async () => {
+      const res = await fetch(
+        cfg.endpoint.replace(/\/+$/, "") + "/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${cfg.apiKey}`,
+          },
+          body: body(),
+        },
+      );
+      if (!res.ok) return "";
+      const j = (await res.json()) as {
+        choices?: { message?: { content?: string } }[];
+      };
+      return String(j?.choices?.[0]?.message?.content || "").trim();
+    };
+    let raw = await fetchOnce();
+    if (!raw) raw = await fetchOnce();
+    // 容错：剥掉 ```json ... ``` 包裹（AI 偶尔会包一层代码块）
+    raw = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    if (start < 0 || end <= start) return null;
+    try {
+      const j = JSON.parse(raw.slice(start, end + 1)) as Record<
+        string,
+        unknown
+      >;
+      const out: Record<string, string> = {};
+      for (const k of Object.keys(j)) out[k] = String(j[k] ?? "").trim();
+      return out;
+    } catch {
+      return null;
+    }
+  };
+
+  // 分项并行生成（分开生成更完整，避免一次生成敷衍）
+  const head =
+    "你是角色资料整理引擎。请深度思考，结合网络资料（可能为空则依赖你对这个角色的既有认知）、官方设定与剧情细节，从多角度深入挖掘，专注整理角色的【";
+  const tail =
+    "】。只输出一个 JSON 对象（不要多余文字、不要 markdown 代码块），中文，客观克制，不要露骨或编造明显违背作品设定的内容。";
+  const [core, profile, rels, notesGen] = await Promise.all([
+    gen(
+      head +
+        "世界观与性格" +
+        tail +
+        " 字段：world（世界观，角色所在作品/世界的背景，40-180 字）、personality（性格，40-180 字）、tone（语气/说话风格，20-120 字）",
+    ),
+    gen(
+      head +
+        "人物资料" +
+        tail +
+        " 字段：background（背景故事/经历，40-200 字）、likes（喜好与擅长，40-160 字）",
+    ),
+    gen(
+      head +
+        "朋友与重要关系" +
+        tail +
+        " 字段：relations（重要关系/同伴/家人，列出具体名字与关系，越具体越好，40-220 字）",
+    ),
+    gen(
+      head +
+        "资料要点" +
+        tail +
+        " 字段：notes（把网络资料中的关键事实浓缩成 2-4 条，各条用分号分隔；若无资料写空字符串）",
+    ),
+  ]);
+
+  const draft: Live2dLoreDraft = {
+    world: slice(core?.world ?? ""),
+    personality: slice(core?.personality ?? ""),
+    tone: slice(core?.tone ?? ""),
+    background: slice(profile?.background ?? ""),
+    likes: slice(profile?.likes ?? ""),
+    relations: slice(rels?.relations ?? ""),
+    notes: slice(notesGen?.notes ?? "", 500),
+  };
+  if (
+    !draft.world &&
+    !draft.personality &&
+    !draft.background &&
+    !draft.relations
+  )
+    return null;
+  return draft;
 }
 
 export function AIChat({
@@ -493,6 +1158,7 @@ export function AIChat({
   enableCustomApi,
 }: AIChatProps) {
   const { settings } = useSite();
+  const { toast } = useToast();
   const { mode: themeMode, setMode: setThemeMode } = useTheme();
   const [sessions, setSessions] = useState<Session[]>(() => {
     try {
@@ -509,6 +1175,22 @@ export function AIChat({
   const [activeId, setActiveId] = useState<string>(() => sessions[0]?.id || "");
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  /**
+   * 流式进行中标记：用于「流式期间最后一条消息走轻量纯文本渲染，完成后切回 Markdown」，
+   * 避免每条 stream chunk 触发 ReactMarkdown 解析 + 语法高亮拖垮低端设备。
+   */
+  const [streaming, setStreaming] = useState(false);
+  /** 流式生命周期：开启时标记 streaming（最后一条走纯文本渲染）并在低性能设备上暂挂 Live2D 渲染，
+   *  结束/失败/中止时恢复，避免生成期间 Live2D 与 React 重渲染在主线程抢资源 */
+  const beginStreaming = useCallback(() => {
+    setStreaming(true);
+    setImmersiveExpand(false);
+    if (isLowPerfDevice()) setLive2dBusy(true);
+  }, []);
+  const endStreaming = useCallback(() => {
+    setStreaming(false);
+    if (isLowPerfDevice()) setLive2dBusy(false);
+  }, []);
   const [cooldown, setCooldown] = useState(() => {
     try {
       const end = Number(
@@ -529,6 +1211,21 @@ export function AIChat({
     }
   });
   const [localCfg, setLocalCfg] = useState(() => getLocalCfg(pageId));
+  // 自定义模型开关：关闭后不再识别为自定义（本地配置保留，重新开启即恢复）
+  const [customModelOn, setCustomModelOn] = useState(() => {
+    // 显式关闭("0")必须尊重用户选择；"1"=开启；从未设置过则按旧数据迁移（已配置本地 API 视为开启）
+    const raw = lsGet("kimo_ai_custom_model");
+    if (raw === "0") return false;
+    if (raw === "1") return true;
+    return hasLocalApi(getLocalCfg(pageId));
+  });
+  const toggleCustomModel = useCallback(() => {
+    setCustomModelOn((v) => {
+      const n = !v;
+      saveCustomModelOn(n);
+      return n;
+    });
+  }, []);
   const [apiModalOpen, setApiModalOpen] = useState(false);
   const [articleOpen, setArticleOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(() => {
@@ -599,6 +1296,8 @@ export function AIChat({
   const live2dImmersive = l2dEnabled && !agentOpen && isMobile;
   /** 手机沉浸：输入框聚焦（键盘弹出）时减少底部安全区留白，避免对话栏下方出现大块空白 */
   const [inputFocused, setInputFocused] = useState(false);
+  /** 手机沉浸：长回复默认限高滚动（避免遮挡 Live2D 角色），点击「展开全文」查看完整内容 */
+  const [immersiveExpand, setImmersiveExpand] = useState(false);
   const toggleLive2d = useCallback(() => {
     setLive2dOn((prev) => {
       const next = !prev;
@@ -636,7 +1335,7 @@ export function AIChat({
       )
         return s.tab;
     } catch {}
-    return "kb";
+    return "live2d";
   });
   const [agentEditContent, setAgentEditContent] = useState<string | undefined>(
     () => {
@@ -697,6 +1396,33 @@ export function AIChat({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId, pageId]);
+  /** 当前会话 View 文章简介（生成完整后由 AI 提炼并记忆，后续对话引用省 token） */
+  const [viewIntro, setViewIntro] = useState("");
+  const saveViewIntro = useCallback(
+    (sid: string, topic: string, intro: string) => {
+      try {
+        const m = JSON.parse(
+          localStorage.getItem(VIEW_INTRO_KEY(pageId)) || "{}",
+        );
+        m[sid] = { topic, intro, time: Date.now() };
+        localStorage.setItem(VIEW_INTRO_KEY(pageId), JSON.stringify(m));
+      } catch {}
+    },
+    [pageId],
+  );
+  // viewIntro 按会话 + 话题恢复：切换会话/话题变更时同步（话题不匹配则不注入旧简介）
+  useEffect(() => {
+    try {
+      const m = JSON.parse(
+        localStorage.getItem(VIEW_INTRO_KEY(pageId)) || "{}",
+      );
+      const e = m[activeId];
+      setViewIntro(e && e.topic === viewTopic ? String(e.intro || "") : "");
+    } catch {
+      setViewIntro("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, pageId, viewTopic]);
   const [agentKbOpen, setAgentKbOpen] = useState<
     | {
         nonce: number;
@@ -719,6 +1445,12 @@ export function AIChat({
   });
   const [attachedFile, setAttachedFile] = useState("");
   const [searching, setSearching] = useState(false);
+  /** 分段搜索进度（阶段文字 + 子查询进度） */
+  const [searchPlan, setSearchPlan] = useState<SearchProgress | null>(null);
+  /** 当前轮次在对话中展示的搜索结果（auto 模式结果块） */
+  const [dialogResults, setDialogResults] = useState<
+    { title: string; url: string; source: string }[]
+  >([]);
   const [kbText, setKbText] = useState("");
   const [chatFontSize, setChatFontSize] = useState<ChatFontSize>(() =>
     loadChatFontSize(),
@@ -729,37 +1461,55 @@ export function AIChat({
       : chatFontSize === "lg"
         ? "text-lg"
         : "text-[15px]";
-  /** 网络模式：Auto(智能,默认,先按速度回答，缺准确数据自动升级) / search(网络搜索) / view(浏览 Agent，自动生成综合文章)，三者互斥 */
+  /** 网络模式：Auto(智能,默认,先按速度回答，缺准确数据自动升级) / search(联网搜索并自动生成综合文章；原 view 已整合进 search) */
   const [netMode, setNetMode] = useState<ChatNetMode>(() => loadNetMode());
-  const autoMode = netMode === "auto";
-  const webSearchOn = netMode === "search";
-  const browseAgentOn = netMode === "view";
+  const browseAgentOn = netMode === "search"; // 仅 Deep 模式（netMode=search）：搜索并生成综合文章，View 页面仅此模式可调用
   const changeNetMode = useCallback((mode: ChatNetMode) => {
     setNetMode(mode);
     saveNetMode(mode);
   }, []);
-  /** auto-knowledge：对话后自动学习人格笔记，越聊越贴合人设（默认开） */
-  const [autoKnowledge, setAutoKnowledge] = useState(() => loadAutoKnowledge());
+  // 搜索速度（Fast=快速）/ 搜索深度（auto=按时敏自动判断）
+  const [searchSpeed, setSearchSpeed] = useState<ChatSearchSpeed>(() =>
+    loadSearchSpeed(),
+  );
+  const [searchDepth, setSearchDepth] = useState<ChatSearchDepth>(() =>
+    loadSearchDepth(),
+  );
+  const changeSearchSpeed = useCallback((v: ChatSearchSpeed) => {
+    setSearchSpeed(v);
+    saveSearchSpeed(v);
+  }, []);
+  const changeSearchDepth = useCallback((v: ChatSearchDepth) => {
+    setSearchDepth(v);
+    saveSearchDepth(v);
+  }, []);
+  /** 搜索模式（设置页「搜索模式」卡片与「/」弹窗共用同一单选，双向同步） */
+  const searchMode: "fast" | "auto" | "deep" =
+    netMode === "search" ? "deep" : searchSpeed === "fast" ? "fast" : "auto";
+  const changeSearchMode = useCallback(
+    (m: "fast" | "auto" | "deep") => {
+      if (m === "fast") {
+        changeNetMode("auto");
+        changeSearchSpeed("fast");
+        changeSearchDepth("auto");
+      } else if (m === "deep") {
+        changeNetMode("search");
+        changeSearchSpeed("standard");
+        changeSearchDepth("deep");
+      } else {
+        changeNetMode("auto");
+        changeSearchSpeed("standard");
+        changeSearchDepth("auto");
+      }
+    },
+    [changeNetMode, changeSearchSpeed, changeSearchDepth],
+  );
+  /** auto-knowledge：对话后自动学习人格笔记，越聊越贴合人设（默认开启） */
   const [personaKnowledge, setPersonaKnowledge] = useState(() =>
     loadPersonaKnowledge(pageId),
   );
-  const toggleAutoKnowledge = useCallback(() => {
-    setAutoKnowledge((v) => {
-      const n = !v;
-      saveAutoKnowledge(n);
-      return n;
-    });
-  }, []);
   // 防并发：一次只跑一个后台人格学习任务
   const personaRunningRef = useRef(false);
-  /** AI 读取知识库开关（默认开，设置里可关） */
-  const [kbAiReadAll, setKbAiReadAll] = useState(() => {
-    try {
-      return localStorage.getItem("kimo_kb_ai_read_all") !== "0";
-    } catch {
-      return true;
-    }
-  });
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [botMenuOpen, setBotMenuOpen] = useState(false);
@@ -787,20 +1537,7 @@ export function AIChat({
     });
   };
   const [limitReached, setLimitReached] = useState(false);
-  const [toolCalls, setToolCalls] = useState<
-    {
-      msgIdx: number;
-      type: string;
-      detail: string;
-      tab?: "web" | "kb" | "edit" | "settings";
-      /** 浏览/搜索关键词（点击卡片时传给 Agent 面板触发 AI 搜索） */
-      query?: string;
-      /** 文章后台生成中（卡片显示「生成中…」） */
-      pending?: boolean;
-      /** 所属会话 id（刷新后按会话恢复工具卡历史） */
-      sessionId?: string;
-    }[]
-  >(() => {
+  const [toolCalls, setToolCalls] = useState<ChatToolCall[]>(() => {
     try {
       const r = JSON.parse(
         localStorage.getItem("kimo_ai_toolcalls_" + pageId) || "[]",
@@ -813,15 +1550,17 @@ export function AIChat({
                 typeof t?.type === "string" &&
                 !t.pending,
             )
-            // 兼容旧数据：网络搜索/浏览网页 → Search/View（历史卡片名也统一大写）
+            // 兼容旧数据：网络搜索/浏览网页 → Search（历史卡片名统一；原 View 已整合进 Search）
             .map((t) => ({
               ...t,
               type:
-                t.type === "search" || t.type === "网络搜索"
+                t.type === "search" ||
+                t.type === "网络搜索" ||
+                t.type === "view" ||
+                t.type === "浏览网页" ||
+                t.type === "View"
                   ? "Search"
-                  : t.type === "view" || t.type === "浏览网页"
-                    ? "View"
-                    : t.type,
+                  : t.type,
             }))
         : [];
     } catch {
@@ -852,15 +1591,6 @@ export function AIChat({
     }
   });
   const [memory, setMemory] = useState(() => loadMemory(pageId));
-  // 自动朗读：优先用户浏览器偏好（kimo_ai_tts），默认关；用户关闭则进入页面即为关
-  const [ttsOn, setTtsOn] = useState(() => loadTtsPref(config.autoTTS).on);
-  const toggleTts = useCallback(() => {
-    setTtsOn((prev) => {
-      const n = !prev;
-      saveTtsPref(n);
-      return n;
-    });
-  }, []);
   const customApiEnabled = enableCustomApi !== false;
   const [consented, setConsented] = useState(() => {
     try {
@@ -875,13 +1605,41 @@ export function AIChat({
   const timerRef = useRef<ReturnType<typeof setInterval>>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const importRef = useRef<HTMLInputElement>(null);
   const agentPanelRef = useRef<HTMLDivElement>(null);
   /** 「/」按钮 ref：知识库弹窗锚定在其上方 */
   const kbAnchorRef = useRef<HTMLButtonElement>(null);
   const active = sessions.find((s) => s.id === activeId) || sessions[0];
   const messages = active?.messages || [];
 
+  /** 工具卡按消息索引预计算（流式中 toolCalls 不变 → 映射引用稳定，配合 MessageItem memo 跳过无关消息重渲染） */
+  const toolCallsByMsg = useMemo(() => {
+    const map: Record<number, ChatToolCall[]> = {};
+    for (const tc of toolCalls) {
+      if (tc.sessionId !== activeId) continue;
+      (map[tc.msgIdx] ||= []).push(tc);
+    }
+    return map;
+  }, [toolCalls, activeId]);
+  /** 工具卡点击：按 tab 打开 Agent 面板（web 附带关键词触发搜索） */
+  const handleToolClick = useCallback((tc: ChatToolCall) => {
+    if (!tc.tab) return;
+    const q =
+      tc.query || (tc.type === "Search" ? tc.detail.split(" ")[0] : undefined);
+    setAgentTab(tc.tab);
+    if (tc.tab === "web") {
+      setAgentInitUrl(q);
+      setAgentSearchNonce((n) => n + 1);
+    }
+    setAgentEditContent(undefined);
+    setAgentOpen(true);
+  }, []);
+  /** 消息「在 Agent 中打开」：切到 web 面板并载入首个 URL */
+  const handleOpenAgent = useCallback((url: string | undefined) => {
+    setAgentTab("web");
+    setAgentInitUrl(url);
+    setAgentEditContent(undefined);
+    setAgentOpen(true);
+  }, []);
   // Agent 面板宽度拖拽：拖拽期间直接改 DOM 宽度（不触发 React 重渲染），松手才提交 state
   const onResizeDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -932,9 +1690,72 @@ export function AIChat({
     (p: { systemPrompt: string }) => p.systemPrompt.trim(),
   );
 
-  // 有效配置：本地自定义 API/提示词 > 选中人设 > 机器人默认（非管理员各自本地设置）
-  const effCfg: AIChatConfig = mergeEffCfg(config, localCfg, activePromptIdx);
-  const hasCustom = hasLocalApi(localCfg);
+  // 有效配置：本地自定义 API/提示词（开关开启时生效）> 选中人设 > 机器人默认（非管理员各自本地设置）
+  const effLocal: LocalAIConfig = customModelOn
+    ? localCfg
+    : { endpoint: "", apiKey: "", model: "", prompt: "" };
+  const effCfg: AIChatConfig = mergeEffCfg(config, effLocal, activePromptIdx);
+  const hasCustom = customModelOn && hasLocalApi(localCfg);
+  /** 满意度反馈：存储 + 偏好学习 + 搜索定式优化 */
+  const handleFeedback = useCallback(
+    (m: Message, rating: 1 | -1) => {
+      const msgHash = hashMessage(m.content);
+      const current = getRating(pageId, msgHash);
+      const finalRating = current === rating ? 0 : rating;
+      if (finalRating === 0) {
+        const list = loadFeedback(pageId).filter((e) => e.msgHash !== msgHash);
+        try {
+          localStorage.setItem(`kimo_feedback_${pageId}`, JSON.stringify(list));
+        } catch {}
+        toast("已取消反馈");
+        return;
+      }
+      saveFeedbackEntry(pageId, {
+        msgHash,
+        rating: finalRating,
+        query: "",
+        model: effCfg.model,
+        ts: Date.now(),
+        searchResults: dialogResults.length,
+      });
+      try {
+        if (finalRating === 1) {
+          const pattern = extractPositivePattern(m.content, "");
+          if (pattern) {
+            const existing = loadPersonaKnowledge(pageId);
+            const lines = existing ? existing.split("\n").filter(Boolean) : [];
+            lines.push(`用户偏好（来自 👍）：${pattern}`);
+            savePersonaKnowledge(pageId, lines.slice(-12).join("\n"));
+          }
+          applyFeedbackToSearch(
+            detectQueryType(m.content || ""),
+            detectQueryLang(m.content || ""),
+            1,
+          );
+        } else {
+          const pattern = extractNegativePattern(m.content, "");
+          if (pattern) {
+            const oldMem = loadMemory(pageId);
+            const newMem = compressMemory(
+              oldMem,
+              `用户 👎 的回答：${pattern}`,
+              "",
+            );
+            saveMemory(pageId, newMem);
+          }
+          applyFeedbackToSearch(
+            detectQueryType(m.content || ""),
+            detectQueryLang(m.content || ""),
+            -1,
+          );
+        }
+      } catch {
+        /* 偏好学习失败不阻塞 */
+      }
+      toast(finalRating === 1 ? "已标记为满意 ✓" : "已标记为不满意 ✗");
+    },
+    [pageId, effCfg.model, dialogResults.length, toast],
+  );
 
   // Live2D auto 模式：让 AI 根据人设/记忆/人格笔记/知识库选一个最契合的角色
   // 挂载时（auto 已开）与收到 requestAutoPick 时各选一次；缓存 saveAutoPick，避免反复换角
@@ -971,6 +1792,42 @@ export function AIChat({
     return () => unsub();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [l2dEnabled, effCfg.systemPrompt, effCfg.botName]);
+
+  // ---- Live2D 人格来源：默认「角色设定」（AI 以 Live2D 角色人格扮演）；无切换 UI，符合用户偏好 ----
+  const [personaMode] = useState<Live2dPersonaMode>(() => loadPersonaMode());
+  /** 角色设定档案生成中：阻止聊天并显示加载过程 */
+  const [loreLoading, setLoreLoading] = useState(false);
+  /** 当前 Live2D 角色（订阅 live2dCore 实际加载的模型；未加载时用配置/auto 解析结果兜底） */
+  const [currentModel, setCurrentModel] = useState<string>(
+    () => getState().modelName || resolveLive2dModel(settings.live2d_model),
+  );
+  useEffect(() => {
+    const unsub = subscribe(() => {
+      const st = getState();
+      if (st.modelName) setCurrentModel(st.modelName);
+    });
+    return unsub;
+  }, []);
+  /** 当前角色设定档案（role 模式作为人格来源；无档案/非 role 为 null） */
+  const lore = useMemo(
+    () =>
+      personaMode === "role" && currentModel ? loadLore(currentModel) : null,
+    [personaMode, currentModel],
+  );
+  /** role 模式注入 streamChat 的人格片段（避免每次渲染重复 build） */
+  const lorePrompt = useMemo(() => {
+    if (personaMode !== "role") return "";
+    if (lore) return buildLorePrompt(lore);
+    // 档案尚未生成/生成失败/auto 随机到无档案角色时：至少让 AI 认识自己是当前 Live2D 角色，不彻底回退助手人格
+    const name = currentModel ? characterNameOf(currentModel) : "";
+    return name
+      ? `你是「${name}」，是对话界面中显示的 Live2D 虚拟角色。请始终以「${name}」的身份与用户自然互动，保持角色感（详细的角色设定档案整理完成后会自动补充）。当用户问你是谁、你的名字或来历时，直接告诉用户你就是「${name}」，不要说自己是通用 AI 助手。`
+      : "";
+  }, [personaMode, lore, currentModel]);
+  /** 已尝试自动搜索过的模型（避免重复触发；角色切换并发时也不会被跳过） */
+  const loreProcessedRef = useRef<Set<string>>(new Set());
+  const effCfgRef = useRef(effCfg);
+  effCfgRef.current = effCfg;
 
   const dailyLimit = effCfg.dailyLimit || config.dailyLimit || 0;
   const dailyRemaining =
@@ -1059,6 +1916,7 @@ export function AIChat({
     setLimitReached(false);
     // 新建会话：清空上一会话遗留的工具卡/内嵌浏览等临时状态
     setToolCalls([]);
+    setDialogResults([]);
     setAgentKbOpen(undefined);
     setAgentEditContent(undefined);
     setAgentInitUrl(undefined);
@@ -1093,18 +1951,6 @@ export function AIChat({
     [sessions, activeId, saveSessions],
   );
 
-  // 手机键盘
-  useEffect(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    const onFocus = () => {
-      setStick(true);
-      setTimeout(autoScroll, 300);
-    };
-    el.addEventListener("focus", onFocus);
-    return () => el.removeEventListener("focus", onFocus);
-  });
-
   useEffect(() => {
     if (activeId && !sessions.find((s) => s.id === activeId))
       setActiveId(sessions[0].id);
@@ -1115,8 +1961,15 @@ export function AIChat({
     if (!el) return true;
     return el.scrollHeight - el.scrollTop - el.clientHeight < 120;
   };
+  // stick 的 ref 副本：让 autoScroll 回调保持稳定（不随 stick 重建），避免 focus effect 反复重绑定
+  const stickRef = useRef(stick);
+  stickRef.current = stick;
+  /** 性能优化：直接对消息容器 scrollTop 赋值（替代 scrollIntoView），避免同步布局/页面级滚动 */
   const autoScroll = useCallback(() => {
-    if (isNearBottom()) bottomRef.current?.scrollIntoView({ behavior: "auto" });
+    if (!stickRef.current) return;
+    const el = msgListRef.current;
+    if (!el) return;
+    if (isNearBottom()) el.scrollTop = el.scrollHeight;
   }, []);
   const onScroll = useCallback(() => {
     if (!isNearBottom()) setStick(false);
@@ -1124,6 +1977,18 @@ export function AIChat({
   useEffect(() => {
     if (stick) autoScroll();
   }, [messages, stick, autoScroll]);
+
+  // 手机键盘（依赖数组：autoScroll 稳定后只绑定一次，不再每次渲染重新绑定/解绑）
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const onFocus = () => {
+      setStick(true);
+      setTimeout(autoScroll, 300);
+    };
+    el.addEventListener("focus", onFocus);
+    return () => el.removeEventListener("focus", onFocus);
+  }, [autoScroll]);
 
   useEffect(() => {
     if (cooldown <= 0) {
@@ -1149,20 +2014,25 @@ export function AIChat({
     (text: string, idx: number) => {
       if (speakingIdx === idx) {
         window.speechSynthesis.cancel();
+        stopSpeaking();
         setSpeakingIdx(-1);
         return;
       }
       setSpeakingIdx(idx);
       const clean = text.replace(/[*_`#~>\[\]\(\)]/g, "").slice(0, 600);
+      // 口型同步：TTS 播放期间角色嘴部跟着动（时长按文本估算）
+      if (l2dEnabled) speakText(clean);
       speak(clean);
       const check = setInterval(() => {
         if (!window.speechSynthesis.speaking) {
+          stopSpeaking();
           setSpeakingIdx(-1);
           clearInterval(check);
         }
       }, 300);
     },
-    [speakingIdx],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [speakingIdx, l2dEnabled],
   );
 
   // 知识库：根据选择 + 本地笔记组装文本（KbModal 保存后调用 refreshKb 刷新缓存）
@@ -1176,6 +2046,71 @@ export function AIChat({
       setKbText("");
     }
   }, [pageId]);
+
+  // ---- 首次自动搜索（Live2D 角色设定）：role 模式 + 当前角色还没有档案时，自动搜索资料并写入知识库 ----
+  const autoBuildLoreRef = useRef<((model: string) => Promise<void>) | null>(
+    null,
+  );
+  /** 自动搜索角色资料 + AI 生成「人物世界观·人格档案」→ 写入本地档案 + 存入知识库 */
+  const autoBuildLore = useCallback(
+    async (model: string) => {
+      const name = characterNameOf(model);
+      if (!name) return;
+      setLoreLoading(true);
+      try {
+        const query = loreSearchQuery(name, model);
+        let webText = "";
+        try {
+          webText = query ? await webSearchWithContent(query, 4, 1800) : "";
+        } catch {
+          webText = "";
+        }
+        const draft = await deriveLive2dLore(effCfgRef.current, name, webText);
+        if (!draft) {
+          toast(`未能自动搜索「${name}」的角色资料，将按其已知设定回答`);
+          return;
+        }
+        const loreObj: Live2dLore = {
+          model,
+          name,
+          ...draft,
+          searched: !!webText,
+          updatedAt: Date.now(),
+        };
+        saveLore(model, loreObj);
+        // 知识库隔离：默认不把角色档案混入用户知识库（设置里可开启「写入知识库」）
+        if (loadLoreToKb()) {
+          try {
+            saveKbEntry(`「${name}」角色设定档案`, loreToText(loreObj));
+          } catch {}
+          refreshKb();
+          toast(`已整理「${name}」角色设定档案并存入知识库`, "success");
+        } else {
+          toast(`已整理「${name}」角色设定档案（可在知识库查看）`, "success");
+        }
+      } finally {
+        setLoreLoading(false);
+      }
+    },
+    [refreshKb, toast],
+  );
+  // 让 effect 始终调用最新的 autoBuildLore（避免 effCfg 引用变化导致 effect 反复触发）
+  autoBuildLoreRef.current = autoBuildLore;
+  // 首次自动搜索 effect：role 模式 + 当前角色还没有档案 → 自动搜索资料并写入知识库
+  // 用 Set 记录已尝试模型：即使上一个角色的搜索仍在进行，新角色出现也会被单独触发（不会因并发被跳过）
+  useEffect(() => {
+    // 同意规则后才自动生成角色设定（避免未同意就开始搜索/提示突兀）
+    if (!consented || personaMode !== "role" || !l2dEnabled || !currentModel)
+      return;
+    if (loadLore(currentModel)) {
+      loreProcessedRef.current.add(currentModel);
+      return;
+    }
+    if (loreProcessedRef.current.has(currentModel)) return;
+    loreProcessedRef.current.add(currentModel);
+    autoBuildLoreRef.current?.(currentModel).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personaMode, l2dEnabled, currentModel, consented]);
 
   // 知识库默认启用，初始加载时刷新
   useEffect(() => {
@@ -1229,11 +2164,14 @@ export function AIChat({
 
   const send = async (overrideText?: string) => {
     const t = (overrideText ?? input).trim();
-    if (!t || loading || cooldown > 0) return;
+    // 手机沉浸模式：角色资料生成在后台静默进行，不阻止手机聊天
+    if (!t || loading || (loreLoading && !live2dImmersive) || cooldown > 0)
+      return;
 
-    // AI→Agent 语音触发：用户说"打开浏览器"/"搜索xxx"→自动打开 Agent 网页 tab
+    // AI→Agent 语音触发：仅当用户明确要求「打开/浏览 浏览器/网页/网站」才自动打开 Agent 网页 tab。
+    // （普通"帮我搜索xxx"不再自动开 View 面板——auto 走对话内搜索+结果卡，deep 由搜索生成文章）
     const browserCmd = t.match(
-      /(?:打开|浏览|用|帮我).*(?:浏览器|网页|网站|搜索)\s*(.+)?/,
+      /(?:打开|用|浏览)\s*(?:浏览器|网页|网站)\s*(?:搜索|查|找)?\s*(.+)?/,
     );
     const browserUrl = t.match(/(?:打开|浏览)\s*(https?:\/\/[^\s，,。]+)/);
     if (browserCmd || browserUrl) {
@@ -1352,18 +2290,10 @@ export function AIChat({
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     let reply = "";
-    // 网络搜索：开启时先抓取结果注入上下文（带加载动画）
+    // Token 优化：搜索模式（browseAgentOn）下不再预抓取 webSearch(t) 注入上下文——
+    // 该模式下 AI 只需输出简短引导语，真实数据由 triggerBrowse → searchWithCache 生成文章承担，
+    // 预抓取既重复搜索又白耗最多 6000 字符 token；改为仅在有 URL / auto 重答时按需抓取
     let web = "";
-    if (webSearchOn) {
-      setSearching(true);
-      try {
-        web = await webSearch(t);
-      } catch {
-        web = "";
-      } finally {
-        setSearching(false);
-      }
-    }
     // 浏览器浏览：消息里含 http(s) URL 时自动抓取正文注入上下文
     const urlMatch = t.match(/https?:\/\/[^\s，,。]+/);
     if (urlMatch) {
@@ -1376,14 +2306,68 @@ export function AIChat({
         setSearching(false);
       }
     }
+    // 前端主动分段搜索（fast/auto）：不再依赖 AI 发 [SEARCH:] 标记
+    // 启发式：必须有信息检索特征（疑问/搜索动词/较长描述），避免名字/闲聊误触"混淆"
+    const isInfoQuery =
+      t.length >= 4 &&
+      /[\u4e00-\u9fff\u3040-\u30ffa-zA-Z]{3,}/.test(t) &&
+      (/[?？吗呢么怎谁哪如何为何能不能有没有什么是不是]/.test(t) ||
+        /搜索|查|找|介绍|推荐|评价|对比|区别|最新|今天|现在|当前|最近|新闻|资讯|什么是|怎么|如何|为什么/.test(
+          t,
+        ) ||
+        t.length >= 15) &&
+      !/^[哈嘿嗯哦嘻呵呜哇噗喵嗷啧]{1,6}$/.test(t);
+    if (!browseAgentOn && !urlMatch && isInfoQuery && searchMode === "auto") {
+      // 仅 Auto 模式做前端适当联网搜索（Fast=纯本地不做；Deep 由浏览面板搜索生成文章承担）
+      setSearchPlan({ stage: "thinking" });
+      setDialogResults([]);
+      try {
+        const seg = await searchSegmented(t, {
+          speed: "standard",
+          limit: 8,
+          onProgress: (p) => setSearchPlan(p),
+        });
+        if (seg.results.length > 0) {
+          setSearching(true);
+          const webBlock =
+            "今天是 " +
+            todayStr() +
+            "。以下是来自网络的最新搜索结果，请基于它们回答，引用具体数据/来源：\n" +
+            seg.results
+              .map(
+                (r, i) =>
+                  `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.description || ""}`,
+              )
+              .join("\n\n");
+          if (webBlock) {
+            web = webBlock;
+            setDialogResults(
+              seg.results.map((r) => ({
+                title: r.title,
+                url: r.url,
+                source: r.source,
+              })),
+            );
+          }
+        }
+      } catch {
+        /* 搜索失败不阻塞对话 */
+      } finally {
+        setSearching(false);
+        setSearchPlan(null);
+      }
+    }
     // 流式：始终只保留一条正在增长的 assistant 消息（替换上一条）
-    const upsertAssistant = (content: string) =>
+    // 性能优化：高频 chunk 经 rAF 节流合并（同一帧多次更新只渲一次；低性能设备刷写间隔更长），
+    // 避免每个 chunk 都触发整树重渲染 + Markdown 高亮拖垮主线程
+    const upsertAssistant = createStreamThrottle((content: string) => {
       updateActive((prev) => {
         const last = prev[prev.length - 1];
         return last && last.role === "assistant"
           ? [...prev.slice(0, -1), { role: "assistant" as const, content }]
           : [...prev, { role: "assistant" as const, content }];
       });
+    });
     // 每次发送时实时读取知识库（尊重 AI读取开关 + 附件；供主回复与 auto 重答共用）
     const kbKnowledge = (() => {
       try {
@@ -1412,17 +2396,22 @@ export function AIChat({
       } catch {}
       return "";
     })();
-    // 每次发送时实时读取当前 View 文章，让 AI 能读取面板里的内容（对话续优化）
+    // 每次发送时读取当前 View 文章：token 优化——仅当用户消息与浏览文章相关时才注入整篇全文，
+    // 否则只注入 AI 已记忆的简短简介（viewIntro），避免每次对话重复搬运整篇文章
     const viewArticle = (() => {
       if (!viewTopic) return "";
       try {
         const e = readSearchCache(viewTopic);
-        return e?.article ? clamp(e.article, 5000) : "";
+        if (!e?.article) return "";
+        return viewArticleRelevant(t, viewTopic) ? clamp(e.article, 4000) : "";
       } catch {
         return "";
       }
     })();
+    // View 简介（AI 记忆）：任何消息都注入，让 AI 始终记得已生成的资料（省 token）
+    const viewIntroText = viewTopic ? viewIntro : "";
     try {
+      beginStreaming();
       const result = await streamChat(
         effCfg,
         injectAttachments(recent),
@@ -1432,11 +2421,16 @@ export function AIChat({
         kbKnowledge || kbText,
         memory,
         web,
-        autoMode || webSearchOn,
+        searchMode !== "fast",
         browseAgentOn,
         viewArticle,
-        autoKnowledge ? personaKnowledge : "",
-        autoMode,
+        viewIntroText,
+        personaKnowledge,
+        searchMode === "auto",
+        searchMode === "fast",
+        lorePrompt,
+        personaMode === "role",
+        l2dEnabled,
       );
       reply = result.content;
     } catch (e: unknown) {
@@ -1444,11 +2438,15 @@ export function AIChat({
       reply = `错误：${e instanceof Error ? e.message : "请求失败"}`;
     } finally {
       if (abortRef.current === ctrl) abortRef.current = null;
+      endStreaming();
       setLoading(false);
     }
     // Live2D 化身：AI 控制表情（[表情:xxx] 标签优先；无标签则按回复的表演提示推断）
     // 标签一律从显示文本剥离（含方括号/中文括号），Live2D 关闭时也隐藏，避免露出明文
     const tagEmotion = l2dEnabled ? parseEmotionTag(reply) : null;
+    // AI 动作指令（[PARAM:…]/[MOTION:…]/[EXPRESSION:…]）：在剥离前用原始回复执行，
+    // 让角色实时表演参数级动作（精细控制，超出 9 种情绪标签的表达范围）
+    if (l2dEnabled) applyActionCommands(reply);
     const cleanReply = stripEmotionTag(reply);
     if (l2dEnabled) {
       applyL2dEmotion(tagEmotion || detectReplyEmotion(cleanReply));
@@ -1535,10 +2533,34 @@ export function AIChat({
           sessionId: activeId,
         },
       ]);
-      searchWithCache(q, { maxSources: 5, perSourceChars: 2200 })
+      // 来源数/正文长度按速度与深度调整：Fast 精简、deep 加量
+      const srcs = searchSpeed === "fast" ? 3 : searchDepth === "deep" ? 7 : 5;
+      const chars =
+        searchSpeed === "fast" ? 1400 : searchDepth === "deep" ? 2600 : 2200;
+      searchWithCache(q, { maxSources: srcs, perSourceChars: chars })
         .then((r) => {
           // 生成成功：记录当前 View 文章话题，供 AI 读取 / 对话续优化
-          if (r && r.article) changeViewTopic(q);
+          if (r && r.article) {
+            changeViewTopic(q);
+            // View 生成完整后：AI 以角色人格提炼简短介绍 → 直接以角色口吻追加到对话（不套模板）
+            // + 存入记忆（后续对话引用省 token）
+            if (r.article.trim()) {
+              const persona =
+                lorePrompt || effCfgRef.current.systemPrompt || "";
+              deriveViewIntro(effCfgRef.current, q, r.article, persona)
+                .then((intro) => {
+                  if (!intro) return;
+                  saveViewIntro(activeId, q, intro);
+                  setViewIntro(intro);
+                  // 简介就是角色本人的话，直接作为一条 assistant 消息追加
+                  updateActive((prev) => [
+                    ...prev,
+                    { role: "assistant" as const, content: intro },
+                  ]);
+                })
+                .catch(() => {});
+            }
+          }
           return null;
         })
         .catch(() => null)
@@ -1553,25 +2575,59 @@ export function AIChat({
       let newReply = reply;
       setSearching(true);
       try {
-        const webBlock = await webSearchWithContent(sq, 4, 1800);
+        // 轻量搜索（仅结果列表、不抓正文）：以速度和搜索取舍——结构化结果用于重答上下文 + 对话结果卡
+        let results = await searchBackend(sq, 6);
+        // 引擎全空时 AI 兜底：保证搜索后必有结果卡 + 重答（不出现"搜索了却没结果"）
+        if (!results.length) {
+          results = await searchAI(sq, 6).catch(() => []);
+        }
+        const webBlock = results.length
+          ? "今天是 " +
+            todayStr() +
+            "。以下是来自网络的最新搜索结果，请基于它们回答，引用具体数据/来源：\n" +
+            results
+              .map(
+                (r, i) =>
+                  `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.description || ""}`,
+              )
+              .join("\n\n")
+          : "";
         if (webBlock) {
-          const result = await streamChat(
-            effCfg,
-            injectAttachments(recent),
-            upsertAssistant,
-            ctrl.signal,
-            summary,
-            kbKnowledge || kbText,
-            memory,
-            webBlock,
-            true,
-            false,
-            viewArticle,
-            autoKnowledge ? personaKnowledge : "",
-            autoMode,
+          // 搜索结果直接显示在对话中（简洁结果卡）
+          setDialogResults(
+            results.map((r) => ({
+              title: r.title,
+              url: r.url,
+              source: r.source,
+            })),
           );
-          newReply = result.content;
-          upsertAssistant(newReply);
+          beginStreaming();
+          try {
+            const result = await streamChat(
+              effCfg,
+              injectAttachments(recent),
+              upsertAssistant,
+              ctrl.signal,
+              summary,
+              kbKnowledge || kbText,
+              memory,
+              webBlock,
+              true,
+              false,
+              viewArticle,
+              viewIntroText,
+              personaKnowledge,
+              searchMode === "auto",
+              false,
+              lorePrompt,
+              personaMode === "role",
+              l2dEnabled,
+            );
+            newReply = result.content;
+            upsertAssistant(newReply);
+          } finally {
+            endStreaming();
+          }
         }
       } catch {
         /* 重答失败：保留原回复 */
@@ -1583,10 +2639,10 @@ export function AIChat({
 
     if (viewCmd) {
       const vc = (viewCmd[1] || "").trim();
-      // 判断是「更新当前浏览文章」（有浏览文章且内容为完整长文）还是「请求生成新文章」（auto 模式给关键词）
+      // 判断是「更新当前浏览文章」（有浏览文章且内容为完整长文）还是「请求生成新文章」
       const looksLikeArticle = vc.length > 80 || vc.includes("\n\n");
-      if (viewTopic && looksLikeArticle) {
-        // AI 基于当前浏览文章输出优化后的完整文章 → 更新 View 面板（写缓存 + 重触发浏览）
+      if (searchMode === "deep" && viewTopic && looksLikeArticle) {
+        // AI 基于当前浏览文章输出优化后的完整文章 → 更新 View 面板（写缓存 + 重触发浏览；仅 Deep 模式可调用 View，auto/fast 不碰）
         if (vc) {
           writeSearchCache(viewTopic, { article: vc });
           setAgentTab("web");
@@ -1606,11 +2662,24 @@ export function AIChat({
             },
           ]);
         }
-      } else if (autoMode && vc) {
-        // AUTO：AI 判断问题值得生成综合文章 → 用关键词生成到 View 面板
+      } else if (searchMode === "deep" && vc) {
+        // Deep：仅此模式可调用 View 页面生成完整文章（兜底，AI 通常走 [SEARCH:] 生成文章）
         const sq = vc.slice(0, 60);
-        if (sq) triggerBrowse(sq, "View");
+        if (sq) triggerBrowse(sq, "Search");
+      } else if (searchMode === "auto" && vc) {
+        // Auto：不生成/不更新 View 文章——提示词已门控 auto 不使用 [VIEW:]；
+        // 若 AI 仍输出，直接把内容作为普通文本回复展示（不写缓存、不开面板、不二次搜索）
+        updateActive((prev) => {
+          for (let i = prev.length - 1; i >= 0; i--) {
+            if (prev[i].role === "assistant") {
+              return prev.map((m, j) => (j === i ? { ...m, content: vc } : m));
+            }
+          }
+          return prev;
+        });
+        reply = vc;
       }
+      // Fast：忽略 [VIEW:]（纯本地快速，不联网不生成文章）
     } else if (kbSaveCmd) {
       const entry = saveKbEntry(kbSaveCmd.title, kbSaveCmd.content);
       setAgentKbOpen({ nonce: Date.now(), entry });
@@ -1659,15 +2728,16 @@ export function AIChat({
         return prev;
       });
       reply += confirm;
-    } else if (browseCmd) {
+    } else if (browseCmd && searchMode === "deep") {
+      // Deep：仅此模式可调用 View 页面（[BROWSE:url] 抓取并生成文章）；Auto/Fast 中用户粘贴 URL 已由顶部 urlMatch 自动抓取注入上下文
       setAgentEditContent(undefined);
-      triggerBrowse(browseCmd[1], "View", { keepReply: true });
+      triggerBrowse(browseCmd[1], "Search", { keepReply: true });
     } else if (searchCmd) {
       const sq = searchCmd[1].trim();
       if (browseAgentOn) {
-        // View 模式开启时自动生成文章：桌面自动开面板，手机只出卡片（生成中→可点）
+        // Deep 搜索模式开启时自动生成文章：桌面自动开面板，手机只出卡片（生成中→可点）
         if (sq) triggerBrowse(sq, "Search");
-      } else if (autoMode && sq) {
+      } else if (searchMode === "auto" && sq) {
         // AUTO：AI 认为缺少数据 → 联网搜索重答（给出准确答案）+ 搜索卡片
         reply = await autoSearchAndReanswer(sq);
         setToolCalls((prev) => [
@@ -1682,6 +2752,7 @@ export function AIChat({
           },
         ]);
       }
+      // Fast：webTools 已关闭，[SEARCH:] 不生效（忽略，不联网）
       setAgentEditContent(undefined);
     } else if (editCmd) {
       setAgentTab("edit");
@@ -1714,7 +2785,7 @@ export function AIChat({
         },
       ]);
     }
-    // 显式搜索兜底：View 模式开启时无需再说「搜索」，任何提问都自动生成文章
+    // 显式搜索兜底：搜索模式开启时无需再说「搜索」，任何提问都自动生成文章
     // （除非 AI 已发工具指令或给出代码块）；桌面自动开面板、手机只出卡片
     if (
       browseAgentOn &&
@@ -1728,8 +2799,12 @@ export function AIChat({
     ) {
       const isCode = /```/.test(reply) || /```[a-zA-Z]*\n/.test(reply);
       if (!isCode) {
-        // 用 AI 从对话上下文提炼搜索关键词，避免把闲聊/追问当关键词（如"没有图片啊"）
-        const derived = await deriveSearchKeyword(effCfg, allMsgs);
+        // 用 AI 从对话上下文提炼搜索关键词，避免把闲聊/追问当关键词（如"没有图片啊"）；
+        // 关键词提炼是「快任务」→ 路由到 fast 角色（单模型时回落主模型，行为不变）
+        const derived = await deriveSearchKeyword(
+          routeModel(resolveModelRoles(effCfg), "fast"),
+          allMsgs,
+        );
         const q = (derived || t.trim()).slice(0, 60);
         if (q) {
           setAgentSearchNonce((n) => n + 1);
@@ -1737,13 +2812,17 @@ export function AIChat({
         }
       }
     }
-    // 网络资料不再以卡片展示（浏览结果由 View 自动呈现），避免刷屏
+    // 网络资料不再以卡片展示（浏览结果由浏览面板自动呈现），避免刷屏
 
     if (!reply.startsWith("错误")) learn(t, reply);
+    // Token 优化：简短回复（如"好的，我帮你查一下"）或仅含工具指令（[SEARCH:]/[VIEW:] 等）的
+    // 引导性回复不触发人格学习——避免对每次搜索/浏览请求都白耗一次 AI 提炼调用
+    const trivialReply =
+      reply.trim().length < 30 || /\[(SEARCH|VIEW|BROWSE|EDIT|KB)/.test(reply);
     // auto-knowledge：对话完成后后台自动学习人格笔记 + 联网补充（不阻塞发送）
     if (
-      autoKnowledge &&
       !reply.startsWith("错误") &&
+      !trivialReply &&
       !personaRunningRef.current
     ) {
       personaRunningRef.current = true;
@@ -1754,13 +2833,9 @@ export function AIChat({
         .then(({ note, keyword }) => {
           if (note) {
             setPersonaKnowledge((prev) => {
-              const lines = prev
-                .split("\n")
-                .map((l) => l.trim())
-                .filter(Boolean);
-              if (lines.some((l) => l.slice(0, 12) === note.slice(0, 12)))
-                return prev;
-              const next = [...lines, "- " + note].slice(-12).join("\n");
+              // Mem0 风格：实体去重 + 上限（同一话题合并为最新一条，减少重复注入 token）
+              const next = mergePersonaNote(prev, note, 12);
+              if (next.trim() === prev.trim()) return prev;
               savePersonaKnowledge(pageId, next);
               return next;
             });
@@ -1774,14 +2849,12 @@ export function AIChat({
               .then((r) => {
                 if (r && r.article) {
                   setPersonaKnowledge((prev) => {
-                    const lines = prev
-                      .split("\n")
-                      .map((l) => l.trim())
-                      .filter(Boolean);
-                    if (lines.some((l) => l.includes(keyword))) return prev;
-                    const next = [...lines, `- 资料：${keyword}（已自动补充）`]
-                      .slice(-12)
-                      .join("\n");
+                    const next = mergePersonaNote(
+                      prev,
+                      `资料：${keyword}（已自动补充）`,
+                      12,
+                    );
+                    if (next.trim() === prev.trim()) return prev;
                     savePersonaKnowledge(pageId, next);
                     return next;
                   });
@@ -1795,71 +2868,6 @@ export function AIChat({
           personaRunningRef.current = false;
         });
     }
-    if (ttsOn)
-      setTimeout(
-        () => speak(reply.replace(/[*_`#~>\[\]\(\)]/g, "").slice(0, 600)),
-        500,
-      );
-  };
-
-  // 导出全部会话（JSON，可再导入）
-  // useCallback + 读取 sessionsRef：保证引用稳定（配合 AgentPanel memo），且导出时始终拿到最新会话
-  const exportAllSessions = useCallback(() => {
-    const data = {
-      app: "kimo-ai",
-      version: 1,
-      bot: config.botName,
-      exportedAt: new Date().toISOString(),
-      sessions: sessionsRef.current,
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
-      type: "application/json",
-    });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `kimo-ai-${(config.botName || "chat").replace(/[\s\\/]/g, "-")}-sessions.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  }, [config.botName]);
-
-  // 导入全部会话（JSON，合并到当前列表）
-  const onImportAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const data = JSON.parse(String(reader.result || ""));
-        const arr = Array.isArray(data.sessions)
-          ? data.sessions
-          : Array.isArray(data)
-            ? data
-            : [];
-        const clean: Session[] = arr
-          .filter((s: Session) => s && Array.isArray(s.messages))
-          .map((s: Session) => ({
-            id: uid(),
-            title: s.title || "新对话",
-            messages: s.messages,
-            createdAt: s.createdAt || Date.now(),
-          }));
-        if (!clean.length) {
-          alert("导入失败：文件中没有有效会话");
-          return;
-        }
-        if (
-          !window.confirm(`导入 ${clean.length} 个会话？将合并到当前会话列表。`)
-        )
-          return;
-        saveSessions([...clean, ...sessions]);
-        setActiveId(clean[0].id);
-        setStick(true);
-      } catch {
-        alert("导入失败：文件格式不正确");
-      }
-    };
-    reader.readAsText(file);
-    if (importRef.current) importRef.current.value = "";
   };
 
   const lastAssistant = [...messages]
@@ -1889,7 +2897,22 @@ export function AIChat({
   const consumeKbOpen = useCallback(() => setAgentKbOpen(undefined), []);
   const onCustomSaved = useCallback(() => {
     setLocalCfg(getLocalCfg(pageId));
+    setCustomModelOn(true);
+    saveCustomModelOn(true);
   }, [pageId]);
+
+  // 沉浸卡片上可点击的工具按钮（View/搜索等）：显示当前会话最近的工具指令，
+  // 不限于最后一条 AI 消息——方便用户随时点击打开 View/搜索（搜索后按钮常驻可点）
+  // useMemo：父组件重渲染（流式/输入等）时跳过重复 sort/filter/slice
+  // 注意：必须放在早期 return（consent/adminOnly/未配置）之前，否则违反 Rules of Hooks
+  const immersiveTools = useMemo(
+    () =>
+      toolCalls
+        .filter((tc) => tc.sessionId === activeId)
+        .sort((a, b) => (b.msgIdx ?? 0) - (a.msgIdx ?? 0))
+        .slice(0, 3),
+    [toolCalls, activeId],
+  );
 
   // Agent 面板「设置」tab 数据（desktop/mobile 双渲染共用一份；useMemo 稳定引用配合 AgentPanel memo）
   const settingsData: AgentSettingsProps = useMemo(
@@ -1898,26 +2921,16 @@ export function AIChat({
       canManage: !!canManage,
       hasCustom,
       botName: config.botName || "AI",
-      ttsOn,
-      onToggleTts: toggleTts,
-      netMode,
-      onSetNetMode: changeNetMode,
-      autoKnowledge,
-      onToggleAutoKnowledge: toggleAutoKnowledge,
-      kbAiReadAll,
-      onToggleKbAiReadAll: (v) => {
-        setKbAiReadAll(v);
-        localStorage.setItem("kimo_kb_ai_read_all", v ? "1" : "0");
-        refreshKb();
-      },
-      onExportAll: exportAllSessions,
-      onImport: () => importRef.current?.click(),
+      searchMode,
+      onSetSearchMode: changeSearchMode,
       chatFontSize,
       onSetFontSize: (v) => {
         setChatFontSize(v);
         saveChatFontSize(v);
       },
       onCustomSaved,
+      customModelOn,
+      onToggleCustomModel: toggleCustomModel,
       allowCustomApi: customApiEnabled,
     }),
     [
@@ -1925,17 +2938,12 @@ export function AIChat({
       canManage,
       hasCustom,
       config.botName,
-      ttsOn,
-      toggleTts,
-      netMode,
-      changeNetMode,
-      autoKnowledge,
-      toggleAutoKnowledge,
-      kbAiReadAll,
-      refreshKb,
-      exportAllSessions,
+      searchMode,
+      changeSearchMode,
       chatFontSize,
       onCustomSaved,
+      customModelOn,
+      toggleCustomModel,
       customApiEnabled,
     ],
   );
@@ -2086,7 +3094,7 @@ export function AIChat({
           onClose={() => setApiModalOpen(false)}
           pageId={pageId}
           botName={config.botName || "AI"}
-          onSaved={() => setLocalCfg(getLocalCfg(pageId))}
+          onSaved={onCustomSaved}
         />
         <div className="mx-auto max-w-md rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 p-8 text-center text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-800/50">
           <p>AI 对话未配置。</p>
@@ -2114,12 +3122,6 @@ export function AIChat({
     .findIndex((m) => m.role === "assistant");
   const lastAi =
     lastAiIdx >= 0 ? messages[messages.length - 1 - lastAiIdx] : undefined;
-  // 沉浸卡片上可点击的工具按钮（View/搜索等）：显示当前会话最近的工具指令，
-  // 不限于最后一条 AI 消息——方便用户随时点击打开 View/搜索（搜索后按钮常驻可点）
-  const immersiveTools = toolCalls
-    .filter((tc) => tc.sessionId === activeId)
-    .sort((a, b) => (b.msgIdx ?? 0) - (a.msgIdx ?? 0))
-    .slice(0, 3);
   const chatBody = (
     <div
       className={
@@ -2276,13 +3278,7 @@ export function AIChat({
                         ))}
                       </select>
                     )}
-                    <span
-                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${loading ? "animate-pulse bg-green-400" : "bg-green-500"}`}
-                    />
                   </div>
-                  <p className="truncate text-[11px] text-gray-400">
-                    {loading ? "回复中..." : active?.title || "新对话"}
-                  </p>
                 </div>
               </div>
             )}
@@ -2292,7 +3288,8 @@ export function AIChat({
                 if (agentOpen) refreshKb();
                 setAgentOpen((v) => {
                   if (!v) {
-                    setAgentTab("kb");
+                    // 默认打开 Live2D 页面（角色即 AI 化身）；最后一条 AI 消息含 URL 时优先浏览
+                    setAgentTab("live2d");
                     setAgentEditContent(undefined);
                     const last = messages[messages.length - 1];
                     if (last?.role === "assistant") {
@@ -2413,13 +3410,7 @@ export function AIChat({
                 <span className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
                   {config.botName || "AI 助手"}
                 </span>
-                <span
-                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${loading ? "animate-pulse bg-green-400" : "bg-green-500"}`}
-                />
               </div>
-              <p className="truncate text-[11px] text-gray-400">
-                {loading ? "回复中..." : active?.title || "新对话"}
-              </p>
             </div>
           </div>
         )}
@@ -2449,6 +3440,42 @@ export function AIChat({
               className="absolute inset-0 z-10 overflow-y-auto"
             >
               <div className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-6 sm:py-6">
+                {/* 角色设定生成中：加载过程（阻止聊天，输入/发送已禁用） */}
+                {loreLoading && (
+                  <div className="mb-3 flex items-center gap-3 rounded-2xl border border-gray-200 bg-white/90 p-3.5 dark:border-gray-700 dark:bg-gray-800/90">
+                    <span className="grid h-9 w-9 shrink-0 place-content-center rounded-full bg-gray-100 dark:bg-gray-700">
+                      <svg
+                        className="h-4 w-4 animate-spin text-gray-500 dark:text-gray-400"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                        />
+                      </svg>
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                        正在为「{characterNameOf(currentModel || "")}
+                        」深度整理角色设定…
+                      </p>
+                      <p className="mt-0.5 text-[11px] leading-relaxed text-gray-400">
+                        将结合网络搜索资料与深度思考，生成完整的人物世界观·人格档案（世界观
+                        / 性格 / 人物资料 / 朋友关系），期间暂不能发送消息
+                      </p>
+                    </div>
+                  </div>
+                )}
                 {messages.length === 0 ? (
                   <div className="flex flex-col items-center pt-[12vh] text-center">
                     {config.avatar ? (
@@ -2488,263 +3515,34 @@ export function AIChat({
                 ) : (
                   <>
                     {messages.map((m, i) => (
-                      <div
+                      <MessageItem
                         key={i}
-                        className={`group flex animate-[kfade_0.3s_ease-out] gap-3 py-4 ${
-                          m.role === "user" ? "justify-end" : ""
-                        } sm:py-5`}
-                      >
-                        {m.role === "assistant" &&
-                          (config.avatar ? (
-                            <img
-                              src={config.avatar}
-                              alt=""
-                              className="mt-0.5 h-8 w-8 shrink-0 rounded-full object-cover"
-                            />
-                          ) : (
-                            <span className="mt-0.5 grid h-8 w-8 shrink-0 place-content-center rounded-full bg-gray-200 text-xs font-bold text-gray-500 dark:bg-gray-800">
-                              AI
-                            </span>
-                          ))}
-                        <div
-                          className={`min-w-0 ${m.role === "user" ? `max-w-[85%] rounded-2xl border border-gray-200 bg-gray-100 px-4 py-2.5 leading-relaxed text-gray-800 sm:max-w-[70%] dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 ${fontSizeCls}` : `flex-1 leading-relaxed text-gray-800 dark:text-gray-100 ${fontSizeCls}`}`}
-                        >
-                          {m.role === "assistant" ? (
-                            <div className="chat-md">
-                              <MarkdownContent
-                                content={m.content}
-                                fallback={
-                                  toolCalls.find(
-                                    (tc) =>
-                                      tc.msgIdx === i &&
-                                      tc.sessionId === activeId,
-                                  )
-                                    ? `（${toolCalls.find((tc) => tc.msgIdx === i && tc.sessionId === activeId)!.type}：${toolCalls.find((tc) => tc.msgIdx === i && tc.sessionId === activeId)!.detail}）`
-                                    : ""
-                                }
-                              />
-                            </div>
-                          ) : (
-                            <>
-                              {m.attachments && m.attachments.length > 0 && (
-                                <div className="mb-1.5 flex flex-wrap gap-1.5">
-                                  {m.attachments.map((a) => (
-                                    <span
-                                      key={a.id}
-                                      className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
-                                      title={a.content.slice(0, 200)}
-                                    >
-                                      <svg
-                                        className="h-3.5 w-3.5 shrink-0"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                      >
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"
-                                        />
-                                      </svg>
-                                      <span className="truncate">
-                                        {a.title}
-                                      </span>
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                              <span className="whitespace-pre-wrap">
-                                {m.content}
-                              </span>
-                            </>
-                          )}
-                          {/* 工具调用小卡片：可点击（带箭头 + 按压反馈），不可点击则平淡 */}
-                          {toolCalls.filter(
-                            (tc) =>
-                              tc.msgIdx === i && tc.sessionId === activeId,
-                          ).length > 0 && (
-                            <div className="mt-1.5 flex flex-wrap gap-1.5">
-                              {toolCalls
-                                .filter(
-                                  (tc) =>
-                                    tc.msgIdx === i &&
-                                    tc.sessionId === activeId,
-                                )
-                                .map((tc, j) => {
-                                  const dot: Record<string, string> = {
-                                    保存知识库: "bg-emerald-500",
-                                    编辑知识库: "bg-emerald-500",
-                                    View: "bg-sky-500",
-                                    Search: "bg-blue-500",
-                                    优化文章: "bg-indigo-500",
-                                    网络资料: "bg-amber-500",
-                                    编辑文档: "bg-orange-500",
-                                    打开知识库: "bg-teal-500",
-                                  };
-                                  return (
-                                    <button
-                                      key={j}
-                                      onClick={() => {
-                                        if (!tc.tab) return;
-                                        const q =
-                                          tc.query ||
-                                          (tc.type === "Search"
-                                            ? tc.detail.split(" ")[0]
-                                            : undefined);
-                                        setAgentTab(tc.tab);
-                                        if (tc.tab === "web") {
-                                          setAgentInitUrl(q);
-                                          setAgentSearchNonce((n) => n + 1);
-                                        }
-                                        setAgentEditContent(undefined);
-                                        setAgentOpen(true);
-                                      }}
-                                      title={
-                                        tc.tab
-                                          ? "点击打开 Agent 面板"
-                                          : undefined
-                                      }
-                                      className={`group inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs transition ${
-                                        tc.tab
-                                          ? "cursor-pointer border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50/50 hover:text-blue-600 active:scale-95 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-blue-700 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
-                                          : "cursor-default border-gray-100 bg-gray-50 text-gray-400 dark:border-gray-800 dark:bg-gray-800/40 dark:text-gray-500"
-                                      }`}
-                                    >
-                                      <span
-                                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot[tc.type] || "bg-gray-400"}`}
-                                      />
-                                      <span className="shrink-0 font-medium">
-                                        {tc.type}
-                                      </span>
-                                      {tc.pending ? (
-                                        <span className="flex shrink-0 items-center gap-1 text-gray-400 dark:text-gray-500">
-                                          <svg
-                                            className="h-3 w-3 animate-spin"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                          >
-                                            <circle
-                                              className="opacity-25"
-                                              cx="12"
-                                              cy="12"
-                                              r="10"
-                                              stroke="currentColor"
-                                              strokeWidth="4"
-                                            />
-                                            <path
-                                              className="opacity-75"
-                                              fill="currentColor"
-                                              d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-                                            />
-                                          </svg>
-                                          生成中…
-                                        </span>
-                                      ) : (
-                                        <span className="truncate text-gray-400 dark:text-gray-500">
-                                          {tc.detail}
-                                        </span>
-                                      )}
-                                      {tc.tab && (
-                                        <svg
-                                          className="h-3 w-3 shrink-0 text-gray-300 transition group-hover:text-blue-500 dark:text-gray-600"
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          strokeWidth="2"
-                                        >
-                                          <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            d="M9 5l7 7-7 7"
-                                          />
-                                        </svg>
-                                      )}
-                                    </button>
-                                  );
-                                })}
-                            </div>
-                          )}
-
-                          {m.role === "assistant" && (
-                            <div
-                              className={`mt-1 flex items-center gap-1 opacity-0 transition group-hover:opacity-100 ${speakingIdx === i ? "opacity-100" : ""}`}
-                            >
-                              <button
-                                onClick={() => {
-                                  navigator.clipboard
-                                    .writeText(m.content)
-                                    .catch(() => {});
-                                }}
-                                className="rounded-md p-1 text-gray-400 transition hover:text-gray-600 dark:hover:text-gray-300"
-                                title="复制回复"
-                              >
-                                <svg
-                                  className="h-3.5 w-3.5"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                                  />
-                                </svg>
-                              </button>
-                              <button
-                                onClick={() => playTTS(m.content, i)}
-                                className={`rounded-md p-1 transition ${speakingIdx === i ? "text-blue-600 dark:text-blue-400" : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"}`}
-                                title="朗读"
-                              >
-                                <svg
-                                  className="h-4 w-4"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="1.8"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z"
-                                  />
-                                </svg>
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setAgentTab("web");
-                                  setAgentInitUrl(undefined);
-                                  const urls = m.content.match(
-                                    /https?:\/\/[^\s<>"{}|\\^`\[\]]+/g,
-                                  );
-                                  if (urls) setAgentInitUrl(urls[0]);
-                                  setAgentEditContent(undefined);
-                                  setAgentOpen(true);
-                                }}
-                                className="rounded-md p-1 text-gray-400 transition hover:text-blue-600 dark:hover:text-blue-400"
-                                title="在 Agent 中打开"
-                              >
-                                <svg
-                                  className="h-3.5 w-3.5"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21"
-                                  />
-                                </svg>
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                        m={m}
+                        index={i}
+                        isStreamingMsg={
+                          streaming &&
+                          i === messages.length - 1 &&
+                          m.role === "assistant"
+                        }
+                        avatar={config.avatar}
+                        botName={config.botName || "AI"}
+                        fontSizeCls={fontSizeCls}
+                        toolCalls={toolCallsByMsg[i] || []}
+                        speakingIdx={speakingIdx}
+                        onSpeak={playTTS}
+                        onOpenAgent={handleOpenAgent}
+                        onToolClick={handleToolClick}
+                        feedbackRating={
+                          m.role === "assistant"
+                            ? getRating(pageId, hashMessage(m.content))
+                            : 0
+                        }
+                        onFeedback={(rating) => handleFeedback(m, rating)}
+                      />
                     ))}
+                    {dialogResults.length > 0 && (
+                      <SearchResultsCard results={dialogResults} />
+                    )}
                     {loading && (
                       <div className="flex gap-3 py-4 sm:py-5">
                         <span className="mt-0.5 grid h-8 w-8 shrink-0 place-content-center rounded-full bg-gray-200 text-xs font-bold text-gray-500 dark:bg-gray-800">
@@ -2817,20 +3615,30 @@ export function AIChat({
                 </div>
               ) : lastAi ? (
                 <div className="min-w-0">
-                  {/* AI 回复：Markdown 滑动展示（超长内部滚动，无需全屏展开） */}
-                  <div className="chat-md max-h-[40vh] overflow-y-auto pt-1">
-                    <MarkdownContent
-                      content={lastAi.content}
-                      fallback={
-                        immersiveTools.length
-                          ? `（${immersiveTools[0].type}：${immersiveTools[0].detail}）`
-                          : ""
-                      }
-                    />
+                  {/* AI 回复：Markdown 滑动展示（默认限高避免遮挡 Live2D 角色，超长内部滚动；点「展开全文」查看完整） */}
+                  <div
+                    className={`chat-md overflow-y-auto pt-1 ${immersiveExpand ? "max-h-[62vh]" : "max-h-[24vh]"}`}
+                  >
+                    {streaming ? (
+                      /* 流式进行中：纯文本渲染，完成后切回 Markdown */
+                      <span className="whitespace-pre-wrap">
+                        {stripToolCmds(stripEmotionTag(lastAi.content))}
+                      </span>
+                    ) : (
+                      <MarkdownContent
+                        content={lastAi.content}
+                        fallback={
+                          immersiveTools.length
+                            ? `（${immersiveTools[0].type}：${immersiveTools[0].detail}）`
+                            : ""
+                        }
+                      />
+                    )}
                   </div>
                   {/* 工具按钮：View/搜索等，点击打开 Agent 面板；生成中显示加载 */}
+                  {/* 手机适配：flex-nowrap + 横向滚动，多张卡片不换行（沉浸卡片空间本就紧张） */}
                   {immersiveTools.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
+                    <div className="mt-2 flex flex-wrap gap-1.5 max-sm:flex-nowrap max-sm:overflow-x-auto no-scrollbar">
                       {immersiveTools.map((tc, j) => {
                         const dot: Record<string, string> = {
                           保存知识库: "bg-emerald-500",
@@ -2861,7 +3669,7 @@ export function AIChat({
                               setAgentOpen(true);
                             }}
                             title={tc.tab ? "点击打开 Agent 面板" : undefined}
-                            className={`group inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs transition ${
+                            className={`group inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs transition max-sm:shrink-0 max-sm:max-w-[70%] max-sm:px-2 max-sm:py-1 ${
                               tc.tab
                                 ? "cursor-pointer border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50/50 hover:text-blue-600 active:scale-95 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-blue-700 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
                                 : "cursor-default border-gray-100 bg-gray-50 text-gray-400 dark:border-gray-800 dark:bg-gray-800/40 dark:text-gray-500"
@@ -2897,7 +3705,7 @@ export function AIChat({
                                 生成中…
                               </span>
                             ) : (
-                              <span className="truncate text-gray-400 dark:text-gray-500">
+                              <span className="min-w-0 truncate text-gray-400 dark:text-gray-500">
                                 {tc.detail}
                               </span>
                             )}
@@ -2946,6 +3754,54 @@ export function AIChat({
                       <span>正在生成…</span>
                     </div>
                   )}
+                  {/* 长回复：展开/收起全文（默认限高，避免遮挡 Live2D 角色） */}
+                  {!streaming &&
+                    lastAi &&
+                    stripToolCmds(stripEmotionTag(lastAi.content)).length >
+                      80 && (
+                      <div className="mt-1.5 flex justify-end">
+                        <button
+                          onClick={() => setImmersiveExpand((v) => !v)}
+                          className="inline-flex items-center gap-0.5 rounded-full px-2 py-1 text-[11px] text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 active:scale-95 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+                        >
+                          {immersiveExpand ? (
+                            <>
+                              收起
+                              <svg
+                                className="h-3 w-3"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M4.5 15.75l7.5-7.5 7.5 7.5"
+                                />
+                              </svg>
+                            </>
+                          ) : (
+                            <>
+                              展开全文
+                              <svg
+                                className="h-3 w-3"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M19.5 8.25l-7.5 7.5-7.5-7.5"
+                                />
+                              </svg>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-2">
@@ -3000,10 +3856,49 @@ export function AIChat({
             </div>
           )}
 
-          {(attachedFile || searching) && (
+          {(attachedFile || searching || searchPlan) && (
             <div className="mb-2 flex flex-wrap gap-1.5">
+              {/* 分段搜索进度 */}
+              {searchPlan && (
+                <span
+                  className={
+                    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs " +
+                    (live2dImmersive
+                      ? "border-gray-200/80 bg-white/85 text-gray-600 backdrop-blur dark:border-gray-700 dark:bg-gray-800/85 dark:text-gray-300"
+                      : "border-gray-200 bg-gray-50 text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300")
+                  }
+                >
+                  <svg
+                    className="h-3.5 w-3.5 animate-spin"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                    />
+                  </svg>
+                  {searchPlan && "正在搜索…"}
+                </span>
+              )}
               {searching && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                <span
+                  className={
+                    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs " +
+                    (live2dImmersive
+                      ? "border-gray-200/80 bg-white/85 text-gray-600 backdrop-blur dark:border-gray-700 dark:bg-gray-800/85 dark:text-gray-300"
+                      : "border-gray-200 bg-gray-50 text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300")
+                  }
+                >
                   <svg
                     className="h-3.5 w-3.5 animate-spin"
                     viewBox="0 0 24 24"
@@ -3027,7 +3922,14 @@ export function AIChat({
                 </span>
               )}
               {attachedFile && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                <span
+                  className={
+                    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs " +
+                    (live2dImmersive
+                      ? "border-gray-200/80 bg-white/85 text-gray-600 backdrop-blur dark:border-gray-700 dark:bg-gray-800/85 dark:text-gray-300"
+                      : "border-gray-200 bg-gray-50 text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300")
+                  }
+                >
                   文件：{attachedFile}
                   <button
                     onClick={() => setAttachedFile("")}
@@ -3080,8 +3982,8 @@ export function AIChat({
                     selected={kbPickerSelected}
                     onToggle={onKbPickerToggle}
                     onInsert={onKbPickerInsert}
-                    mode={netMode}
-                    onModeChange={changeNetMode}
+                    mode={searchMode}
+                    onModeChange={changeSearchMode}
                     anchorRef={kbAnchorRef}
                     live2dOn={live2dOn}
                     onToggleLive2d={toggleLive2d}
@@ -3109,7 +4011,7 @@ export function AIChat({
                 }
               }}
               placeholder={`向 ${config.botName || "AI"} 发送消息...`}
-              disabled={loading}
+              disabled={loading || (loreLoading && !live2dImmersive)}
               rows={1}
               style={{ resize: "none" }}
               className="no-scrollbar max-h-40 min-h-[38px] flex-1 self-center bg-transparent px-1.5 py-2 text-sm leading-6 text-gray-800 outline-none placeholder:text-gray-400 disabled:opacity-50 sm:text-[15px] dark:text-gray-100"
@@ -3118,7 +4020,12 @@ export function AIChat({
               onClick={() => {
                 void send();
               }}
-              disabled={loading || !input.trim() || cooldown > 0}
+              disabled={
+                loading ||
+                (loreLoading && !live2dImmersive) ||
+                !input.trim() ||
+                cooldown > 0
+              }
               className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gray-900 text-white transition hover:bg-gray-700 disabled:opacity-40 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300"
             >
               {cooldown > 0 ? (
@@ -3233,13 +4140,6 @@ export function AIChat({
       {/* 底部：内嵌圆角卡片（额度 + 主题 + 站点名） */}
       <div className="shrink-0 p-2.5">
         <div className="rounded-xl border border-gray-200/70 bg-white/70 p-2 dark:border-gray-700/70 dark:bg-gray-900/70">
-          <input
-            ref={importRef}
-            type="file"
-            accept=".json,application/json"
-            onChange={onImportAll}
-            className="hidden"
-          />
           {dailyLimit > 0 && (
             <div className="mt-2 space-y-1 px-1">
               <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-gray-500">
@@ -3401,6 +4301,7 @@ export function AIChat({
                 onKbOpenConsumed={consumeKbOpen}
                 live2dOn={l2dEnabled}
                 onTabChange={setAgentTab}
+                allowWebAutoDetect={browseAgentOn}
               />
             </div>
           )}
@@ -3427,6 +4328,7 @@ export function AIChat({
               onKbOpenConsumed={consumeKbOpen}
               live2dOn={l2dEnabled}
               onTabChange={setAgentTab}
+              allowWebAutoDetect={browseAgentOn}
             />
           </div>
         </div>
@@ -3438,6 +4340,8 @@ export function AIChat({
     <div
       className={
         "flex h-full min-h-0 overflow-hidden " +
+        fontSizeCls +
+        " " +
         (live2dImmersive ? "" : "bg-white dark:bg-gray-900")
       }
     >
@@ -3473,7 +4377,7 @@ export function AIChat({
         onClose={() => setApiModalOpen(false)}
         pageId={pageId}
         botName={config.botName || "AI"}
-        onSaved={() => setLocalCfg(getLocalCfg(pageId))}
+        onSaved={onCustomSaved}
       />
       <ArticleComposerModal
         open={articleOpen}

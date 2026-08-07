@@ -67,7 +67,7 @@ export function UsageDocModal({
               </li>
               <li>
                 发送框按 Enter 发送、Shift+Enter
-                换行；点击左侧「/」可切换网络模式（Auto/Search/View）、开关
+                换行；点击左侧「/」可切换网络模式（Auto/Search）、开关
                 Live2D、选择知识库条目。
               </li>
               <li>AI 生成内容带水印标注，仅供参考，请自行核实重要信息。</li>
@@ -91,8 +91,12 @@ export function UsageDocModal({
             <ul className="ml-4 list-disc space-y-1">
               <li>
                 <b>Auto</b>（默认）：自动调用——需要时自动联网搜索或生成文章。
-                <b>Search</b>：联网搜索，回答更实时准确。
-                <b>View</b>：资料统计，联网抓取并生成综合文章在浏览面板查看。
+                <b>Search</b>
+                ：联网搜索并生成综合文章（在浏览面板查看），回答更实时准确。
+              </li>
+              <li>
+                可在「设置 → 搜索 API」接入 Tavily / Brave /
+                SearXNG，实时获取当天信息；未配置或被拦自动降级。
               </li>
               <li>搜索为匿名公开接口，不涉及您的隐私数据。</li>
             </ul>
@@ -108,7 +112,7 @@ export function UsageDocModal({
               <li>
                 <b>安全规则：</b>
                 密钥仅保存在本机浏览器（localStorage），不会上传服务器；请勿在公共电脑保存密钥；接口需为
-                OpenAI 兼容格式；如开启 search/view 或自定义
+                OpenAI 兼容格式；如开启 search 或自定义
                 API，请遵守您所用服务的使用条款与当地法律。
               </li>
               <li>

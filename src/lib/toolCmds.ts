@@ -16,6 +16,12 @@ export function stripToolCmds(content: string): string {
       )
       // 2.5) 表情标签 [表情:开心] / 【表情:别扭】 / [EMOTION:开心]（由 Live2D 看板娘承载展示）
       .replace(/[\[【]\s*(?:表情|EMOTION)\s*[:：]\s*[^\]】]*?[\]】]/gi, "")
+      // 2.6) Live2D 动作指令 [PARAM:ParamX:0.8] / [MOTION:smile01] / [EXPRESSION:xxx]
+      //      （由 live2dCore 的 applyActionCommands 执行，消息里不展示原始标记）
+      .replace(
+        /[\[【]\s*(?:PARAM|参数|MOTION|动作|EXPRESSION|表情预设)\s*[:：]\s*[^\]】\n]{1,60}?[\]】]/gi,
+        "",
+      )
       // 3) 未闭合指令（到行尾，兼容 AI 漏写 ]）
       .replace(/\[(?:SEARCH|BROWSE|VIEW|KB|OPEN_KB|知识库|EDIT):[^\n]*$/gi, "")
       // 4) 清理孤立标记（残留 [SEARCH] / [/SEARCH] 等）
