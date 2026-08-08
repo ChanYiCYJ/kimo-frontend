@@ -104,6 +104,7 @@ import {
   emitLive2dState,
   getState,
   loadModel,
+  prepareSpeaking,
   setEmotion as applyL2dModelEmotion,
   setLive2dBusy,
   speakAudio,
@@ -1603,7 +1604,10 @@ export function AIChat({
       return;
     }
     stopSpeaking();
-    if (l2dEnabled) applyL2dModelEmotion("happy");
+    if (l2dEnabled) {
+      prepareSpeaking();
+      applyL2dModelEmotion("happy");
+    }
     speakAudio(url, {
       volume: ttsVolumeValue(ttsVolume),
       onEnd: () => stopSpeaking(),
@@ -2184,6 +2188,8 @@ export function AIChat({
       // 朗读时也触发 Live2D 表情/动作指令：用「原始文本」（含 [表情:]/[PARAM:]/[LOOK:] 等，
       // 尚未被清洗）让角色在朗读时同步表演——AI 对话里的隐藏指令被 TTS 朗读调用
       if (l2dEnabled) {
+        // 朗读意图：表情动画不覆盖嘴部开合（lipSync 优先）+ 口型准备态微张
+        prepareSpeaking();
         applyActionCommands(text);
         const te = parseEmotionTag(text);
         applyL2dModelEmotion(te || detectReplyEmotion(text));

@@ -339,6 +339,9 @@ export function setEmotion(emotion: Emotion): void {
     const t = Math.min(1, (now - start) / duration);
     const k = easeInOutCubic(t);
     for (const [id, to] of targets) {
+      // 朗读（lipSync 驱动）中：嘴部开合由音频波形控制，表情不覆盖
+      // （EMOTION_PRESETS 带 ParamMouthOpenY，会锁嘴几秒导致口型不加载/卡住）
+      if (lipSyncActive && MOUTH_PARAMS.includes(id)) continue;
       const fromV = from[id] ?? 0;
       try {
         core.setParamFloat(id, fromV + (to - fromV) * k);
@@ -1149,6 +1152,30 @@ export function stopSpeaking(): void {
     lipSyncPausedAmbient = false;
     startAmbient();
   }
+  // 朗读结束：表情可恢复控制嘴部（不再由 lipSync 抢占）
+  lipSyncActive = false;
+}
+
+/**
+ * 朗读即将开始前调用（playTTS/试听入口）：标记 lipSync 激活 + 口型进入准备态微张。
+ * 让随后触发的表情动画不覆盖嘴部开合（lipSync 优先），避免「朗读第一时刻」口型被表情
+ * 固定（EMOTION_PRESETS 里 happy/surprised/sleepy 带 ParamMouthOpenY，会锁嘴 3 秒）
+ * 导致口型不加载/卡住。实际音频就绪后由 speakAudio/speakAudioBuffer 接管波形驱动。
+ */
+export function prepareSpeaking(): void {
+  lipSyncActive = true;
+  const core = getCoreModel();
+  if (!core) return;
+  const mouthParams = getMouthParams(core);
+  if (!mouthParams.length) return;
+  // 口型准备态微张（音频未就绪期间保持，避免第一时刻完全静止）
+  mouthSmooth = 0.1;
+  rmsSmooth = 0;
+  for (const p of mouthParams) {
+    try {
+      core.setParamFloat(p, 0.1);
+    } catch {}
+  }
 }
 
 // ---- 真实音频口型同步（Web Audio AnalyserNode 波形 RMS 驱动，参考官方 MotionSync 思路 + l2d 的 RMS 方案）----
@@ -1162,6 +1189,9 @@ let audioBufferSrc: AudioBufferSourceNode | null = null;
 let audioAnalyser: AnalyserNode | null = null;
 let lipSyncAudioId = 0;
 let audioEndedCb: (() => void) | null = null;
+/** 是否正在朗读（lipSync 驱动中）：此时表情动画不覆盖嘴部开合参数，
+ *  避免朗读开头嘴被表情锁定（如 happy 把 ParamMouthOpenY 固定 0.2 保持 3 秒）→ 口型不加载 */
+let lipSyncActive = false;
 /** 嘴部平滑值（攻击快/释放慢，贴合音节且避免波形抖动造成口型闪烁） */
 let mouthSmooth = 0;
 /** RMS 短期平滑值（减波形瞬时抖动，让口型曲线更连贯自然） */
@@ -1369,6 +1399,7 @@ export function speakAudio(
   opts?: { volume?: number; onEnd?: () => void },
 ): boolean {
   stopSpeaking();
+  lipSyncActive = true; // 朗读进行中：表情动画不覆盖嘴部开合
   if (!url) return false;
   try {
     if (!audioCtx) {
@@ -1451,6 +1482,7 @@ export function speakAudioBuffer(
   opts?: { volume?: number; onEnd?: () => void },
 ): boolean {
   stopSpeaking();
+  lipSyncActive = true; // 朗读进行中：表情动画不覆盖嘴部开合
   if (!buffer || buffer.byteLength === 0) return false;
   const onEndCb = opts?.onEnd;
   const volume = Math.max(0, Math.min(1, opts?.volume ?? 1));
