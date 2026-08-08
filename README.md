@@ -10,7 +10,7 @@
 [![Tailwind v4](https://img.shields.io/badge/Tailwind_CSS-v4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![React Router v7](https://img.shields.io/badge/React_Router-v7-CA4245?style=flat-square&logo=react-router&logoColor=white)](https://reactrouter.com)
 [![Milkdown v7](https://img.shields.io/badge/Milkdown-v7-4285F4?style=flat-square&logo=markdown&logoColor=white)](https://milkdown.dev)
-[![Vitest](https://img.shields.io/badge/Vitest-400%2B%20%E7%94%A8%E4%BE%8B-6E9F18?style=flat-square&logo=vitest&logoColor=white)](https://vitest.dev)
+[![Vitest](https://img.shields.io/badge/Vitest-450%2B%20%E7%94%A8%E4%BE%8B-6E9F18?style=flat-square&logo=vitest&logoColor=white)](https://vitest.dev)
 [![Cloudflare](https://img.shields.io/badge/Cloudflare-Workers-F38020?style=flat-square&logo=cloudflare&logoColor=white)](https://workers.cloudflare.com)
 [![Vercel](https://img.shields.io/badge/Vercel-Ready-000000?style=flat-square&logo=vercel&logoColor=white)](https://vercel.com)
 
@@ -65,9 +65,10 @@
 | **路由**          | React Router v7（SPA 客户端路由）                                  |
 | **编辑器**        | Milkdown v7（表格 / 代码高亮 / 图片上传，后台与 Agent 编辑器共用） |
 | **Markdown 渲染** | react-markdown + remark-gfm + rehype-highlight                     |
+| **虚拟列表**      | react-virtuoso（AI 对话长会话消息渲染，DOM 有界）                  |
 | **Live2D**        | pixi.js + pixi-live2d-display（实时渲染）                          |
 | **安全**          | DOMPurify（自定义页面 HTML 消毒）                                  |
-| **测试**          | Vitest（`src/lib/__tests__/` 覆盖 400+ 用例）                      |
+| **测试**          | Vitest（`src/lib/__tests__/` 覆盖 450+ 用例）                      |
 
 ## 🎨 设计亮点（对比原 Kimo 的优化）
 
@@ -138,7 +139,7 @@
 - **25 个 BanG Dream 角色**（5 乐队分组）：自动随机选角、**AI 按记忆 / 知识库智能选角**、bestdori 模型名 / 第三方 Cubism2 `model.json` 网址一键导入
 - **角色设定**：首次自动联网深度整理角色世界观 / 性格 / 语气 / 背景 / 喜好 / 关系 / 资料要点，存为本机角色档案，可在「切换角色 → 角色资料」查看
 - **手机沉浸模式**：全屏 Live2D 背景 + AI 一句话 + 输入栏，边聊天边看角色
-- 口型同步（音频 TTS 朗读时以真实波形驱动张嘴）、鼠标凝视、点击 / 拖拽互动（点击触发情绪动作、拖动转动视角）、眨眼 / 随机小动作环境动画、低端设备自动降级
+- **口型同步**：频谱分析实时驱动 4 维嘴部参数（张嘴+嘴宽+嘴圆+缩放），自适应增益匹配轻声/响亮 TTS，停顿微呼吸、情绪过渡平滑不跳变；鼠标凝视、点击/拖拽互动（点击触发情绪动作、拖动转动视角）、眨眼/随机小动作环境动画、低端设备自动降级
 
 ### 🎙 音频 TTS 朗读
 
@@ -164,6 +165,17 @@
 - **水印**：AI 生成内容带多重水印（含模型名 + API 状态），防止被冒用
 - **写文章**：后台开关 `enable_ai_articles` 开启后，可直接在对话中撰写并发布文章
 - **适用范围**：每个助手可设「仅管理员可用」；主页「AI」菜单可用 `show_ai` 关闭；访客自定义 API 可用 `enable_custom_api` 开关
+
+### ⚡ AI UI 性能优化
+
+> 在不改变任何 UI 视觉 / 布局 / 操作习惯的前提下，对 AI 对话渲染链路做的性能优化。
+
+- **流式渲染节流**：SSE token 经 `requestAnimationFrame` + 短窗口合并刷新（低性能设备自动降频），避免每个 chunk 触发整树重渲染；会话持久化 300ms 防抖合并写入
+- **消息列表虚拟化**：长会话（数百条）由 react-virtuoso 按视口渲染，DOM 数量有界，滚动 / 流式自动跟随（顶部加载、发送后跟随、上滚即停）
+- **MessageItem memo 稳定化**：稳定 `onFeedback` 回调（按索引 + 消息引用读取）、反馈评分预计算（`msgHash → rating` 持久缓存，避免渲染期反复 localStorage 读 + 哈希）、稳定空工具卡数组——流式期间历史消息不再逐条重渲染（实测单次流式 MessageItem 渲染 5402 → 228，约 23.7× 下降）
+- **流式纯文本渲染**：流式进行中最后一条消息以纯文本展示（跳过 ReactMarkdown / 语法高亮），完成后一次性切回完整 Markdown
+- **Agent 面板联动**：Agent 面板 memo + 稳定 props（流式期间不随父组件重渲染）、文章 Markdown 抽 memo 组件
+- **资源与生命周期**：卸载 / 切换会话自动中止进行中的流式请求；Live2D 低性能设备降分辨率 / 限帧 / 流式期间暂停渲染
 
 ## 🚀 快速开始
 
@@ -456,7 +468,7 @@ npm test           # 运行全部单元测试（Vitest）
 npm run test:watch # 监听模式
 ```
 
-测试覆盖 `src/lib/__tests__/`：搜索（多引擎 / 缓存 / 多语言 / 纠错）、搜索 API、知识库、Live2D（情绪 / 动作 / 角色 / 角色设定 / 口型）、模型路由、服务商预设、连接测试、人设 / 人格、提示词预设、数据管理、性能工具、TTS 缓存、AI Chat hooks 等 **400+ 用例**。
+测试覆盖 `src/lib/__tests__/`：搜索（多引擎/缓存/多语言/纠错）、搜索 API、知识库、Live2D（情绪/动作/角色/角色设定/口型/频谱分析/自适应增益）、模型路由、服务商预设、连接测试、人设/人格、提示词预设、数据管理、性能工具、TTS 缓存、AI Chat hooks 等 **450+ 用例**。
 
 ## 🛠 常用命令
 

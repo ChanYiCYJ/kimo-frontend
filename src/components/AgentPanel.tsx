@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { MdEditor } from "./MdEditor";
@@ -19,6 +19,19 @@ interface KbEntry {
 }
 
 const KB_KEY = "kimo_kb_entries";
+
+/** 文章 Markdown 渲染（memo 化）：articleMd 大文本未变化时跳过 ReactMarkdown+GFM 重复解析 */
+const PanelMarkdown = memo(function PanelMarkdown({
+  content,
+}: {
+  content: string;
+}) {
+  return (
+    <div className="markdown-body kimo-panel">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+    </div>
+  );
+});
 /** Agent 面板 tab 记忆（刷新后恢复上次所在 tab，如停留在 Live2D 刷新不会跳回知识库） */
 const AGENT_TAB_KEY = (pageId: number) => `kimo_ai_agent_tab_${pageId}`;
 const AGENT_TABS = ["web", "kb", "edit", "settings", "live2d"] as const;
@@ -962,11 +975,7 @@ export function AgentPanel({
                             <div className="h-3 w-4/5 animate-pulse rounded bg-gray-100 dark:bg-gray-800" />
                           </div>
                         ) : (
-                          <div className="markdown-body kimo-panel">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                              {articleMd}
-                            </ReactMarkdown>
-                          </div>
+                          <PanelMarkdown content={articleMd} />
                         )}
                       </div>
                     </article>
