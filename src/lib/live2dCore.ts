@@ -1200,6 +1200,17 @@ let lipSyncActive = false;
 /** 朗读会话 id：每次 speakAudio/speakAudioBuffer/prepareSpeaking 递增，
  *  用于旧 step 失效（快速连播/停止时旧准备态/波形 step 不覆盖新朗读） */
 let speakSession = 0;
+/** 口型关键帧（毫秒偏移 → mouth 值）；离线预生成，播放时按时间轴查表，朗读中不再实时生成 */
+interface MouthKeyFrame {
+  t: number;
+  v: number;
+}
+/** 当前播放的口型序列（decode 完成、播放前离线生成） */
+let mouthSeq: MouthKeyFrame[] = [];
+/** 序列播放起始（AudioContext.currentTime） */
+let mouthSeqStart = 0;
+/** 序列所属 AudioContext（查表用） */
+let mouthSeqCtx: AudioContext | null = null;
 /** 嘴部平滑值（攻击快/释放慢，贴合音节且避免波形抖动造成口型闪烁） */
 let mouthSmooth = 0;
 /** RMS 短期平滑值（减波形瞬时抖动，让口型曲线更连贯自然） */
@@ -1309,6 +1320,9 @@ function stopAudioLipSync(): void {
   audioAnalyser = null;
   audioEndedCb = null;
   mouthSmooth = 0;
+  // 清除预生成口型序列（下次朗读重新生成）
+  mouthSeq = [];
+  mouthSeqCtx = null;
 }
 
 /**
@@ -1378,6 +1392,88 @@ function buildLipSyncStep(
   };
 }
 
+/**
+ * 离线分析 AudioBuffer 波形，预生成完整口型序列（20ms 一帧）。
+ * 与实时 RMS 驱动同逻辑（rmsSmooth 平滑 + smoothMouth + 0.1 说话态下限），但**一次性在
+ * 播放前算完** → 朗读时只按时间轴查表驱动，朗读中无「生成口型」过程、不会中途闭合。
+ */
+function buildMouthSequence(audioBuf: AudioBuffer): MouthKeyFrame[] {
+  const sr = audioBuf.sampleRate;
+  const ch = audioBuf.numberOfChannels > 0 ? audioBuf.getChannelData(0) : null;
+  if (!ch || !sr) return [];
+  const frameMs = 20;
+  const frameLen = Math.max(1, Math.floor((sr * frameMs) / 1000));
+  const seq: MouthKeyFrame[] = [];
+  let rmsS = 0;
+  let mouth = 0.1;
+  let voiceStarted = false;
+  for (let off = 0; off < ch.length; off += frameLen) {
+    const end = Math.min(ch.length, off + frameLen);
+    let sum = 0;
+    for (let i = off; i < end; i++) {
+      const v = ch[i];
+      sum += v * v;
+    }
+    const rms = Math.sqrt(sum / (end - off));
+    const t = (off / sr) * 1000;
+    if (!voiceStarted && rms < 0.03) {
+      mouth = 0.1;
+      rmsS = 0;
+    } else {
+      voiceStarted = true;
+      rmsS += (rms - rmsS) * 0.65;
+      mouth = smoothMouth(mouth, rmsS);
+      if (mouth < 0.1) mouth = 0.1; // 朗读中保持说话态最低开口，不闭合
+    }
+    seq.push({ t, v: mouth });
+  }
+  return seq;
+}
+
+/**
+ * 按时间轴查表驱动口型（播放预生成序列，不再实时计算波形）。
+ * 序列在播放前已生成，朗读全程口型连续、无「生成中闭合」。
+ */
+function buildSeqLipSyncStep(
+  isActive: () => boolean,
+  core: any,
+  mouthParams: string[],
+): () => void {
+  return () => {
+    if (!isActive()) {
+      removeLipSyncFromTicker();
+      return;
+    }
+    const ctx = mouthSeqCtx;
+    if (!ctx || !mouthSeq.length) {
+      // 无序列（异常兜底）：保持准备态微张
+      if (mouthParams.length > 0) {
+        mouthSmooth = 0.1;
+        for (const p of mouthParams) {
+          try {
+            core.setParamFloat(p, 0.1);
+          } catch {}
+        }
+      }
+      return;
+    }
+    const cur = (ctx.currentTime - mouthSeqStart) * 1000;
+    let v = 0.1;
+    // 线性查找：取最后一个 ≤cur 的关键帧值（序列按时间有序）
+    for (const kf of mouthSeq) {
+      if (kf.t <= cur) v = kf.v;
+      else break;
+    }
+    mouthSmooth = v;
+    for (const p of mouthParams) {
+      try {
+        core.setParamFloat(p, v);
+      } catch {}
+    }
+  };
+}
+
+/** 口型平滑回落：从当前开口平滑降到 0（约 220ms easeOut），替代“啪”地闭合 */
 /** 口型平滑回落：从当前开口平滑降到 0（约 220ms easeOut），替代“啪”地闭合 */
 function fadeMouthToZero(): void {
   if (mouthFadeId) cancelAnimationFrame(mouthFadeId);
@@ -1562,24 +1658,31 @@ export function speakAudioBuffer(
       srcBuf,
       (audioBuf) => {
         try {
+          // 朗读前先生成好完整口型序列（离线分析波形；播放时按时间轴查表，
+          // 朗读中不再实时计算 → 全程连续、无「生成中闭合」）
+          const seq = buildMouthSequence(audioBuf);
           const src = ctx.createBufferSource();
           src.buffer = audioBuf;
           audioBufferSrc = src;
-          const analyser = ctx.createAnalyser();
-          analyser.fftSize = 512;
-          // AudioBufferSourceNode 无 volume 属性，用 GainNode（分析器→增益→输出，
-          // 音量会影响 RMS 与最终输出一致：低音量嘴张自然偏小）
+          // AudioBufferSourceNode 无 volume 属性，用 GainNode；口型序列已离线生成，无需 Analyser
           const gain = ctx.createGain();
           gain.gain.value = volume;
-          src.connect(analyser);
-          analyser.connect(gain);
+          src.connect(gain);
           gain.connect(ctx.destination);
-          audioAnalyser = analyser; // 切换波形（已注册的 step 无缝接管）
           src.onended = finish;
-          // 移动端：先等 AudioContext resume 完成再 start（自动播放策略，不等会静音）
+          // 用预生成序列按时间轴查表驱动口型（替换 decode 前的准备态 step）
+          mouthSeq = seq;
+          mouthSeqCtx = ctx;
+          const startTime = ctx.currentTime + 0.05;
+          mouthSeqStart = startTime;
+          lipSyncHookRef = buildSeqLipSyncStep(
+            () => session === speakSession && lipSyncActive,
+            core,
+            mouthParams,
+          );
           const start = () => {
             try {
-              src.start();
+              src.start(startTime);
             } catch {}
           };
           if (ctx.state === "suspended") {
