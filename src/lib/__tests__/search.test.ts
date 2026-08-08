@@ -4,10 +4,16 @@ import {
   readSearchCache,
   writeSearchCache,
   searchBackend,
+  searchFast,
+  searchFastWithAnswer,
+  searchTavilyDeep,
   detectQueryType,
   detectQueryLang,
   searchAI,
   webSearchToArticle,
+  fetchWebContent,
+  isContentBlocked,
+  filterSensitiveResults,
 } from "../search";
 
 function jsonResponse(data: unknown, status = 200) {
@@ -479,5 +485,383 @@ describe("search · 幻觉抑制（来源约束）", () => {
     expect(capturedUser).toContain("内容抓取失败或为空");
     expect(capturedUser).toContain("资料有限");
     expect(capturedUser).toContain("请勿编造");
+  });
+});
+
+describe("search · searchFast（Auto 联网提速）", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    localStorage.clear();
+  });
+
+  it("配置 Tavily 时优先浏览器直连（basic 深度、不请求 AI 回答），不走 /api/search", async () => {
+    localStorage.setItem(
+      "kimo_search_api_cfg",
+      JSON.stringify({
+        provider: "tavily",
+        apiKey: "tvly-test",
+        instance: "",
+        ttl: 60,
+      }),
+    );
+    const calls: string[] = [];
+    let body: Record<string, unknown> = {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const u = String(url);
+        calls.push(u);
+        if (u.includes("api.tavily.com/search")) {
+          body = JSON.parse(String(init?.body || "{}")) as Record<
+            string,
+            unknown
+          >;
+          return jsonResponse({
+            results: [
+              {
+                title: "Tavily 直连",
+                url: "https://tavily.com/x",
+                content: "desc",
+              },
+            ],
+          });
+        }
+        return jsonResponse([]);
+      }),
+    );
+    const r = await searchFast("2026年8月 AI 新闻", 6);
+    // 直连命中 → 结果来自 Tavily，且没有走慢的后端 /api/search
+    expect(r.length).toBe(1);
+    expect(r[0].engine).toBe("tavily");
+    expect(calls.some((c) => c.includes("/api/search"))).toBe(false);
+    // 快路径：basic 深度 + 不生成 AI 回答（提速关键）
+    expect(body.search_depth).toBe("basic");
+    expect(body.include_answer).toBe(false);
+  });
+
+  it("Tavily 直连空/失败时回退 Worker /api/search", async () => {
+    localStorage.setItem(
+      "kimo_search_api_cfg",
+      JSON.stringify({
+        provider: "tavily",
+        apiKey: "tvly-test",
+        instance: "",
+        ttl: 60,
+      }),
+    );
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const u = String(url);
+        calls.push(u);
+        if (u.includes("api.tavily.com/search"))
+          return jsonResponse({ results: [] });
+        if (u.startsWith("/api/search"))
+          return jsonResponse([
+            { title: "后端兜底", url: "https://b.com", description: "d" },
+          ]);
+        return jsonResponse([]);
+      }),
+    );
+    const r = await searchFast("test query", 6);
+    expect(r.some((x) => x.title === "后端兜底")).toBe(true);
+    expect(calls.some((c) => c.includes("/api/search"))).toBe(true);
+  });
+
+  it("未配置 Tavily 时直接走 Worker /api/search（不触发 tavily 直连）", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const u = String(url);
+        calls.push(u);
+        if (u.startsWith("/api/search"))
+          return jsonResponse([
+            { title: "后端结果", url: "https://c.com", description: "d" },
+          ]);
+        return jsonResponse([]);
+      }),
+    );
+    const r = await searchFast("hello world", 6);
+    expect(r.some((x) => x.title === "后端结果")).toBe(true);
+    expect(calls.some((c) => c.includes("api.tavily.com"))).toBe(false);
+  });
+});
+
+describe("search · searchTavilyDeep + searchFastWithAnswer（Tavily 直连专属路径）", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    localStorage.clear();
+  });
+
+  it("searchTavilyDeep：advanced 深度 + AI 直接答案，时敏查询切 news topic/day", async () => {
+    localStorage.setItem(
+      "kimo_search_api_cfg",
+      JSON.stringify({
+        provider: "tavily",
+        apiKey: "tvly-test",
+        instance: "",
+        ttl: 60,
+      }),
+    );
+    let body: Record<string, unknown> = {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const u = String(url);
+        if (u.includes("api.tavily.com/search")) {
+          body = JSON.parse(String(init?.body || "{}")) as Record<
+            string,
+            unknown
+          >;
+          return jsonResponse({
+            answer: "Tavily 官方直接答案：2026年8月 AI 新闻要点……",
+            results: [
+              { title: "T1", url: "https://t1.com", content: "d1" },
+              { title: "T2", url: "https://t2.com", content: "d2" },
+            ],
+          });
+        }
+        return jsonResponse([]);
+      }),
+    );
+    const r = await searchTavilyDeep("2026年8月 AI 新闻", 6);
+    expect(r.results.length).toBe(2);
+    expect(r.answer).toContain("Tavily 官方直接答案");
+    expect(body.search_depth).toBe("advanced");
+    expect(body.include_answer).toBe("advanced");
+    // 时敏查询：news topic + day 时窗（与 Tavily 官网同配置）
+    expect(body.topic).toBe("news");
+    expect(body.time_range).toBe("day");
+  });
+
+  it("searchTavilyDeep：非时敏查询用 general/week", async () => {
+    localStorage.setItem(
+      "kimo_search_api_cfg",
+      JSON.stringify({
+        provider: "tavily",
+        apiKey: "tvly-test",
+        instance: "",
+        ttl: 60,
+      }),
+    );
+    let body: Record<string, unknown> = {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        if (String(url).includes("api.tavily.com/search")) {
+          body = JSON.parse(String(init?.body || "{}")) as Record<
+            string,
+            unknown
+          >;
+          return jsonResponse({
+            answer: "",
+            results: [{ title: "T", url: "https://t.com", content: "d" }],
+          });
+        }
+        return jsonResponse([]);
+      }),
+    );
+    const r = await searchTavilyDeep("React 是什么", 6);
+    expect(r.results.length).toBe(1);
+    expect(body.topic).toBe("general");
+    expect(body.time_range).toBe("week");
+  });
+
+  it("searchTavilyDeep：未配置 Tavily 返回空（不发起请求）", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        calls.push(String(url));
+        return jsonResponse([]);
+      }),
+    );
+    const r = await searchTavilyDeep("hello", 6);
+    expect(r.results.length).toBe(0);
+    expect(r.answer).toBe("");
+    expect(calls.some((c) => c.includes("api.tavily.com"))).toBe(false);
+  });
+
+  it("searchFastWithAnswer：配置 Tavily 直连命中 → 返回结果 + answer，不走 /api/search", async () => {
+    localStorage.setItem(
+      "kimo_search_api_cfg",
+      JSON.stringify({
+        provider: "tavily",
+        apiKey: "tvly-test",
+        instance: "",
+        ttl: 60,
+      }),
+    );
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        const u = String(url);
+        calls.push(u);
+        if (u.includes("api.tavily.com/search"))
+          return jsonResponse({
+            answer: "直接答案",
+            results: [{ title: "T", url: "https://t.com", content: "d" }],
+          });
+        return jsonResponse([]);
+      }),
+    );
+    const r = await searchFastWithAnswer("2026年8月 AI 新闻", 8);
+    expect(r.results.some((x) => x.engine === "tavily")).toBe(true);
+    expect(r.answer).toBe("直接答案");
+    expect(calls.some((c) => c.includes("/api/search"))).toBe(false);
+  });
+
+  it("searchFastWithAnswer：Tavily 直连空 → 回退 Worker /api/search（answer 空）", async () => {
+    localStorage.setItem(
+      "kimo_search_api_cfg",
+      JSON.stringify({
+        provider: "tavily",
+        apiKey: "tvly-test",
+        instance: "",
+        ttl: 60,
+      }),
+    );
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        const u = String(url);
+        calls.push(u);
+        if (u.includes("api.tavily.com/search"))
+          return jsonResponse({ results: [] });
+        if (u.startsWith("/api/search"))
+          return jsonResponse([
+            { title: "后端", url: "https://b.com", description: "d" },
+          ]);
+        return jsonResponse([]);
+      }),
+    );
+    const r = await searchFastWithAnswer("test", 6);
+    expect(r.results.some((x) => x.title === "后端")).toBe(true);
+    expect(r.answer).toBe("");
+    expect(calls.some((c) => c.includes("/api/search"))).toBe(true);
+  });
+
+  it("searchFastWithAnswer：未配置 Tavily 直接走 /api/search，不触发 tavily", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        const u = String(url);
+        calls.push(u);
+        if (u.startsWith("/api/search"))
+          return jsonResponse([
+            { title: "后端结果", url: "https://c.com", description: "d" },
+          ]);
+        return jsonResponse([]);
+      }),
+    );
+    const r = await searchFastWithAnswer("hello", 6);
+    expect(r.results.some((x) => x.title === "后端结果")).toBe(true);
+    expect(r.answer).toBe("");
+    expect(calls.some((c) => c.includes("api.tavily.com"))).toBe(false);
+  });
+});
+
+describe("search · isContentBlocked（违规内容友好兜底）", () => {
+  it("400/403 + 内容策略关键词 → true", () => {
+    expect(
+      isContentBlocked(
+        new Error("AI 请求失败 (400): content policy violation"),
+      ),
+    ).toBe(true);
+    expect(isContentBlocked(new Error("AI 请求失败 (400): 敏感内容"))).toBe(
+      true,
+    );
+    expect(isContentBlocked("400 违规内容")).toBe(true);
+    expect(isContentBlocked(new Error("403 blocked"))).toBe(true);
+  });
+  it("非违规错误 → false", () => {
+    expect(isContentBlocked(new Error("AI 请求失败 (500): timeout"))).toBe(
+      false,
+    );
+    expect(isContentBlocked(new Error("network error"))).toBe(false);
+    expect(isContentBlocked("")).toBe(false);
+    expect(isContentBlocked(new Error("400: 请求参数错误"))).toBe(false);
+  });
+});
+
+describe("search · fetchWebContent 会话内缓存（view 提速）", () => {
+  it("同一 URL 只抓取一次，第二次命中缓存", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        const u = String(url);
+        calls.push(u);
+        if (u.startsWith("/api/fetch")) {
+          return jsonResponse({
+            url: "https://a.com",
+            content: "这是正文内容……",
+            title: "A",
+            ogImage: "https://a.com/img.png",
+            images: [],
+          });
+        }
+        return jsonResponse({});
+      }),
+    );
+    const r1 = await fetchWebContent("https://a.com", 2000);
+    const r2 = await fetchWebContent("https://a.com", 2000);
+    expect(r1.content).toBe("这是正文内容……");
+    expect(r2.content).toBe("这是正文内容……");
+    expect(calls.filter((c) => c.startsWith("/api/fetch")).length).toBe(1);
+  });
+
+  it("失败（抛错）不缓存，允许重试", async () => {
+    let attempt = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        const u = String(url);
+        if (u.startsWith("/api/fetch")) {
+          attempt++;
+          // 第一次：代理失败；第二次：成功
+          if (attempt === 1) throw new Error("Failed to fetch");
+          return jsonResponse({ content: "成功内容", title: "B" });
+        }
+        // 直连也失败（确保第一次整体失败）
+        throw new Error("direct failed");
+      }),
+    );
+    await expect(fetchWebContent("https://b.com", 2000)).rejects.toThrow();
+    const r2 = await fetchWebContent("https://b.com", 2000);
+    expect(r2.content).toBe("成功内容");
+  });
+});
+
+describe("search · filterSensitiveResults（违规内容默默隐藏）", () => {
+  const base = {
+    url: "https://a.com",
+    source: "a.com",
+    engine: "tavily",
+  };
+  it("命中明确违规词的结果被过滤（正常结果保留）", () => {
+    const r = filterSensitiveResults([
+      { ...base, title: "正常新闻", description: "正常内容" },
+      { ...base, title: "色情网站大全", description: "成人视频" },
+      { ...base, title: "在线赌场", description: "博彩" },
+      { ...base, title: "健康科普", description: "成人教育相关内容" },
+    ]);
+    expect(r.map((x) => x.title)).toEqual(["正常新闻", "健康科普"]);
+  });
+  it("全部违规 → 返回空（折叠卡不显示）", () => {
+    const r = filterSensitiveResults([
+      { ...base, title: "黄片", description: "色情" },
+    ]);
+    expect(r.length).toBe(0);
+  });
+  it("空数组/未违规 → 原样返回", () => {
+    expect(filterSensitiveResults([])).toEqual([]);
+    const ok = [{ ...base, title: "A", description: "正常" }];
+    expect(filterSensitiveResults(ok)).toEqual(ok);
   });
 });

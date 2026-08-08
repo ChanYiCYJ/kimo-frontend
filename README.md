@@ -7,16 +7,18 @@
 - **React 19** + **TypeScript** + **Vite 8**
 - **Tailwind CSS v4**（`@tailwindcss/vite`）
 - **React Router v7**（SPA 客户端路由）
+- **Milkdown v7**（Markdown 编辑器，支持表格 / 代码高亮 / 图片上传，后台写作与 Agent 编辑器共用）
 - **react-markdown + remark-gfm + rehype-highlight**（客户端 Markdown 渲染与代码高亮）
-- **@uiw/react-md-editor**（后台写作编辑器，支持图片上传）
+- **pixi.js + pixi-live2d-display**（Live2D 看板娘实时渲染）
 - **DOMPurify**（自定义页面 HTML 消毒）
+- **Vitest**（单元测试，`src/lib/__tests__/` 覆盖 300+ 用例）
 
 ## 🎨 设计亮点（对比原 Kimo 的优化）
 
 | 维度          | 原 Kimo（Flask） | 本前端（React）                                |
 | ------------- | ---------------- | ---------------------------------------------- |
 | 页面切换      | 整页刷新         | SPA 无刷新路由                                 |
-| 写作编辑器    | Vditor           | @uiw/react-md-editor（React 原生）             |
+| 写作编辑器    | Vditor           | Milkdown（React 原生）                         |
 | Markdown 渲染 | 服务端 HTML      | 客户端渲染（防 XSS）                           |
 | 登录态        | Session          | JWT + localStorage + Context                   |
 | 提示反馈      | alert 弹窗       | 轻量 Toast 通知                                |
@@ -25,17 +27,59 @@
 
 ## 🤖 AI 对话中心（/ai）
 
-内置一套完整的 **ChatGPT 风格 AI 对话应用**，管理员可在后台「AI 管理」创建/编辑多个 AI 助手，访客可随时切换：
+内置一套完整的 **ChatGPT 风格 AI 对话应用**，管理员可在后台「AI 管理」创建/编辑多个 AI 助手，访客可随时切换，并可与 **Live2D 虚拟形象** 实时互动：
 
-- **会话管理**：多会话、自动标题、手动重命名、删除、导出/导入全部（JSON）
-- **Coser 角色扮演**：为 AI 配置人设（角色提示词）+ 站点内容（选文章/分类）+ 自定义设定（本机笔记，可导入 Markdown），可导出设定
-- **网络模式**：Auto（默认，智能）/ search（联网搜索并自动生成综合文章）；优先走 Worker `/api/search`（多引擎 + 可接入第三方搜索 API），回退维基百科（zh→en）
-- **搜索 API**：设置中可自由接入 Tavily / Brave Search / SearXNG（自填 Key 存本机），配置后搜索数据实时更新（可获取当天信息）；未配置或被拦截时自动降级免费引擎，不硬刚网络拦截
-- **自定义模型 API**：非管理员可填自己的接口/Key/模型（存本机，不传服务器），自动解除次数/冷却限制，并支持自定义提示词
+### 💬 会话管理
+
+- 多会话、自动标题、手动重命名、删除、导出/导入全部（JSON）
+- 对话记忆（本机问答对）+ 自动压缩（防 token 滥用）+ **auto-knowledge 人格学习**（对话后自动提炼偏好，越聊越贴合人设）
+
+### 🔍 三种搜索模式（Fast / Auto / Deep）
+
+| 模式             | 说明                                                            |
+| ---------------- | --------------------------------------------------------------- |
+| **Fast**         | 纯本地快速回答，不联网、不生成文章                              |
+| **Auto**（默认） | 先答，缺数据自动升级：联网搜索并让 AI 重答，不自动生成完整文章  |
+| **Deep**         | 联网搜索 + 自动生成完整综合文章（View 面板查看 / 保存到知识库） |
+
+### 🔌 搜索 API 平台
+
+- 设置 →「搜索 API」可接入 **Tavily**（专为 AI 设计，免费 1000 次/月，支持当天新闻时间过滤）或 **SearXNG**（开源元搜索，直接填实例地址）
+- 配置存本机浏览器（localStorage），经 Worker 代理执行（免 CORS）；未配置或被拦截时自动降级免费引擎，**不硬刚、不做绕过**
+- 搜索结果实时更新（提示词注入当天日期、可调缓存时效），面板「重新生成」可强制刷新
+
+### 🧠 搜索智能
+
+- **多语言关键词**：中 / 英 / 日 / 韩 自动识别并增强（动漫查询自动附日文关键词）
+- **意图识别**：天气（Open-Meteo 实时预报）、新番动画（Bangumi）、Bilibili、新闻、通用等自动选引擎
+- **多引擎并行**：Worker `/api/search` 并行抓取 Bing / DuckDuckGo / Brave / Google News / Mojeek / Qwant / Wikipedia / 百度 / Bilibili，按域名多样化去重
+- **搜索规划器**：查询分段（多子查询并发）+ 无结果自动纠错 + 结果合并/去重/相关性过滤 + 搜索定式缓存（学习最优引擎组合）
+- **结果缓存**：localStorage 6h TTL、增量写缓存，刷新不重复搜索，历史命中显示绿点
+
+### 🎭 Live2D 虚拟形象
+
+- **AI 即角色**：AI 模型本身就是 Live2D 角色，回复情绪实时驱动表情/动作（自动情绪识别 + `[表情:xxx]` 标签 + `[PARAM:]/[MOTION:]/[EXPRESSION:]` 动作指令协议）
+- **25 个 BanG Dream 角色**（5 乐队分组）：自动随机选角、**AI 按记忆/知识库智能选角**、bestdori 模型名 / 第三方 Cubism2 `model.json` 网址一键导入
+- **角色设定**：首次自动联网深度整理角色世界观 / 性格 / 语气 / 背景 / 喜好 / 关系 / 资料要点，存为本机角色档案，可在「切换角色 → 角色资料」查看
+- **手机沉浸模式**：全屏 Live2D 背景 + AI 一句话 + 输入栏，边聊天边看角色
+- 口型同步（朗读时张嘴）、鼠标凝视、眨眼/随机小动作环境动画、低端设备自动降级
+
+### 🧰 Agent 工具箱
+
+- **知识库**：AI 可直接创建/编辑条目（`[KB-SAVE:]` / `[KB-EDIT:]` 协议），内置 Milkdown 编辑器（自动保存 / 草稿 / 多选删除 / 导入导出），站点内容 + 本机笔记双数据源
+- **View**：联网搜索 + AI 综合文章生成（含配图），可一键保存到知识库
+- **Live2D**：角色舞台 + 切换角色 / 角色资料面板
+- **设置**：对话字体、搜索模式、搜索 API、模型 API 配置、数据管理
+
+### ⚙️ 其他
+
+- **自定义模型 API**：访客可填自己的接口/Key/模型（存本机，不传服务器），自动解除次数/冷却限制，内置 DeepSeek / Kimi / OpenAI 快捷预设 + 一键测试连接
+- **多模型路由**：注册多个模型时，搜索/关键词等快任务自动路由到便宜快速模型（fast），主对话用主模型（primary）
+- **推理模型适配**：DeepSeek reasoner / Kimi thinking 等推理模型自适应 `max_tokens`，兼容 `reasoning_content` / `<|thinking|>` 流式
+- **数据管理**：知识库 / 对话历史 / 网页缓存 / 自定义 AI / Live2D 五类本机数据可勾选导出 / 导入
 - **水印**：AI 生成内容带多重水印（含模型名 + API 状态），防止被冒用
 - **写文章**：后台开关 `enable_ai_articles` 开启后，可直接在对话中撰写并发布文章
 - **适用范围**：每个助手可设「仅管理员可用」；主页「AI」菜单可用 `show_ai` 关闭；访客自定义 API 可用 `enable_custom_api` 开关
-- **用户设置**：已迁入 Agent 工具箱「设置」tab，整合 自动朗读/网络模式、对话字体、导出导入、模型 API、使用文档、GitHub 开源链接
 
 ## 🚀 快速开始
 
@@ -70,25 +114,6 @@ server: {
 | `VITE_API_BASE`   | API 基础路径                        | `/api/v1` |
 | `VITE_USE_MOCK`   | 强制使用演示数据（`1`）             | 关闭      |
 | `VITE_MEDIA_BASE` | 静态资源/图片源（跨源部署时拼前缀） | 关闭      |
-
-## 🗺 路由
-
-| 路径                    | 说明                                         |
-| ----------------------- | -------------------------------------------- |
-| `/`                     | 首页（文章列表、分页、分类筛选、搜索）       |
-| `/article/:id`          | 文章详情                                     |
-| `/page/:name`           | 自定义页面（markdown / list / link）         |
-| `/ai`、`/ai/:botId`     | **AI 对话中心**（多助手切换）                |
-| `/login`                | 登录 / 注册                                  |
-| `/dashboard`            | 管理后台（需管理员 role=0）                  |
-| `/dashboard/articles*`  | 文章管理 / 新建 / 编辑                       |
-| `/dashboard/pages*`     | 页面管理 / 新建 / 编辑                       |
-| `/dashboard/ai`         | **AI 助手管理**（统一管理所有助手）          |
-| `/dashboard/categories` | 分类标签                                     |
-| `/dashboard/settings`   | 站点设置（含 AI 改写、功能开关、默认落地页） |
-| `/dashboard/users`      | 用户管理                                     |
-
-> 💡 后端未启动时，前端会自动回退到**演示数据**（`src/lib/mock.ts`），便于本地预览 UI。
 
 ## ☁️ 一键部署到 Vercel
 
@@ -176,6 +201,8 @@ npx wrangler dev                 # 或 npm run dev:cf
 
 > 💡 部署到任意平台（Vercel / Cloudflare / 宝塔 Nginx）的**落地页跳转逻辑一致**：`route_map` 精确匹配优先。若某个精确域名被父域后缀匹配抢先导致不跳转（如 `v2.yogofor.top` 被 `yogofor.top` 抢成 `/`），请确保使用最新代码（该 bug 已修复）。
 
+> 📦 使用**宝塔面板（Nginx）**部署？请参考 [`deploy/README.md`](deploy/README.md) 与 `deploy/` 下的脚本（Nginx SPA 回退 + `/api`、`/static` 反代，前后端版本一致部署工作流）。
+
 ## 🌍 域名与合规（国内外分站）
 
 若国内主站与海外镜像同时存在（例如国内 `yogofor.top` + 海外 `v2.yogofor.top`），可在后台「站点设置 → 功能开关 → 默认落地页」配置：
@@ -194,13 +221,11 @@ npx wrangler dev                 # 或 npm run dev:cf
 
 > 合规提示：AI 生成内容带水印，请勿冒充人工原创用于需要真实性的场合；请遵守部署所在地法律与所用模型服务条款。
 
-## ⚠️ 网络模式说明
+## ⚠️ 搜索模式说明
 
-AI 的网络模式默认 **Auto（智能）**：能答就答，缺数据自动升级搜索/生成文章。`search` 模式会联网搜索并自动生成综合文章（浏览面板查看），优先调用 Worker `/api/search`（多引擎并行 + 域名多样化），回退到维基百科（zh→en）。
+AI 的搜索模式默认 **Auto（智能）**：能答就答，缺数据自动升级（联网搜索 + AI 重答），但不自动生成完整文章。**Deep** 模式才会联网搜索并自动生成完整综合文章（View 面板查看）；**Fast** 模式纯本地快速回答。搜索优先调用 Worker `/api/search`（多引擎并行 + 域名多样化），未配置第三方搜索 API 时回退到免费引擎 + 维基百科（zh→en）。
 
-**搜索 API 平台**：设置 →「搜索 API」可自由接入第三方搜索平台（**Tavily** 专为 AI 设计、免费 1000 次/月且支持当天新闻时间过滤；**Brave Search** 免费 2000 次/月；**SearXNG** 开源实例直接填地址）。配置存本机浏览器（localStorage），经 Worker 代理执行（免 CORS）。配置后缓存时效默认 1 小时（可调 15 分钟/6 小时），提示词会注入当天日期，保证能获取当天信息；面板「重新生成」可强制刷新。未配置或被网络拦截时自动降级到免费引擎 + AI 兜底，**不硬刚、不做绕过**。
-
-## � 前后端同步热更新
+## ⚡ 前后端同步热更新
 
 前后端是两个独立进程，各自拥有热重载能力：
 
@@ -250,71 +275,159 @@ npm run dev
 - 仅改业务代码（路由/service/CRUD）时 `--reload` 足够；**改 Tortoise 模型**后需执行 `aerich migrate && aerich upgrade` 才会生效（热重载不会自动建表）
 - 若前后端不在同一机器/域名（不使用 Vite 代理），则需在后端开启 CORS 并设置 `VITE_API_BASE` 为完整地址
 
-## �📁 目录结构
+## 📁 目录结构
 
 ```
 src/
-├── main.tsx / App.tsx        # 入口与路由
-├── index.css                 # Tailwind + 全局样式 / Markdown 排版
+├── main.tsx / App.tsx          # 入口与路由
+├── index.css                   # Tailwind + 全局样式 / Markdown / Milkdown 排版
 ├── lib/
-│   ├── api.ts                # API 客户端（统一响应解包、JWT、演示回退）
-│   ├── types.ts              # 与后端 schema 对应的类型
-│   ├── mock.ts               # 演示数据
-│   ├── auth.tsx / site.tsx / theme.tsx / toast.tsx / format.ts
-│   ├── ai.ts                 # 后台「AI 改写」调用（复用 AI 管理模型）
-│   ├── search.ts             # 网络搜索（Worker /api/search → 多引擎 + 维基百科回退）
-│   ├── searchApi.ts          # 搜索 API 平台配置（Tavily/Brave/SearXNG + 缓存时效 + 连接测试）
-│   ├── kb.ts                 # Coser 知识库（站点内容选择 + 本机笔记 + 导出）
-│   ├── localCfg.ts           # 访客自定义模型 API（本机存储）
-│   └── chatSettings.ts       # AI Chat 用户设置统一存储层（字体/TTS/搜索/记忆/effCfg 合并）
+│   ├── api.ts                  # API 客户端（统一响应解包、JWT、演示回退）
+│   ├── types.ts                # 与后端 schema 对应的类型
+│   ├── mock.ts                 # 演示数据
+│   ├── auth.tsx / site.tsx / theme.tsx / toast.tsx / format.ts / persona.ts
+│   ├── ai.ts                   # AI 改写 / Live2D 智能选角
+│   ├── search.ts               # 网络搜索（多引擎 + 维基回退 + 网页抓取 + 结果缓存）
+│   ├── searchPlanner.ts        # 搜索规划器（分段并发 / 多语言 / 纠错 / 定式缓存）
+│   ├── searchApi.ts            # 搜索 API 平台配置（Tavily/SearXNG + 连接测试）
+│   ├── modelRouter.ts          # 多模型角色路由（primary / fast / verifier）
+│   ├── providerPresets.ts      # 模型服务商预设（DeepSeek/Kimi/OpenAI + 推理模型适配）
+│   ├── providerTest.ts         # 模型连接测试
+│   ├── kb.ts                   # 知识库（条目/笔记/草稿 + [KB-SAVE:]/[KB-EDIT:] 协议）
+│   ├── dataMgr.ts              # 本机数据导出 / 导入（5 类）
+│   ├── localCfg.ts             # 访客自定义模型 API（本机存储）
+│   ├── chatSettings.ts         # AI 设置统一存储层（字体/搜索模式/记忆/effCfg 合并）
+│   ├── promptPresets.ts        # AI 助手系统提示词预设
+│   ├── imageApi.ts             # 图片 API（Wikimedia / Pixiv / Danbooru / Safebooru）
+│   ├── toolCmds.ts             # 工具指令解析 / 剥离（[SEARCH:]/[VIEW:]/[KB:]/[表情:]）
+│   ├── perf.ts                 # 性能工具（低端设备检测 / 流式节流）
+│   ├── live2d.ts / live2dCore.ts / live2dLore.ts  # Live2D 模型 / 渲染 / 角色设定
+│   ├── feedback.ts             # 反馈收集
+│   └── skills/                 # AI 提示词模块化（知识/人格/记忆/搜索/知识库/View/Live2D）
 ├── components/
-│   ├── Layout.tsx            # 前台布局（含域名重定向 / AI 沉浸式分支）
+│   ├── Layout.tsx              # 前台布局（域名重定向 / AI 沉浸式分支）
 │   ├── Header.tsx / Sidebar.tsx / PostCard.tsx / Pagination.tsx
 │   ├── Markdown.tsx / MdEditor.tsx / Modal.tsx / Spinner.tsx / ui.tsx
-│   ├── AIChat.tsx            # AI 对话核心（会话/Coser/搜索/水印/限制）
-│   ├── KbModal.tsx           # Coser 角色扮演设定弹窗
-│   ├── LocalApiModal.tsx     # 自定义模型 API 弹窗
-│   ├── LocalApiForm.tsx      # 本地模型 API 表单（弹窗/设置 tab 复用）
-│   ├── SettingsTab.tsx       # Agent 面板「设置」tab（用户设置已迁入）
-│   ├── UsageDocModal.tsx     # 使用文档
-│   ├── ArticleComposerModal.tsx # 对话内写文章
-│   ├── BotEditorModal.tsx    # AI 助手编辑弹窗
-│   └── admin/AdminLayout.tsx # 后台布局（左侧图标导航）
+│   ├── AIChat.tsx              # AI 对话核心（会话/搜索/工具卡/水印/限制）
+│   ├── AgentPanel.tsx          # Agent 工具箱（知识库 / View / Live2D / 设置）
+│   ├── SettingsTab.tsx / SearchApiForm.tsx / LocalApiForm.tsx / LocalApiModal.tsx
+│   ├── KbPicker.tsx            # 「/」快捷弹窗（搜索模式 / Live2D / 知识库条目）
+│   ├── KbModal.tsx / BotEditorModal.tsx / ArticleComposerModal.tsx / DataModal.tsx
+│   ├── Live2DStage.tsx / Live2DBackground.tsx / Live2DLoading.tsx / Live2DDock.tsx
+│   └── admin/AdminLayout.tsx   # 后台布局（左侧图标导航）
 └── pages/
     ├── Home.tsx / Article.tsx / PageView.tsx / AICenter.tsx / Login.tsx / NotFound.tsx
     └── admin/
         ├── DashboardHome.tsx   # 统计概览 + 快捷入口
-        ├── ManageArticles.tsx / ArticleEditor.tsx   # 文章管理/写作
-        ├── ManagePages.tsx / PageEditor.tsx         # 页面管理/编辑
+        ├── ManageArticles.tsx / ArticleEditor.tsx   # 文章管理 / 写作
+        ├── ManagePages.tsx / PageEditor.tsx         # 页面管理 / 编辑
         ├── AIManage.tsx        # AI 助手统一管理
+        ├── CategoriesTags.tsx  # 分类标签
+        ├── UserManagement.tsx  # 用户管理
         └── Settings.tsx        # 站点设置（AI 改写 / 功能开关 / 落地页）
 ```
 
+> 💡 后端未启动时，前端会自动回退到**演示数据**（`src/lib/mock.ts`），便于本地预览 UI。
+
 ## 🗺 路由
 
-| 路径                           | 说明                                   |
-| ------------------------------ | -------------------------------------- |
-| `/`                            | 首页（文章列表、分页、分类筛选、搜索） |
-| `/article/:id`                 | 文章详情                               |
-| `/page/:name`                  | 自定义页面（markdown / list / link）   |
-| `/login`                       | 登录 / 注册                            |
-| `/dashboard`                   | 管理后台（需管理员 role=0）            |
-| `/dashboard/articles`          | 文章管理                               |
-| `/dashboard/articles/new`      | 新建文章                               |
-| `/dashboard/articles/:id/edit` | 编辑文章                               |
-| `/dashboard/pages`             | 页面管理                               |
-| `/dashboard/pages/new`         | 新建页面                               |
-| `/dashboard/pages/:id/edit`    | 编辑页面                               |
-| `/dashboard/settings`          | 站点设置                               |
+| 路径                           | 说明                                    |
+| ------------------------------ | --------------------------------------- |
+| `/`                            | 首页（文章列表、分页、分类筛选、搜索）  |
+| `/article/:id`                 | 文章详情                                |
+| `/page/:name`                  | 自定义页面（markdown / list / link）    |
+| `/ai`、`/ai/:botId`            | **AI 对话中心**（多助手切换 + Live2D）  |
+| `/login`                       | 登录 / 注册                             |
+| `/dashboard`                   | 管理后台（需管理员 role=0）             |
+| `/dashboard/articles`          | 文章管理                                |
+| `/dashboard/articles/new`      | 新建文章                                |
+| `/dashboard/articles/:id/edit` | 编辑文章                                |
+| `/dashboard/pages`             | 页面管理                                |
+| `/dashboard/pages/new`         | 新建页面                                |
+| `/dashboard/pages/:id/edit`    | 编辑页面                                |
+| `/dashboard/ai`                | **AI 助手管理**（统一管理所有助手）     |
+| `/dashboard/categories`        | 分类标签                                |
+| `/dashboard/settings`          | 站点设置（AI 改写 / 功能开关 / 落地页） |
+| `/dashboard/users`             | 用户管理                                |
+
+## 🧪 测试
+
+```bash
+npm test          # 运行全部单元测试（Vitest）
+npm run test:watch # 监听模式
+```
+
+测试覆盖 `src/lib/__tests__/`：搜索（多引擎/缓存/多语言/纠错）、搜索 API、知识库、Live2D（情绪/动作/角色/角色设定）、模型路由、服务商预设、连接测试、人设 / 人格、提示词预设、数据管理、性能工具、AI Chat hooks 等 **300+ 用例**。
 
 ## 🛠 常用命令
 
 ```bash
-npm run dev      # 开发服务器
-npm run build    # 类型检查 + 生产构建
-npm run lint     # oxlint 代码检查
-npm run preview  # 预览生产构建
+npm run dev       # 开发服务器
+npm run dev:all   # 同时启动前后端（见上）
+npm run build     # 类型检查 + 生产构建
+npm run lint      # oxlint 代码检查
+npm run preview   # 预览生产构建
+npm run deploy:cf # 构建 + 部署到 Cloudflare Workers
 ```
+
+## 🙏 开源致谢
+
+本项目从零走到今天，**离不开以下开源项目与免费在线服务的支持**，在此致以诚挚的感谢：
+
+### 📦 前端框架与工具链
+
+| 项目                                                                                                                                                                                   | 用途                                                 |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| [React](https://react.dev)                                                                                                                                                             | UI 框架                                              |
+| [TypeScript](https://www.typescriptlang.org)                                                                                                                                           | 类型系统                                             |
+| [Vite](https://vitejs.dev)                                                                                                                                                             | 构建工具（HMR）                                      |
+| [Tailwind CSS](https://tailwindcss.com)                                                                                                                                                | 原子化样式                                           |
+| [React Router](https://reactrouter.com)                                                                                                                                                | SPA 路由                                             |
+| [react-markdown](https://github.com/remarkjs/react-markdown) + [remark-gfm](https://github.com/remarkjs/remark-gfm) + [rehype-highlight](https://github.com/rehypejs/rehype-highlight) | Markdown 渲染 / GFM 表格 / 代码高亮                  |
+| [Milkdown](https://milkdown.dev)（@milkdown/\*）                                                                                                                                       | 所见即所得 Markdown 编辑器（表格 / 图片 / 代码高亮） |
+| [DOMPurify](https://github.com/cure53/DOMPurify)                                                                                                                                       | HTML 消毒（防 XSS）                                  |
+| [highlight.js](https://highlightjs.org)                                                                                                                                                | 代码高亮                                             |
+| [lucide-react](https://lucide.dev) / [Ant Design Icons](https://ant.design/components/icon)                                                                                            | 图标库                                               |
+| [Vitest](https://vitest.dev) / [jsdom](https://github.com/jsdom/jsdom)                                                                                                                 | 单元测试                                             |
+| [oxlint](https://oxc.rs)                                                                                                                                                               | 代码检查                                             |
+| [Wrangler](https://developers.cloudflare.com/workers/wrangler/)                                                                                                                        | Cloudflare Workers 部署                              |
+
+### 🎭 Live2D 与模型资源
+
+| 项目                                                                                                                                                                                                                                                                            | 用途                                                                       |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| [Live2D Cubism](https://www.live2d.com)                                                                                                                                                                                                                                         | Live2D 运行时与 Cubism Core（`live2d.min.js` / `live2dcubismcore.min.js`） |
+| [pixi-live2d-display](https://github.com/guansss/pixi-live2d-display)（guansss）                                                                                                                                                                                                | Live2D 渲染引擎（Cubism 2 加载器）                                         |
+| [PixiJS](https://pixijs.com)                                                                                                                                                                                                                                                    | WebGL 渲染底层                                                             |
+| [Bestdori](https://bestdori.com)                                                                                                                                                                                                                                                | BanG Dream 角色模型 / 动作 / 表情资源（经同源反代加载）                    |
+| [SoulLink_Live2D](https://github.com/nanlingyin/SoulLink_Live2D)                                                                                                                                                                                                                | 表情 / 动作预设参考                                                        |
+| 第三方开源模型：[shizuku](https://github.com/guansss/pixi-live2d-display)（测试模型）、[Eikanya/Live2d-model](https://github.com/Eikanya/Live2d-model)、[fghrsh/live2d_api](https://github.com/fghrsh/live2d_api)、[oh-my-live2d](https://github.com/oh-my-live2d/oh-my-live2d) | 用户可直接导入的 Cubism2 开源模型                                          |
+
+### 🌐 在线搜索 / 数据 / 图片服务
+
+| 服务                                                                                | 用途                                                    |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| [Microsoft Bing](https://www.bing.com)（含 [Bing News](https://www.bing.com/news)） | 网页 / 新闻搜索                                         |
+| [DuckDuckGo](https://duckduckgo.com)                                                | 隐私搜索 + 图片兜底（i.js）                             |
+| [Brave Search](https://search.brave.com)                                            | 搜索（HTML 抓取 + [API](https://api.search.brave.com)） |
+| [Google News](https://news.google.com)                                              | 新闻 RSS 实时检索                                       |
+| [Mojeek](https://www.mojeek.com) / [Qwant](https://www.qwant.com)                   | 独立搜索引擎                                            |
+| [Wikipedia](https://www.wikipedia.org)                                              | 百科知识 + 免 Key CORS 兜底                             |
+| [百度搜索](https://www.baidu.com)                                                   | 中文话题搜索                                            |
+| [Bilibili](https://www.bilibili.com)                                                | 站内视频 / 热搜 / UP 投稿检索（WBI 签名）               |
+| [Open-Meteo](https://open-meteo.com)                                                | 免费天气 API（无需 Key）                                |
+| [Bangumi](https://bgm.tv)                                                           | 番剧条目 / 新番季表                                     |
+| [Wikimedia Commons](https://commons.wikimedia.org)                                  | 自由图片库                                              |
+| [Pixiv](https://www.pixiv.net)                                                      | 二次元插画（可选配置 `PIXIV_REFRESH_TOKEN`）            |
+| [Danbooru](https://danbooru.donmai.us) / [Safebooru](https://safebooru.org)         | 动漫图片 API                                            |
+| [Tavily](https://tavily.com) / [SearXNG](https://docs.searxng.org)                  | 用户可选的第三方搜索 API 平台                           |
+
+### 🤝 特别感谢
+
+- **[Kimo](https://github.com/ChanYiCYJ/Kimo)**（原 Flask 项目）与 **[kimo-fastapi](https://github.com/ChanYiCYJ/kimo-fastapi)**（后端 API）——本项目的起点与数据支撑
+- **[Vercel](https://vercel.com)** / **[Cloudflare Workers](https://workers.cloudflare.com)** / **宝塔面板**——免费 / 低成本的托管方案
+- 每一位**使用、反馈、建议与贡献**的用户——你们的每次反馈都在推动这个项目变得更好
+- 以及 **GitHub Copilot** 在开发全过程中的陪伴与支持 💙
 
 ---
 

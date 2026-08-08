@@ -55,9 +55,9 @@ describe("searchApi · 配置读写", () => {
   });
   it("清除后回默认", () => {
     saveSearchApiCfg({
-      provider: "brave",
-      apiKey: "k",
-      instance: "",
+      provider: "searxng",
+      apiKey: "",
+      instance: "https://searx.be",
       ttl: 360,
     });
     clearSearchApiCfg();
@@ -66,7 +66,7 @@ describe("searchApi · 配置读写", () => {
 });
 
 describe("searchApi · hasSearchApi / cacheTtlMs", () => {
-  it("tavily/brave 需 key 才算已配置", () => {
+  it("tavily 需 key 才算已配置", () => {
     expect(
       hasSearchApi({ provider: "tavily", apiKey: "", instance: "", ttl: 60 }),
     ).toBe(false);
@@ -74,14 +74,6 @@ describe("searchApi · hasSearchApi / cacheTtlMs", () => {
       hasSearchApi({
         provider: "tavily",
         apiKey: "tvly-x",
-        instance: "",
-        ttl: 60,
-      }),
-    ).toBe(true);
-    expect(
-      hasSearchApi({
-        provider: "brave",
-        apiKey: "BSA-x",
         instance: "",
         ttl: 60,
       }),
@@ -186,11 +178,11 @@ describe("searchApi · testSearchApi", () => {
     expect(r.ok).toBe(true);
     expect(r.message).toContain("连接成功");
   });
-  it("brave 401 → 认证失败", async () => {
+  it("tavily 401 → 认证失败", async () => {
     const fetchImpl = (async () =>
       new Response("bad key", { status: 401 })) as typeof fetch;
     const r = await testSearchApi(
-      { provider: "brave", apiKey: "bad", instance: "", ttl: 60 },
+      { provider: "tavily", apiKey: "bad", instance: "", ttl: 60 },
       fetchImpl,
     );
     expect(r.ok).toBe(false);

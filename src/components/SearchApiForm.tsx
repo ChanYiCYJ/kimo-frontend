@@ -3,12 +3,10 @@ import {
   SEARCH_API_PROVIDERS,
   loadSearchApiCfg,
   saveSearchApiCfg,
-  clearSearchApiCfg,
   hasSearchApi,
   testSearchApi,
   type SearchApiCfg,
   type SearchApiProvider,
-  type SearchApiTtl,
 } from "../lib/searchApi";
 
 /**
@@ -25,12 +23,6 @@ export interface SearchApiFormProps {
 
 const inputCls =
   "w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800";
-
-const TTL_OPTIONS: { value: SearchApiTtl; label: string }[] = [
-  { value: 15, label: "15 分钟" },
-  { value: 60, label: "1 小时" },
-  { value: 360, label: "6 小时" },
-];
 
 export function SearchApiForm({ onSaved }: SearchApiFormProps) {
   const [cfg, setCfg] = useState<SearchApiCfg>(() => loadSearchApiCfg());
@@ -62,12 +54,6 @@ export function SearchApiForm({ onSaved }: SearchApiFormProps) {
     setTestResult(r);
     setTestState("done");
   };
-  const clear = () => {
-    clearSearchApiCfg();
-    setCfg(loadSearchApiCfg());
-    setTestResult(null);
-    onSaved?.();
-  };
 
   const setProvider = (p: SearchApiProvider) => {
     setCfg((prev) => ({ ...prev, provider: p }));
@@ -76,37 +62,26 @@ export function SearchApiForm({ onSaved }: SearchApiFormProps) {
 
   return (
     <div className="space-y-2.5">
-      {/* 平台选择（单选列表：名称 + 说明） */}
-      <div className="space-y-1">
+      {/* 平台选择（分段单选，同搜索模式卡片样式） */}
+      <div className="flex gap-0.5 rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800">
         {SEARCH_API_PROVIDERS.map((p) => (
           <button
             key={p.value}
             type="button"
             onClick={() => setProvider(p.value)}
-            className={`flex w-full items-start gap-2 rounded-lg border px-2.5 py-2 text-left transition active:scale-[0.99] ${
+            className={`flex-1 px-2.5 py-1.5 text-xs font-medium rounded-md transition ${
               cfg.provider === p.value
-                ? "border-gray-300 bg-gray-50 dark:border-gray-600 dark:bg-gray-800"
-                : "border-gray-100 bg-white hover:border-gray-200 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700"
+                ? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100"
+                : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
             }`}
           >
-            <span
-              className={`mt-0.5 h-3.5 w-3.5 shrink-0 rounded-full border transition ${
-                cfg.provider === p.value
-                  ? "border-gray-900 bg-gray-900 dark:border-gray-200 dark:bg-gray-200"
-                  : "border-gray-300 dark:border-gray-600"
-              }`}
-            />
-            <span className="min-w-0">
-              <span className="block text-xs font-medium text-gray-700 dark:text-gray-200">
-                {p.label}
-              </span>
-              <span className="mt-0.5 block text-[11px] leading-relaxed text-gray-400">
-                {p.desc}
-              </span>
-            </span>
+            {p.label}
           </button>
         ))}
       </div>
+      {meta?.desc && (
+        <p className="text-[11px] leading-relaxed text-gray-400">{meta.desc}</p>
+      )}
 
       {/* 条件字段：API Key / SearXNG 实例地址 */}
       {meta?.needKey && (
@@ -176,49 +151,15 @@ export function SearchApiForm({ onSaved }: SearchApiFormProps) {
         />
       )}
 
-      {/* 缓存时效：保证数据实时更新 */}
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-xs text-gray-500 dark:text-gray-400">
-          缓存时效
-        </span>
-        <div className="flex shrink-0 gap-0.5 rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800">
-          {TTL_OPTIONS.map((t) => (
-            <button
-              key={t.value}
-              type="button"
-              onClick={() => setCfg({ ...cfg, ttl: t.value })}
-              className={`px-2 py-1 text-[11px] font-medium rounded-md transition ${
-                cfg.ttl === t.value
-                  ? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100"
-                  : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* 保存 / 清除（保存后自动测试连接） */}
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={saveAndTest}
-          disabled={testState === "loading"}
-          className="flex-1 rounded-xl border border-gray-900 bg-gray-900 px-3 py-2 text-sm font-medium text-white transition active:scale-[0.98] disabled:opacity-60 dark:border-gray-200 dark:bg-gray-200 dark:text-gray-900"
-        >
-          {testState === "loading" ? "测试中…" : "测试并保存"}
-        </button>
-        {configured && (
-          <button
-            type="button"
-            onClick={clear}
-            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-500 transition hover:border-gray-300 hover:text-gray-700 active:scale-[0.98] dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-gray-500"
-          >
-            清除
-          </button>
-        )}
-      </div>
+      {/* 保存（保存后自动测试连接） */}
+      <button
+        type="button"
+        onClick={saveAndTest}
+        disabled={testState === "loading"}
+        className="w-full rounded-xl border border-gray-900 bg-gray-900 px-3 py-2 text-sm font-medium text-white transition active:scale-[0.98] disabled:opacity-60 dark:border-gray-200 dark:bg-gray-200 dark:text-gray-900"
+      >
+        {testState === "loading" ? "测试中…" : "测试并保存"}
+      </button>
       {testResult && (
         <p
           className={`text-[11px] leading-relaxed ${testResult.ok ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}

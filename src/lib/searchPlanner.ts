@@ -12,12 +12,11 @@
 import {
   searchBackend,
   searchAI,
-  searchTavilyClient,
+  searchFast,
   detectQueryLang,
   detectQueryType,
 } from "./search";
 import type { SearchResult, QueryType } from "./search";
-import { hasSearchApi, loadSearchApiCfg } from "./searchApi";
 
 // ====== 内部工具 ======
 
@@ -333,11 +332,9 @@ export async function searchSegmented(
   const perSub = Math.max(3, Math.ceil(limit / Math.max(1, subs.length)));
   let totalSearches = subs.length;
   let corrected = false;
-  const useTavily =
-    hasSearchApi(loadSearchApiCfg()) &&
-    loadSearchApiCfg().provider === "tavily";
 
-  // 阶段 3：并发搜索（每子查询跑 searchBackend + Tavily 并行）
+  // 阶段 3：并发搜索（每子查询走 searchFast——配置 Tavily 时浏览器直连优先，
+  // ~1-2s 返回，不再等经 Worker 中转的慢路径 ~8s+，auto 联网明显提速）
   const settled = await Promise.allSettled(
     subs.map(async (sq, i) => {
       onProgress?.({
@@ -346,10 +343,8 @@ export async function searchSegmented(
         total: subs.length,
         subQuery: sq,
       });
-      const tasks = [searchBackend(enriched, perSub)];
-      if (useTavily) tasks.push(searchTavilyClient(enriched, perSub));
-      const results = await Promise.all(tasks);
-      return { sub: sq, results: results.flat() };
+      const results = await searchFast(enriched, perSub);
+      return { sub: sq, results };
     }),
   );
 

@@ -8,7 +8,7 @@
  * - 被网络拦截/失败时一律优雅降级：不硬刚，走免费引擎（Wikipedia / Google News RSS / AI 兜底）
  */
 
-export type SearchApiProvider = "auto" | "tavily" | "brave" | "searxng";
+export type SearchApiProvider = "auto" | "tavily" | "searxng";
 
 /** 缓存时效（分钟）：15 分钟 / 1 小时 / 6 小时 */
 export type SearchApiTtl = 15 | 60 | 360;
@@ -33,12 +33,7 @@ export interface SearchApiTestResult {
 
 const KEY = "kimo_search_api_cfg";
 const VALID_TTL: SearchApiTtl[] = [15, 60, 360];
-const VALID_PROVIDERS: SearchApiProvider[] = [
-  "auto",
-  "tavily",
-  "brave",
-  "searxng",
-];
+const VALID_PROVIDERS: SearchApiProvider[] = ["auto", "tavily", "searxng"];
 
 /** 平台元信息（供设置 UI 展示） */
 export const SEARCH_API_PROVIDERS: {
@@ -59,13 +54,6 @@ export const SEARCH_API_PROVIDERS: {
     value: "tavily",
     label: "Tavily",
     desc: "免费 1000 次/月，支持当天新闻",
-    needKey: true,
-    needInstance: false,
-  },
-  {
-    value: "brave",
-    label: "Brave Search",
-    desc: "免费 2000 次/月",
     needKey: true,
     needInstance: false,
   },
@@ -116,8 +104,7 @@ export function clearSearchApiCfg(): void {
 /** 是否已配置可用的搜索 API（tavily/brave 需 key，searxng 需实例地址） */
 export function hasSearchApi(cfg: SearchApiCfg | null | undefined): boolean {
   if (!cfg) return false;
-  if (cfg.provider === "tavily" || cfg.provider === "brave")
-    return !!cfg.apiKey?.trim();
+  if (cfg.provider === "tavily") return !!cfg.apiKey?.trim();
   if (cfg.provider === "searxng")
     return /^https?:\/\//i.test(cfg.instance?.trim() || "");
   return false;
@@ -175,16 +162,6 @@ async function testDirect(
           search_depth: "basic",
         }),
       });
-    } else if (cfg.provider === "brave") {
-      res = await fetchImpl(
-        "https://api.search.brave.com/res/v1/web/search?q=ping&count=1",
-        {
-          headers: {
-            "X-Subscription-Token": cfg.apiKey.trim(),
-            Accept: "application/json",
-          },
-        },
-      );
     } else if (cfg.provider === "searxng") {
       res = await fetchImpl(
         `${cfg.instance.trim().replace(/\/+$/, "")}/search?q=ping&format=json`,
@@ -229,8 +206,7 @@ async function testViaProxy(
 ): Promise<SearchApiTestResult> {
   const params = new URLSearchParams({ q: "ping", limit: "1" });
   params.set("provider", cfg.provider);
-  if (cfg.provider === "tavily" || cfg.provider === "brave")
-    params.set("apiKey", cfg.apiKey.trim());
+  if (cfg.provider === "tavily") params.set("apiKey", cfg.apiKey.trim());
   if (cfg.provider === "searxng") params.set("instance", cfg.instance.trim());
   const start = Date.now();
   try {
@@ -278,7 +254,7 @@ export async function testSearchApi(
       ok: false,
       message: "请先选择一个搜索平台（Tavily/Brave/SearXNG）",
     };
-  if (cfg.provider === "tavily" || cfg.provider === "brave") {
+  if (cfg.provider === "tavily") {
     if (!cfg.apiKey?.trim()) return { ok: false, message: "请先填写 API Key" };
   }
   if (cfg.provider === "searxng") {

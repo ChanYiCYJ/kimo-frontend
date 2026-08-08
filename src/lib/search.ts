@@ -25,6 +25,7 @@ import {
   hasSearchApi,
   cacheTtlMs,
   todayStr,
+  isFreshQuery,
 } from "./searchApi";
 import { loadSearchSpeed } from "./chatSettings";
 
@@ -248,8 +249,7 @@ export async function searchBackend(
     const params = new URLSearchParams({ q: query, limit: String(limit) });
     if (hasSearchApi(cfg)) {
       params.set("provider", cfg.provider);
-      if (cfg.provider === "tavily" || cfg.provider === "brave")
-        params.set("apiKey", cfg.apiKey.trim());
+      if (cfg.provider === "tavily") params.set("apiKey", cfg.apiKey.trim());
       if (cfg.provider === "searxng")
         params.set("instance", cfg.instance.trim());
     }
@@ -601,16 +601,23 @@ function parseTextResults(raw: string, limit: number): SearchResult[] {
 // ======================== 引擎 6：Tavily（前端直连） ========================
 
 /**
- * Tavily Search API 客户端（浏览器直连，免 Worker 代理）。
- * 配置 Tavily API Key 后自动启用，支持 search_depth/topic/include_answer。
+ * Tavily 直连原始请求（统一封装）。
+ * 配置 Tavily API Key 后自动启用；时敏查询（isFreshQuery）自动切 news topic + 短时窗，
+ * 保证实时新闻命中（与 Tavily 官网同配置），advanced 深度 + include_answer 拿 AI 直接答案。
  */
-export async function searchTavilyClient(
+async function tavilyRequest(
   query: string,
   limit: number,
-): Promise<SearchResult[]> {
+  opts: {
+    depth?: "basic" | "advanced";
+    answer?: boolean;
+    timeout?: number;
+  } = {},
+): Promise<{ results: Record<string, string>[]; answer?: string } | null> {
   try {
     const cfg = loadSearchApiCfg();
-    if (cfg.provider !== "tavily" || !cfg.apiKey?.trim()) return [];
+    if (cfg.provider !== "tavily" || !cfg.apiKey?.trim()) return null;
+    const fresh = isFreshQuery(query);
     const res = await fetchWithTimeout(
       "https://api.tavily.com/search",
       {
@@ -621,28 +628,196 @@ export async function searchTavilyClient(
         },
         body: JSON.stringify({
           query,
-          search_depth: "advanced",
+          search_depth: opts.depth || "basic",
           max_results: Math.min(limit, 10),
-          topic: "general",
-          include_answer: "advanced",
+          topic: fresh ? "news" : "general",
+          time_range: fresh ? "day" : "week",
+          include_answer: opts.answer ? "advanced" : false,
           include_raw_content: false,
         }),
       },
-      8000,
+      opts.timeout || 8000,
     );
-    if (!res.ok) return [];
-    const j = await res.json().catch(() => null);
-    if (!j?.results || !Array.isArray(j.results)) return [];
-    return j.results.slice(0, limit).map((it: Record<string, string>) => ({
-      title: it.title || "",
-      url: it.url || "",
-      description: it.content || it.description || "",
-      source: extractSource(it.url || ""),
-      engine: "tavily",
-    }));
+    if (!res.ok) return null;
+    return await res.json().catch(() => null);
   } catch {
-    return [];
+    return null;
   }
+}
+
+function tavilyResults(
+  raw: { results?: Record<string, string>[] } | null,
+  limit: number,
+): SearchResult[] {
+  if (!raw?.results || !Array.isArray(raw.results)) return [];
+  return raw.results.slice(0, limit).map((it: Record<string, string>) => ({
+    title: it.title || "",
+    url: it.url || "",
+    description: it.content || it.description || "",
+    source: extractSource(it.url || ""),
+    engine: "tavily",
+  }));
+}
+
+/**
+ * Tavily Search API 客户端（浏览器直连，免 Worker 代理）。
+ * 配置 Tavily API Key 后自动启用，支持 search_depth/topic/include_answer。
+ * @param fast 轻量模式（分段采集用）：basic 深度 + 不生成 AI 回答 + 更短超时 → 更快
+ */
+export async function searchTavilyClient(
+  query: string,
+  limit: number,
+  fast = false,
+): Promise<SearchResult[]> {
+  const j = await tavilyRequest(query, limit, {
+    depth: fast ? "basic" : "advanced",
+    answer: !fast,
+    timeout: fast ? 6000 : 8000,
+  });
+  return tavilyResults(j, limit);
+}
+
+/** Tavily 深度搜索结果（含 AI 直接答案 answer） */
+export interface TavilyDeepResult {
+  results: SearchResult[];
+  /** Tavily 官方 AI 直接答案（advanced 深度 + include_answer 时返回，官网核心展示内容） */
+  answer: string;
+}
+
+/**
+ * Tavily 深度直连：advanced 深度 + 解析 AI 直接答案 answer。
+ * 与 Tavily 官网/官方查询同一套参数（news topic 时敏自适应），直连 api.tavily.com。
+ */
+export async function searchTavilyDeep(
+  query: string,
+  limit: number,
+): Promise<TavilyDeepResult> {
+  const j = await tavilyRequest(query, limit, {
+    depth: "advanced",
+    answer: true,
+    timeout: 8000,
+  });
+  return {
+    results: tavilyResults(j, limit),
+    answer: typeof j?.answer === "string" ? j.answer : "",
+  };
+}
+
+/**
+ * 快速搜索（Auto 模式联网用）：
+ * 配置 Tavily 时优先浏览器直连 api.tavily.com（~1-2s，远快于经 Cloudflare Worker
+ * 中转的实测 ~8s+），限时 6s 有结果即返回；直连超时/无结果再回退 Worker 多引擎代理。
+ * 目标：auto 联网搜索「快」——Tavily 直连命中即走快路径，不等慢的后端中转。
+ */
+export async function searchFast(
+  query: string,
+  limit: number,
+): Promise<SearchResult[]> {
+  const cfg = loadSearchApiCfg();
+  if (hasSearchApi(cfg) && cfg.provider === "tavily") {
+    const direct = await Promise.race([
+      searchTavilyClient(query, limit, true),
+      new Promise<SearchResult[]>((resolve) =>
+        setTimeout(() => resolve([]), 6000),
+      ),
+    ]);
+    if (direct.length) return direct;
+  }
+  return searchBackend(query, limit);
+}
+
+/**
+ * Auto 模式联网搜索专属路径（一次搜索 + Tavily AI 直接答案）：
+ * 配置 Tavily 时直接浏览器直连 api.tavily.com（advanced 深度 + answer），返回
+ * { results, answer }——answer 注入 AI 上下文让回答更准，结果不与免费引擎混排稀释；
+ * 直连超时/无结果再回退 Worker 多引擎代理（answer 为空）。未配置 Tavily 直接走 backend。
+ */
+export async function searchFastWithAnswer(
+  query: string,
+  limit: number,
+): Promise<TavilyDeepResult> {
+  const cfg = loadSearchApiCfg();
+  if (hasSearchApi(cfg) && cfg.provider === "tavily") {
+    const direct = await Promise.race([
+      searchTavilyDeep(query, limit),
+      new Promise<TavilyDeepResult>((resolve) =>
+        setTimeout(() => resolve({ results: [], answer: "" }), 6000),
+      ),
+    ]);
+    if (direct.results.length) return direct;
+  }
+  const results = await searchBackend(query, limit);
+  return { results, answer: "" };
+}
+
+/**
+ * 判断 AI 请求错误是否为「内容安全/违规拒绝」。
+ * 命中（400/403/422 + 内容安全关键词）时前端用友好提示兜底，避免用户看到"错误：…"红字。
+ * （搜索/回答触及违规、敏感内容时，模型/网关常返回 400/403 内容策略错误）
+ */
+const CONTENT_BLOCK_RE =
+  /content.?policy|moderation|safety|inappropriate|blocked|政治|色情|暴力|违法|违规|敏感|审核|不当|不适宜/i;
+export function isContentBlocked(err: unknown): boolean {
+  const s = err instanceof Error ? err.message : String(err ?? "");
+  return /(400|403|422)/.test(s) && CONTENT_BLOCK_RE.test(s);
+}
+
+/**
+ * 搜索结果敏感内容过滤：标题/描述/URL 命中明确违规词（色情/赌博/毒品/违法等）的条目
+ * 直接过滤掉——auto 折叠结果卡里违规内容「默默隐藏」，不展示也不外跳。
+ * 仅用明确的违规词，避免误伤正常内容（如「成人教育」「暴力美学」等）。
+ */
+const SENSITIVE_RE =
+  /(色情|情色|裸体|裸照|黄片|黄色网站|成人电影|成人视频|av资源|伦理片|大尺度|赌博|博彩|赌场|线上赌|毒品|冰毒|大麻|海洛因|可卡因|违禁品|非法集资|传销|邪教|血腥|恐怖袭击|枪支弹药)/i;
+export function filterSensitiveResults(
+  results: SearchResult[],
+): SearchResult[] {
+  return (results || []).filter((r) => {
+    const hay = `${r.title || ""} ${r.description || ""} ${r.url || ""}`;
+    return !SENSITIVE_RE.test(hay);
+  });
+}
+
+// ======================== 抓取缓存（view 提速：同一批来源只抓一次） ========================
+
+const FETCH_CACHE_MAX = 50;
+const FETCH_CACHE_TTL = 5 * 60 * 1000;
+const fetchCache = new Map<
+  string,
+  { res: FetchWebContentResult; ts: number }
+>();
+
+/**
+ * 网页抓取（带会话内缓存）：webSearchWithContent 与 webSearchToArticle 会串行抓取同一批
+ * 来源 URL（阶段1 content + 阶段2 文章），缓存命中直接复用，省去重复抓取耗时（view 提速）。
+ * 仅缓存成功且非空结果（失败不缓存，允许下次重试）。
+ */
+export async function fetchWebContent(
+  url: string,
+  maxChars: number = MAX_CHARS_DEFAULT,
+): Promise<FetchWebContentResult> {
+  const u = url.trim();
+  try {
+    const hit = fetchCache.get(u);
+    if (hit && Date.now() - hit.ts < FETCH_CACHE_TTL) return hit.res;
+  } catch {
+    /* ignore */
+  }
+  const res = await fetchWebContentInner(u, maxChars);
+  if (res.content || res.ogImage || (res.images && res.images.length)) {
+    try {
+      if (fetchCache.size >= FETCH_CACHE_MAX) {
+        const oldest = [...fetchCache.entries()].sort(
+          (a, b) => a[1].ts - b[1].ts,
+        )[0];
+        if (oldest) fetchCache.delete(oldest[0]);
+      }
+      fetchCache.set(u, { res, ts: Date.now() });
+    } catch {
+      /* ignore */
+    }
+  }
+  return res;
 }
 
 // ======================== 多引擎聚合搜索 ========================
@@ -741,7 +916,7 @@ export async function webSearch(query: string): Promise<string> {
 
 // ======================== 网页抓取 ========================
 
-export async function fetchWebContent(
+async function fetchWebContentInner(
   url: string,
   maxChars: number = MAX_CHARS_DEFAULT,
 ): Promise<FetchWebContentResult> {
@@ -924,16 +1099,17 @@ export async function webSearchWithContent(
     engines.unshift("tavily");
   }
   const multi = await searchMulti(query, engines, 10);
-  if (!multi.results.length) {
+  let searchResults = dedupeByUrl(multi.results);
+  if (!searchResults.length) {
     // 回退 AI 生成列表
     const ai = await searchAI(query, 6);
-    if (ai.length) multi.results.push(...ai);
+    if (ai.length) searchResults.push(...ai);
   }
-  if (!multi.results.length) return "";
+  if (!searchResults.length) return "";
 
   const out: string[] = [];
   out.push("【搜索结果】");
-  multi.results.slice(0, 8).forEach((r, i) => {
+  searchResults.slice(0, 8).forEach((r, i) => {
     out.push(
       `${i + 1}. ${r.title} (${r.url})\n   ${(r.description || "").slice(0, 200)}`,
     );
@@ -941,7 +1117,7 @@ export async function webSearchWithContent(
 
   // 2) 对前 maxSources 个来源抓取正文（按域名多样化，覆盖多个不同网站）
   const targets = diversifyByDomain(
-    dedupeByUrl(multi.results).filter((r) => /^https?:\/\//i.test(r.url)),
+    dedupeByUrl(searchResults).filter((r) => /^https?:\/\//i.test(r.url)),
     maxSources,
     2,
   );

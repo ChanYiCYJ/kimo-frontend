@@ -7,15 +7,19 @@ import type { AIChatConfig, Page } from "../lib/types";
 import { useSite } from "../lib/site";
 import { useTheme } from "../lib/theme";
 import {
-  searchBackend,
+  searchFast,
+  searchFastWithAnswer,
   searchAI,
   fetchWebpage,
   searchWithCache,
   readSearchCache,
   writeSearchCache,
   webSearchWithContent,
+  isContentBlocked,
+  filterSensitiveResults,
 } from "../lib/search";
-import { todayStr } from "../lib/searchApi";
+import type { SearchResult } from "../lib/search";
+import { todayStr, hasSearchApi, loadSearchApiCfg } from "../lib/searchApi";
 import { searchSegmented } from "../lib/searchPlanner";
 import type { SearchProgress } from "../lib/searchPlanner";
 import {
@@ -108,6 +112,7 @@ import { parseDelta, resolveMaxTokens } from "../lib/providerPresets";
 import type { AgentSettingsProps } from "./SettingsTab";
 import { useToast } from "../lib/toast";
 import { Live2DBackground } from "./Live2DBackground";
+import { TypeWriter } from "./Spinner";
 
 interface Message {
   role: "user" | "assistant";
@@ -158,6 +163,25 @@ const MarkdownContent = memo(function MarkdownContent({
     <ReactMarkdown remarkPlugins={[remarkGfm]}>
       {stripToolCmds(content) || fallback}
     </ReactMarkdown>
+  );
+});
+
+/**
+ * 手机沉浸 Live2D：统一的分阶段加载打字机（搜索 → 生成 逐字切换，与 Live2D 加载同风格）。
+ * TypeWriter 在 text 变化时 effect 重置，阶段切换会自然重新逐字敲出，实现「正在搜索…→正在生成…」。
+ */
+const PhaseTypeWriter = memo(function PhaseTypeWriter({
+  phase,
+}: {
+  phase: "search" | "generate";
+}) {
+  return (
+    <TypeWriter
+      key={phase}
+      text={phase === "search" ? "正在搜索…" : "正在生成…"}
+      loop
+      className="text-xs text-gray-400 dark:text-gray-500"
+    />
   );
 });
 
@@ -479,12 +503,13 @@ const MessageItem = memo(function MessageItem({
   );
 });
 
-/** auto 模式搜索结果卡：搜索后把资料直接显示在对话中（简洁、可点击、无 emoji、不展开） */
+/** auto 模式搜索结果卡：把搜索到的资料折叠展示在对话中（默认收起一行；点击在新标签打开来源，绝不打开 view 面板） */
 const SearchResultsCard = memo(function SearchResultsCard({
   results,
 }: {
   results: { title: string; url: string; source: string }[];
 }) {
+  const [open, setOpen] = useState(false);
   const items = results.map((r) => {
     let host = r.source || "";
     if (!host) {
@@ -500,43 +525,67 @@ const SearchResultsCard = memo(function SearchResultsCard({
     <div className="mt-2 flex gap-3">
       <span className="mt-0.5 h-8 w-8 shrink-0" />
       <div className="min-w-0 flex-1 overflow-hidden rounded-2xl border border-gray-200 bg-white/80 dark:border-gray-700 dark:bg-gray-800/80">
-        <p className="border-b border-gray-100 px-3 py-2 text-[11px] font-medium text-gray-400 dark:border-gray-700 dark:text-gray-500">
-          已搜索到 {items.length} 条资料
-        </p>
-        <div className="divide-y divide-gray-100 dark:divide-gray-700">
-          {items.map((r, i) => (
-            <a
-              key={i}
-              href={r.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2.5 px-3 py-2 transition hover:bg-gray-50 dark:hover:bg-gray-700/50"
-            >
-              <span className="grid h-5 w-5 shrink-0 place-content-center rounded-md bg-gray-100 text-[10px] font-semibold text-gray-500 dark:bg-gray-700 dark:text-gray-300">
-                {(r.host || "网").slice(0, 2).toUpperCase()}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-xs text-gray-700 dark:text-gray-200">
-                {r.title || r.url}
-              </span>
-              <span className="max-w-[35%] shrink-0 truncate text-[10px] text-gray-400 dark:text-gray-500">
-                {r.host}
-              </span>
-              <svg
-                className="h-3 w-3 shrink-0 text-gray-400 dark:text-gray-500"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="flex w-full items-center justify-between gap-2 border-b border-gray-100 px-3 py-2 text-left transition hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/50"
+        >
+          <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500">
+            已搜索到 {items.length} 条资料
+          </span>
+          <svg
+            className={`h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform dark:text-gray-500 ${
+              open ? "rotate-180" : ""
+            }`}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M19 9l-7 7-7-7"
+            />
+          </svg>
+        </button>
+        {open && (
+          <div className="divide-y divide-gray-100 dark:divide-gray-700">
+            {items.map((r, i) => (
+              <a
+                key={i}
+                href={r.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2.5 px-3 py-2 transition hover:bg-gray-50 dark:hover:bg-gray-700/50"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M7 17L17 7M9 7h8v8"
-                />
-              </svg>
-            </a>
-          ))}
-        </div>
+                <span className="grid h-5 w-5 shrink-0 place-content-center rounded-md bg-gray-100 text-[10px] font-semibold text-gray-500 dark:bg-gray-700 dark:text-gray-300">
+                  {(r.host || "网").slice(0, 2).toUpperCase()}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-xs text-gray-700 dark:text-gray-200">
+                  {r.title || r.url}
+                </span>
+                <span className="max-w-[35%] shrink-0 truncate text-[10px] text-gray-400 dark:text-gray-500">
+                  {r.host}
+                </span>
+                <svg
+                  className="h-3 w-3 shrink-0 text-gray-400 dark:text-gray-500"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M7 17L17 7M9 7h8v8"
+                  />
+                </svg>
+              </a>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1447,7 +1496,7 @@ export function AIChat({
   const [searching, setSearching] = useState(false);
   /** 分段搜索进度（阶段文字 + 子查询进度） */
   const [searchPlan, setSearchPlan] = useState<SearchProgress | null>(null);
-  /** 当前轮次在对话中展示的搜索结果（auto 模式结果块） */
+  /** 当前轮次在对话中展示的搜索结果（auto 折叠结果卡，点击在新标签打开来源，非 view 入口） */
   const [dialogResults, setDialogResults] = useState<
     { title: string; url: string; source: string }[]
   >([]);
@@ -1616,23 +1665,31 @@ export function AIChat({
     const map: Record<number, ChatToolCall[]> = {};
     for (const tc of toolCalls) {
       if (tc.sessionId !== activeId) continue;
+      // auto/fast 模式：隐藏所有指向 web 面板的工具卡（Search/View——不显示任何 view 入口）
+      if (tc.tab === "web" && searchMode !== "deep") continue;
       (map[tc.msgIdx] ||= []).push(tc);
     }
     return map;
-  }, [toolCalls, activeId]);
+  }, [toolCalls, activeId, searchMode]);
   /** 工具卡点击：按 tab 打开 Agent 面板（web 附带关键词触发搜索） */
-  const handleToolClick = useCallback((tc: ChatToolCall) => {
-    if (!tc.tab) return;
-    const q =
-      tc.query || (tc.type === "Search" ? tc.detail.split(" ")[0] : undefined);
-    setAgentTab(tc.tab);
-    if (tc.tab === "web") {
-      setAgentInitUrl(q);
-      setAgentSearchNonce((n) => n + 1);
-    }
-    setAgentEditContent(undefined);
-    setAgentOpen(true);
-  }, []);
+  const handleToolClick = useCallback(
+    (tc: ChatToolCall) => {
+      if (!tc.tab) return;
+      // auto/fast 下禁止通过工具卡打开 view 面板（Search/浏览卡点击不再进入 web 面板）
+      if (tc.tab === "web" && searchMode !== "deep") return;
+      const q =
+        tc.query ||
+        (tc.type === "Search" ? tc.detail.split(" ")[0] : undefined);
+      setAgentTab(tc.tab);
+      if (tc.tab === "web") {
+        setAgentInitUrl(q);
+        setAgentSearchNonce((n) => n + 1);
+      }
+      setAgentEditContent(undefined);
+      setAgentOpen(true);
+    },
+    [searchMode],
+  );
   /** 消息「在 Agent 中打开」：切到 web 面板并载入首个 URL */
   const handleOpenAgent = useCallback((url: string | undefined) => {
     setAgentTab("web");
@@ -1914,7 +1971,7 @@ export function AIChat({
     setStick(true);
     setSidebarOpen(false);
     setLimitReached(false);
-    // 新建会话：清空上一会话遗留的工具卡/内嵌浏览等临时状态
+    // 新建会话：清空上一会话遗留的工具卡/内嵌浏览/搜索结果等临时状态
     setToolCalls([]);
     setDialogResults([]);
     setAgentKbOpen(undefined);
@@ -2168,13 +2225,13 @@ export function AIChat({
     if (!t || loading || (loreLoading && !live2dImmersive) || cooldown > 0)
       return;
 
-    // AI→Agent 语音触发：仅当用户明确要求「打开/浏览 浏览器/网页/网站」才自动打开 Agent 网页 tab。
-    // （普通"帮我搜索xxx"不再自动开 View 面板——auto 走对话内搜索+结果卡，deep 由搜索生成文章）
+    // AI→Agent 语音触发：仅 Deep 模式（browseAgentOn）下，用户明确「打开/浏览 浏览器/网页/网站」
+    // 才自动打开 Agent 网页 tab；**auto/fast 绝不自动打开 view 面板**（auto 走对话内搜索+结果卡）
     const browserCmd = t.match(
       /(?:打开|用|浏览)\s*(?:浏览器|网页|网站)\s*(?:搜索|查|找)?\s*(.+)?/,
     );
     const browserUrl = t.match(/(?:打开|浏览)\s*(https?:\/\/[^\s，,。]+)/);
-    if (browserCmd || browserUrl) {
+    if ((browserCmd || browserUrl) && browseAgentOn) {
       const target = browserUrl?.[1] || browserCmd?.[1]?.trim();
       if (target) {
         const searchUrl = target.startsWith("http")
@@ -2317,23 +2374,41 @@ export function AIChat({
         ) ||
         t.length >= 15) &&
       !/^[哈嘿嗯哦嘻呵呜哇噗喵嗷啧]{1,6}$/.test(t);
+    // 已搜索到的结果（供 auto 重答复用：一次搜索、避免二次联网/清空卡片）
+    let preSearched: SearchResult[] | null = null;
     if (!browseAgentOn && !urlMatch && isInfoQuery && searchMode === "auto") {
       // 仅 Auto 模式做前端适当联网搜索（Fast=纯本地不做；Deep 由浏览面板搜索生成文章承担）
       setSearchPlan({ stage: "thinking" });
-      setDialogResults([]);
       try {
-        const seg = await searchSegmented(t, {
-          speed: "standard",
-          limit: 8,
-          onProgress: (p) => setSearchPlan(p),
-        });
-        if (seg.results.length > 0) {
+        let results: SearchResult[] | null = null;
+        let answer = "";
+        const scfg = loadSearchApiCfg();
+        if (hasSearchApi(scfg) && scfg.provider === "tavily") {
+          // 配置 Tavily：直连专属路径（advanced 深度 + AI 直接答案 answer），
+          // 一次搜索、不与免费引擎混排稀释（与 Tavily 官网同一套参数）
+          const r = await searchFastWithAnswer(t, 8);
+          results = r.results;
+          answer = r.answer;
+        } else {
+          // 未配置 Tavily：保留分段多引擎搜索
+          const seg = await searchSegmented(t, {
+            speed: "standard",
+            limit: 8,
+            onProgress: (p) => setSearchPlan(p),
+          });
+          if (seg.results.length > 0) results = seg.results;
+        }
+        if (results && results.length > 0) {
           setSearching(true);
           const webBlock =
             "今天是 " +
             todayStr() +
-            "。以下是来自网络的最新搜索结果，请基于它们回答，引用具体数据/来源：\n" +
-            seg.results
+            (answer
+              ? "。以下是 Tavily 官方 AI 直接答案（基于实时检索）：\n" +
+                answer +
+                "\n\n以及来自网络的最新搜索结果，请基于它们回答，引用具体数据/来源：\n"
+              : "。以下是来自网络的最新搜索结果，请基于它们回答，引用具体数据/来源：\n") +
+            results
               .map(
                 (r, i) =>
                   `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.description || ""}`,
@@ -2341,8 +2416,10 @@ export function AIChat({
               .join("\n\n");
           if (webBlock) {
             web = webBlock;
+            preSearched = results;
+            // 折叠结果卡：展示来源（违规内容已默默过滤）；点击在新标签打开来源，不打开 view
             setDialogResults(
-              seg.results.map((r) => ({
+              filterSensitiveResults(results).map((r) => ({
                 title: r.title,
                 url: r.url,
                 source: r.source,
@@ -2435,7 +2512,13 @@ export function AIChat({
       reply = result.content;
     } catch (e: unknown) {
       if ((e as Error).name === "AbortError") return;
-      reply = `错误：${e instanceof Error ? e.message : "请求失败"}`;
+      // 违规/敏感内容被模型或网关拒绝（400/403 内容策略）→ 友好兜底，不显示"错误：…"红字
+      if (isContentBlocked(e)) {
+        reply =
+          "这个话题涉及敏感或违规内容，我这边不太方便搜索和展示，咱们换个话题聊聊吧。";
+      } else {
+        reply = `错误：${e instanceof Error ? e.message : "请求失败"}`;
+      }
     } finally {
       if (abortRef.current === ctrl) abortRef.current = null;
       endStreaming();
@@ -2517,6 +2600,9 @@ export function AIChat({
       label: string,
       opts?: { keepReply?: boolean },
     ) => {
+      // 防线（关键）：仅 Deep 模式可触发 view 生成/打开面板；
+      // auto/fast 一律直接忽略——即使未来新增任何误调路径也绝不自动打开 view
+      if (searchMode !== "deep") return;
       setAgentTab("web");
       setAgentInitUrl(q);
       autoOpenAgent();
@@ -2575,32 +2661,55 @@ export function AIChat({
       let newReply = reply;
       setSearching(true);
       try {
-        // 轻量搜索（仅结果列表、不抓正文）：以速度和搜索取舍——结构化结果用于重答上下文 + 对话结果卡
-        let results = await searchBackend(sq, 6);
-        // 引擎全空时 AI 兜底：保证搜索后必有结果卡 + 重答（不出现"搜索了却没结果"）
-        if (!results.length) {
-          results = await searchAI(sq, 6).catch(() => []);
+        let results: SearchResult[] | null = null;
+        let answer = "";
+        if (preSearched && preSearched.length > 0) {
+          // 一次搜索 + 复用：本消息已在前端搜到结果，直接基于已有资料重答——
+          // 不再二次联网（避免"清空重新搜一遍"），不清空/覆盖结果卡
+          results = preSearched;
+        } else {
+          const scfg = loadSearchApiCfg();
+          if (hasSearchApi(scfg) && scfg.provider === "tavily") {
+            // 配置 Tavily：直连专属路径（advanced + AI 直接答案），一次搜索、不与免费引擎混排
+            const r = await searchFastWithAnswer(sq, 6);
+            results = r.results;
+            answer = r.answer;
+          } else {
+            // 轻量搜索（仅结果列表、不抓正文）：结构化结果用于重答上下文 + 对话结果卡
+            results = await searchFast(sq, 6);
+          }
+          // 引擎全空时 AI 兜底：保证搜索后必有结果卡 + 重答（不出现"搜索了却没结果"）
+          if (!results || !results.length) {
+            results = await searchAI(sq, 6).catch(() => []);
+          }
         }
-        const webBlock = results.length
-          ? "今天是 " +
-            todayStr() +
-            "。以下是来自网络的最新搜索结果，请基于它们回答，引用具体数据/来源：\n" +
-            results
-              .map(
-                (r, i) =>
-                  `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.description || ""}`,
-              )
-              .join("\n\n")
-          : "";
+        const webBlock =
+          results && results.length
+            ? "今天是 " +
+              todayStr() +
+              (answer
+                ? "。以下是 Tavily 官方 AI 直接答案（基于实时检索）：\n" +
+                  answer +
+                  "\n\n以及以下网络搜索结果，请基于它们回答，引用具体数据/来源：\n"
+                : "。以下是来自网络的最新搜索结果，请基于它们回答，引用具体数据/来源：\n") +
+              results
+                .map(
+                  (r, i) =>
+                    `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.description || ""}`,
+                )
+                .join("\n\n")
+            : "";
         if (webBlock) {
-          // 搜索结果直接显示在对话中（简洁结果卡）
-          setDialogResults(
-            results.map((r) => ({
-              title: r.title,
-              url: r.url,
-              source: r.source,
-            })),
-          );
+          // 折叠结果卡：复用已有结果时不清空/不覆盖卡片
+          if (!preSearched || !preSearched.length) {
+            setDialogResults(
+              filterSensitiveResults(results!).map((r) => ({
+                title: r.title,
+                url: r.url,
+                source: r.source,
+              })),
+            );
+          }
           beginStreaming();
           try {
             const result = await streamChat(
@@ -2667,8 +2776,8 @@ export function AIChat({
         const sq = vc.slice(0, 60);
         if (sq) triggerBrowse(sq, "Search");
       } else if (searchMode === "auto" && vc) {
-        // Auto：不生成/不更新 View 文章——提示词已门控 auto 不使用 [VIEW:]；
-        // 若 AI 仍输出，直接把内容作为普通文本回复展示（不写缓存、不开面板、不二次搜索）
+        // Auto：彻底禁止 AI 调用 View 生成详细文章（慢、质量差）——[VIEW:] 一律作为普通文本
+        // 回复展示（不写缓存、不开面板、不二次搜索）。完整文章生成仅限 Deep 模式。
         updateActive((prev) => {
           for (let i = prev.length - 1; i >= 0; i--) {
             if (prev[i].role === "assistant") {
@@ -2738,19 +2847,8 @@ export function AIChat({
         // Deep 搜索模式开启时自动生成文章：桌面自动开面板，手机只出卡片（生成中→可点）
         if (sq) triggerBrowse(sq, "Search");
       } else if (searchMode === "auto" && sq) {
-        // AUTO：AI 认为缺少数据 → 联网搜索重答（给出准确答案）+ 搜索卡片
+        // AUTO：AI 认为缺少数据 → 联网搜索重答（结果只以对话文字展示，不产生 view 卡片）
         reply = await autoSearchAndReanswer(sq);
-        setToolCalls((prev) => [
-          ...prev,
-          {
-            msgIdx,
-            type: "Search",
-            detail: sq.slice(0, 60),
-            tab: "web",
-            query: sq,
-            sessionId: activeId,
-          },
-        ]);
       }
       // Fast：webTools 已关闭，[SEARCH:] 不生效（忽略，不联网）
       setAgentEditContent(undefined);
@@ -2908,10 +3006,15 @@ export function AIChat({
   const immersiveTools = useMemo(
     () =>
       toolCalls
-        .filter((tc) => tc.sessionId === activeId)
+        .filter(
+          (tc) =>
+            tc.sessionId === activeId &&
+            // auto/fast 模式：隐藏指向 web 面板的工具卡（不显示 view 入口）
+            !(tc.tab === "web" && searchMode !== "deep"),
+        )
         .sort((a, b) => (b.msgIdx ?? 0) - (a.msgIdx ?? 0))
         .slice(0, 3),
-    [toolCalls, activeId],
+    [toolCalls, activeId, searchMode],
   );
 
   // Agent 面板「设置」tab 数据（desktop/mobile 双渲染共用一份；useMemo 稳定引用配合 AgentPanel memo）
@@ -3598,20 +3701,11 @@ export function AIChat({
           {live2dImmersive && (
             <div className="relative mb-2 animate-[kslideUp_0.3s_ease-out] rounded-2xl border border-gray-200 bg-white/85 px-3.5 py-2.5 text-sm leading-relaxed text-gray-700 backdrop-blur dark:border-gray-700 dark:bg-gray-900/85 dark:text-gray-200">
               {loading && !lastAi ? (
-                /* 新对话、生成中：加载按钮 */
-                <div className="flex items-center gap-2 text-gray-400 dark:text-gray-500">
-                  <span className="flex items-center gap-1">
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" />
-                    <span
-                      className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400"
-                      style={{ animationDelay: "0.15s" }}
-                    />
-                    <span
-                      className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400"
-                      style={{ animationDelay: "0.3s" }}
-                    />
-                  </span>
-                  <span>正在生成…</span>
+                /* 新对话、生成中：统一分阶段加载打字机（搜索→生成 逐字切换，不再单独漂浮「正在搜索…」） */
+                <div className="flex items-center gap-1.5 text-gray-400 dark:text-gray-500">
+                  <PhaseTypeWriter
+                    phase={searching || searchPlan ? "search" : "generate"}
+                  />
                 </div>
               ) : lastAi ? (
                 <div className="min-w-0">
@@ -3655,6 +3749,9 @@ export function AIChat({
                             key={j}
                             onClick={() => {
                               if (!tc.tab) return;
+                              // auto/fast 下禁止通过工具卡打开 view 面板
+                              if (tc.tab === "web" && searchMode !== "deep")
+                                return;
                               const q =
                                 tc.query ||
                                 (tc.type === "Search"
@@ -3729,29 +3826,12 @@ export function AIChat({
                       })}
                     </div>
                   )}
-                  {/* 流式生成中：加载按钮 */}
+                  {/* 搜索/生成中：统一分阶段加载打字机（搜索→生成 逐字切换，与输入栏上方漂浮状态合并进卡片） */}
                   {loading && (
-                    <div className="mt-2 flex items-center gap-2 text-gray-400 dark:text-gray-500">
-                      <svg
-                        className="h-3.5 w-3.5 animate-spin"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                      >
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        />
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-                        />
-                      </svg>
-                      <span>正在生成…</span>
+                    <div className="mt-2 flex items-center gap-1.5 text-gray-400 dark:text-gray-500">
+                      <PhaseTypeWriter
+                        phase={searching || searchPlan ? "search" : "generate"}
+                      />
                     </div>
                   )}
                   {/* 长回复：展开/收起全文（默认限高，避免遮挡 Live2D 角色） */}
@@ -3759,16 +3839,16 @@ export function AIChat({
                     lastAi &&
                     stripToolCmds(stripEmotionTag(lastAi.content)).length >
                       80 && (
-                      <div className="mt-1.5 flex justify-end">
+                      <div className="mt-2 flex justify-end">
                         <button
                           onClick={() => setImmersiveExpand((v) => !v)}
-                          className="inline-flex items-center gap-0.5 rounded-full px-2 py-1 text-[11px] text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 active:scale-95 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+                          className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white/70 px-3 py-1.5 text-xs font-medium text-gray-500 transition hover:border-gray-300 hover:bg-gray-50 hover:text-gray-700 active:scale-95 dark:border-gray-700 dark:bg-gray-800/70 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
                         >
                           {immersiveExpand ? (
                             <>
                               收起
                               <svg
-                                className="h-3 w-3"
+                                className="h-3.5 w-3.5"
                                 viewBox="0 0 24 24"
                                 fill="none"
                                 stroke="currentColor"
@@ -3785,7 +3865,7 @@ export function AIChat({
                             <>
                               展开全文
                               <svg
-                                className="h-3 w-3"
+                                className="h-3.5 w-3.5"
                                 viewBox="0 0 24 24"
                                 fill="none"
                                 stroke="currentColor"
@@ -3856,10 +3936,11 @@ export function AIChat({
             </div>
           )}
 
-          {(attachedFile || searching || searchPlan) && (
+          {(attachedFile ||
+            (!live2dImmersive && (searching || searchPlan))) && (
             <div className="mb-2 flex flex-wrap gap-1.5">
-              {/* 分段搜索进度 */}
-              {searchPlan && (
+              {/* 分段搜索进度：手机沉浸模式已合并进对话卡片（分阶段打字机），不再漂浮在此 */}
+              {!live2dImmersive && searchPlan && (
                 <span
                   className={
                     "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs " +
@@ -3890,7 +3971,7 @@ export function AIChat({
                   {searchPlan && "正在搜索…"}
                 </span>
               )}
-              {searching && (
+              {!live2dImmersive && searching && (
                 <span
                   className={
                     "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs " +

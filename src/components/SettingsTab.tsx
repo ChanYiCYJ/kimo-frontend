@@ -111,9 +111,8 @@ export function SettingsTab({
     }
   };
   const [dataOpen, setDataOpen] = useState(false);
-  // 高级设置：模型API配置 / 搜索 API 配置 均默认收起，仅高级用户手动展开
+  // 高级设置：模型API配置默认收起，仅高级用户手动展开
   const [modelApiOpen, setModelApiOpen] = useState(false);
-  const [searchApiOpen, setSearchApiOpen] = useState(false);
   /** 搜索模式说明文案 */
   const searchModeDesc =
     searchMode === "fast"
@@ -178,7 +177,17 @@ export function SettingsTab({
         </div>
       </Section>
 
-      {/* 高级设置：模型API配置（原自定义模型）+ 搜索 API 配置，均默认收起 */}
+      {/* 搜索 API：第三方搜索平台（Tavily / SearXNG），同搜索模式卡片样式 */}
+      <Section title="搜索 API">
+        <div className="space-y-2 pt-1">
+          <SearchApiForm />
+          <p className="text-[11px] leading-relaxed text-gray-400">
+            配置后优先走所选平台，实时获取当天信息；未配置或被拦自动降级。
+          </p>
+        </div>
+      </Section>
+
+      {/* 高级设置：模型API配置（原自定义模型）默认收起 */}
       <Section title="高级设置">
         {/* 模型API配置：使用自己的接口与密钥（原「自定义模型」并入高级设置） */}
         <div>
@@ -237,47 +246,6 @@ export function SettingsTab({
                   )}
                 </>
               )}
-            </div>
-          )}
-        </div>
-
-        <div className="border-t border-gray-100 dark:border-gray-800" />
-
-        {/* 搜索 API 配置：自由接入 Tavily/Brave/SearXNG */}
-        <div>
-          <button
-            type="button"
-            onClick={() => setSearchApiOpen((v) => !v)}
-            className="flex w-full items-center justify-between py-1 text-left"
-          >
-            <span className="min-w-0">
-              <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                搜索 API 配置
-              </span>
-              <span className="mt-0.5 block text-[11px] leading-relaxed text-gray-400">
-                自由接入第三方搜索平台（Tavily/Brave/SearXNG）
-              </span>
-            </span>
-            <svg
-              className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${searchApiOpen ? "rotate-180" : ""}`}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M19 9l-7 7-7-7"
-              />
-            </svg>
-          </button>
-          {searchApiOpen && (
-            <div className="space-y-2 pt-1">
-              <SearchApiForm />
-              <p className="text-[11px] leading-relaxed text-gray-400">
-                配置后优先走所选平台，实时获取当天信息；未配置或被拦自动降级。
-              </p>
             </div>
           )}
         </div>
