@@ -588,11 +588,11 @@ describe("live2d · rmsToMouth（真实音频口型映射）", () => {
     }
   });
 
-  it("中等音量幅度明显但不夸张（增益放大适中）", () => {
-    // RMS 0.2 → 嘴张明显（~0.82）但不封顶满张（不夸张、更自然）
+  it("中等音量幅度适中不夸张（增益平缓，避免一张一闭跳变）", () => {
+    // RMS 0.2 → 嘴张适中（~0.56），不封顶满张（原 4.5 增益直接 0.82 太陡→口型跳变）
     const v = rmsToMouth(0.2);
-    expect(v).toBeGreaterThan(0.75);
-    expect(v).toBeLessThanOrEqual(0.9);
+    expect(v).toBeGreaterThan(0.4);
+    expect(v).toBeLessThan(0.7);
   });
 });
 

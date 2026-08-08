@@ -1211,9 +1211,10 @@ let mouthSeq: MouthKeyFrame[] = [];
 let mouthSeqStart = 0;
 /** 序列所属 AudioContext（查表用） */
 let mouthSeqCtx: AudioContext | null = null;
-/** 朗读中口型「说话态」最低开口：低于此值视觉上像「闭合」（0.1≈几乎闭嘴），
- *  提到 0.2 让停顿/静音段也保持明显张嘴的说话感，杜绝用户看到的“突然闭合” */
-const LIP_SYNC_MIN_OPEN = 0.2;
+/** 朗读中口型「说话态」最低开口：低于此值视觉上像「闭合」。
+ *  提到 0.3 让朗读（说话）期间嘴巴保持明显张开（音节间也不闭合），
+ *  随声音在 0.3~0.9 之间自然张合，避免用户看到的“一张一闭/突然闭合”不自然感 */
+const LIP_SYNC_MIN_OPEN = 0.3;
 /** 嘴部平滑值（攻击快/释放慢，贴合音节且避免波形抖动造成口型闪烁） */
 let mouthSmooth = 0;
 /** RMS 短期平滑值（减波形瞬时抖动，让口型曲线更连贯自然） */
@@ -1380,9 +1381,12 @@ function buildLipSyncStep(
         voiceStarted = true;
         // RMS 短期平滑：减波形瞬时抖动（噪声/辅音起音），同时快速跟随（0.65）让开头响应及时
         rmsSmooth += (rms - rmsSmooth) * 0.65;
-        mouthSmooth = smoothMouth(mouthSmooth, rmsSmooth);
-        // 朗读中保持「说话态」最低开口：句间/词间停顿、静音段也保持明显张嘴（0.2），
-        // 杜绝口型掉到 0.1 的「闭合」观感；朗读结束才回落 0
+        // hold=LIP_SYNC_MIN_OPEN：说话期间嘴巴最小保持 0.3 张嘴（不闭合），随声音自然张合
+        mouthSmooth = smoothMouth(mouthSmooth, rmsSmooth, {
+          hold: LIP_SYNC_MIN_OPEN,
+        });
+        // 朗读中保持「说话态」最低开口：句间/词间停顿、静音段也保持明显张嘴（0.3），
+        // 杜绝口型掉到低值的「闭合」观感；朗读结束才回落 0
         if (mouthSmooth < LIP_SYNC_MIN_OPEN) mouthSmooth = LIP_SYNC_MIN_OPEN;
       }
       for (const p of mouthParams) {
@@ -1424,7 +1428,8 @@ function buildMouthSequence(audioBuf: AudioBuffer): MouthKeyFrame[] {
     } else {
       voiceStarted = true;
       rmsS += (rms - rmsS) * 0.65;
-      mouth = smoothMouth(mouth, rmsS);
+      // hold=LIP_SYNC_MIN_OPEN：说话期间嘴巴最小保持 0.3 张嘴（不闭合），随声音自然张合
+      mouth = smoothMouth(mouth, rmsS, { hold: LIP_SYNC_MIN_OPEN });
       if (mouth < LIP_SYNC_MIN_OPEN) mouth = LIP_SYNC_MIN_OPEN; // 保持说话态最低开口，不闭合
     }
     seq.push({ t, v: mouth });

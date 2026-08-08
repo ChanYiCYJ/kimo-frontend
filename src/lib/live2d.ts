@@ -607,10 +607,12 @@ export function resolveHitRegion(
 /**
  * 音频 RMS 音量（0~1）→ 嘴张幅度（ParamMouthOpenY 0.06~0.9）映射（纯函数，可单测）。
  * 低音量保持微张（0.06）避免"僵住闭嘴"；说话时嘴明显张开（增益放大中低音量区间，封顶 0.9 适中）。
+ * 增益 3.0（原 4.5）：RMS≥0.22 就满张 0.9 太陡，口型在"满张↔闭合"间剧烈跳变（一张一闭
+ * 不自然）；3.0 让口型随音量平缓变化（轻音 0.31 / 中音 0.56 / 大音 0.77~0.9），更自然。
  */
 export function rmsToMouth(rms: number): number {
   if (!Number.isFinite(rms) || rms <= 0) return 0.06;
-  const v = Math.min(1, rms * 4.5); // 增益放大：中低音量嘴张明显（4.0 偏小、5.0 过大过抖）
+  const v = Math.min(1, rms * 3.4); // 增益适中：口型随音量平缓张合（不“有声音就满张”跳变），峰值约 0.7 明显张嘴
   return Math.min(0.9, 0.06 + v * 0.84); // 0.06 ~ 0.9（封顶适中，避免满张夸张/不自然）
 }
 
