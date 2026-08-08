@@ -413,6 +413,14 @@ export async function loadModel(name: string): Promise<void> {
         transparent: true,
         antialias: !lowPerf,
         autoStart: true,
+        // 关键：必须与 pixi-live2d-display 的 Live2DModel.update（内部注册在
+        // PIXI.Ticker.shared）共用同一 ticker。否则渲染跑在独立的 app.ticker 上，
+        // 与 Ticker.shared 是两个各自 rAF 的循环——每帧交替执行，渲染经常读到
+        // 「模型 idle 刚把口型置 0、lipSync 还没来得及设值」的中间态 → 口型闪烁
+        // （实测 draw 探针相邻帧跳变最大 0.634，朗读时嘴大幅抖动）。
+        // sharedTicker 后同一循环内顺序固定：render(读上一帧 lipSync 值)→模型
+        // update→lipSync(设新值)，渲染始终读到平滑连续的口型值。
+        sharedTicker: true,
         width: cw,
         height: ch,
         resolution: lowPerf
@@ -436,6 +444,8 @@ export async function loadModel(name: string): Promise<void> {
     fadeOutOldModel();
     const m = await Live2DModel.from(settings);
     model = m;
+    // 新模型未 hook 过 internalModel.update：下次朗读时重新 hook（旧模型的 hook 随其销毁失效）
+    lipSyncUpdateHooked = false;
     // 记录基础（未缩放）尺寸：model.width 会随 scale 变化，用它算缩放会产生反馈漂移（拖拽占比出错根因）
     modelBaseW = m.internalModel?.width || m.width || 1;
     modelBaseH = m.internalModel?.height || m.height || 1;
@@ -1158,15 +1168,48 @@ let mouthSmooth = 0;
 let rmsSmooth = 0;
 /** 口型结束平滑回落动画 id（读完后自然闭嘴） */
 let mouthFadeId = 0;
-/** 口型驱动回调（注册在 PIXI.Ticker.shared 上，便于移除） */
-let lipSyncStepRef: (() => void) | null = null;
+/** 口型驱动回调：挂到当前模型 internalModel.update 之后（motion/idle 覆盖参数后、
+ *  绘制前设置口型 → 渲染必然读到 lipSync 值，不再被模型每帧重置成 0） */
+let lipSyncHookRef: (() => void) | null = null;
+/** 回退模式：注册在 PIXI.Ticker.shared / rAF 上的口型回调 */
+let lipSyncTickerRef: (() => void) | null = null;
+/** 当前模型 internalModel.update 是否已 hook（切换角色/重载时重置，对新模型重新 hook） */
+let lipSyncUpdateHooked = false;
 /** 说话期间是否已暂停环境动作（结束后恢复） */
 let lipSyncPausedAmbient = false;
 
-/** 在 PIXI 共享 ticker 上注册口型回调（模型更新也在此 ticker，但模型先注册→先执行；
- *  我在其后设置口型 → 不被 motion/expression 每帧覆盖，渲染才能看到嘴张） */
+/**
+ * 注册口型驱动回调。首选 hook 模型 internalModel.update：
+ * pixi-live2d-display 每帧 _render 内部顺序为 internalModel.update（motion/expression
+ * 会重置 ParamMouthOpenY→0）→ internalModel.draw（绘制）。在其 update 之后、draw 之前
+ * 设置口型，绘制就读到最新值——这是「渲染读到 0 → 嘴不动/闪烁」的根治（无论渲染在哪个
+ * ticker 循环都正确）。模型不可用时回退到 PIXI.Ticker.shared / rAF。
+ */
 function addLipSyncToTicker(fn: () => void): void {
-  lipSyncStepRef = fn;
+  // hook 目标是 Live2DModel.internalModel（Cubism 模型）——pixi-live2d-display
+  // 每帧 _render 里调用 its.update() 更新参数与 motion。注意不能拿 getCoreModel()
+  // （= internalModel.coreModel）再取 .internalModel：那是 undefined，会导致永远
+  // 回退到 Ticker.shared，口型设置被 motion 每帧覆盖为 0（嘴不动/闪烁的根因）。
+  const im = model?.internalModel;
+  if (im && typeof im.update === "function") {
+    lipSyncHookRef = fn;
+    if (!lipSyncUpdateHooked) {
+      const orig = im.update;
+      im.update = function (...args: unknown[]) {
+        try {
+          orig.apply(this, args);
+        } catch {}
+        try {
+          lipSyncHookRef?.();
+        } catch {}
+      };
+      lipSyncUpdateHooked = true;
+    }
+    lipSyncAudioId = 1; // 标记运行中
+    return;
+  }
+  // 回退：注册到共享 ticker（与模型 update 同循环，lipSync 后注册后执行仍可被渲染读到）
+  lipSyncTickerRef = fn;
   try {
     const T = (window as any).PIXI?.Ticker?.shared;
     if (T && typeof T.add === "function") {
@@ -1175,19 +1218,22 @@ function addLipSyncToTicker(fn: () => void): void {
       return;
     }
   } catch {}
-  // 回退：无 PIXI ticker（如测试环境）用 rAF
+  // 无 PIXI ticker（如测试环境）用 rAF
   lipSyncAudioId = requestAnimationFrame(fn);
 }
 
 function removeLipSyncFromTicker(): void {
-  if (lipSyncStepRef) {
+  lipSyncHookRef = null;
+  if (lipSyncTickerRef) {
     try {
       const T = (window as any).PIXI?.Ticker?.shared;
-      if (T && typeof T.remove === "function") T.remove(lipSyncStepRef);
+      if (T && typeof T.remove === "function") T.remove(lipSyncTickerRef);
     } catch {}
-    lipSyncStepRef = null;
+    lipSyncTickerRef = null;
   }
-  if (lipSyncAudioId && !lipSyncStepRef) cancelAnimationFrame(lipSyncAudioId);
+  if (lipSyncAudioId && !lipSyncTickerRef && !lipSyncHookRef) {
+    cancelAnimationFrame(lipSyncAudioId);
+  }
   lipSyncAudioId = 0;
 }
 
@@ -1239,6 +1285,8 @@ function buildLipSyncStep(
   analyser: AnalyserNode | null,
 ): () => void {
   const data = new Uint8Array(analyser?.fftSize || 512);
+  /** 是否已检测到首个声音信号（区分「开头前导静音」与「说话中的停顿」） */
+  let voiceStarted = false;
   return () => {
     if (!isActive() || !analyser) {
       removeLipSyncFromTicker();
@@ -1252,9 +1300,18 @@ function buildLipSyncStep(
     }
     if (mouthParams.length > 0) {
       const rms = Math.sqrt(sum / data.length);
-      // RMS 短期平滑：减波形瞬时抖动（噪声/辅音起音），同时快速跟随（0.65）让开头响应及时
-      rmsSmooth += (rms - rmsSmooth) * 0.65;
-      mouthSmooth = smoothMouth(mouthSmooth, rmsSmooth);
+      if (!voiceStarted && rms < 0.03) {
+        // 开头准备态：音频尚未真正发声（TTS 前导静音/解码缓冲/首帧无声），
+        // 口型稳定保持微张（0.1），避免「0.12 预置 → smoothMouth 释放闭拢到 0.06
+        // → 声音来了再张开」的开头口型异常（读第一段开头时嘴先闭上又张开）
+        mouthSmooth = 0.1;
+        rmsSmooth = 0;
+      } else {
+        voiceStarted = true;
+        // RMS 短期平滑：减波形瞬时抖动（噪声/辅音起音），同时快速跟随（0.65）让开头响应及时
+        rmsSmooth += (rms - rmsSmooth) * 0.65;
+        mouthSmooth = smoothMouth(mouthSmooth, rmsSmooth);
+      }
       for (const p of mouthParams) {
         try {
           core.setParamFloat(p, mouthSmooth);
