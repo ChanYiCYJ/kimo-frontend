@@ -1165,17 +1165,22 @@ export function stopSpeaking(): void {
 export function prepareSpeaking(): void {
   lipSyncActive = true;
   const core = getCoreModel();
-  if (!core) return;
-  const mouthParams = getMouthParams(core);
+  const mouthParams = core ? getMouthParams(core) : [];
   if (!mouthParams.length) return;
-  // 口型准备态微张（音频未就绪期间保持，避免第一时刻完全静止）
   mouthSmooth = 0.1;
   rmsSmooth = 0;
-  for (const p of mouthParams) {
-    try {
-      core.setParamFloat(p, 0.1);
-    } catch {}
-  }
+  // 注册「准备态」lipSync step（analyser=null）：TTS 合成等待期间持续保持微张，
+  // 覆盖 idle/motion 每帧置 0 → 点击朗读后口型稳定微张不闭合（不再是「张一下又闭上」）；
+  // speakAudio/speakAudioBuffer 入口 stopSpeaking 会移除本 step 并接管波形驱动。
+  const session = ++speakSession;
+  addLipSyncToTicker(
+    buildLipSyncStep(
+      () => session === speakSession && lipSyncActive,
+      core,
+      mouthParams,
+      () => null,
+    ),
+  );
 }
 
 // ---- 真实音频口型同步（Web Audio AnalyserNode 波形 RMS 驱动，参考官方 MotionSync 思路 + l2d 的 RMS 方案）----
@@ -1192,6 +1197,9 @@ let audioEndedCb: (() => void) | null = null;
 /** 是否正在朗读（lipSync 驱动中）：此时表情动画不覆盖嘴部开合参数，
  *  避免朗读开头嘴被表情锁定（如 happy 把 ParamMouthOpenY 固定 0.2 保持 3 秒）→ 口型不加载 */
 let lipSyncActive = false;
+/** 朗读会话 id：每次 speakAudio/speakAudioBuffer/prepareSpeaking 递增，
+ *  用于旧 step 失效（快速连播/停止时旧准备态/波形 step 不覆盖新朗读） */
+let speakSession = 0;
 /** 嘴部平滑值（攻击快/释放慢，贴合音节且避免波形抖动造成口型闪烁） */
 let mouthSmooth = 0;
 /** RMS 短期平滑值（减波形瞬时抖动，让口型曲线更连贯自然） */
@@ -1304,22 +1312,38 @@ function stopAudioLipSync(): void {
 }
 
 /**
- * 构建「RMS 波形 → ParamMouthOpenY」的共享口型驱动 step（注册到 PIXI ticker）。
- * isActive 返回播放源是否仍在发声（结束/暂停时自动摘除 ticker，避免空转）。
+ * 构建「RMS 波形 → ParamMouthOpenY」的共享口型驱动 step（注册到模型 internalModel.update 之后）。
+ * isActive 返回本次朗读是否仍活跃（结束/停止时摘除，避免空转）；
+ * analyserRef 返回当前 AnalyserNode（为 null 时表示音频未就绪→进入「准备态」持续保持微张，
+ * 覆盖 idle/motion 每帧置 0，保证从点击朗读到波形接管口型全程不闭合）。
  * 平滑用 smoothMouth（attack 快/release 缓/说话保持 ≥0.16），对模型存在的口型参数都设值。
  */
 function buildLipSyncStep(
   isActive: () => boolean,
   core: any,
   mouthParams: string[],
-  analyser: AnalyserNode | null,
+  analyserRef: () => AnalyserNode | null,
 ): () => void {
-  const data = new Uint8Array(analyser?.fftSize || 512);
+  const data = new Uint8Array(512);
   /** 是否已检测到首个声音信号（区分「开头前导静音」与「说话中的停顿」） */
   let voiceStarted = false;
   return () => {
-    if (!isActive() || !analyser) {
+    if (!isActive()) {
       removeLipSyncFromTicker();
+      return;
+    }
+    const analyser = analyserRef();
+    if (!analyser) {
+      // 准备态（音频未就绪/解码中）：持续保持微张，覆盖 idle/motion 每帧置 0
+      if (mouthParams.length > 0) {
+        mouthSmooth = 0.1;
+        rmsSmooth = 0;
+        for (const p of mouthParams) {
+          try {
+            core.setParamFloat(p, 0.1);
+          } catch {}
+        }
+      }
       return;
     }
     analyser.getByteTimeDomainData(data);
@@ -1332,7 +1356,7 @@ function buildLipSyncStep(
       const rms = Math.sqrt(sum / data.length);
       if (!voiceStarted && rms < 0.03) {
         // 开头准备态：音频尚未真正发声（TTS 前导静音/解码缓冲/首帧无声），
-        // 口型稳定保持微张（0.1），避免「0.12 预置 → smoothMouth 释放闭拢到 0.06
+        // 口型稳定保持微张（0.1），避免「预置 → smoothMouth 释放闭拢到 0.06
         // → 声音来了再张开」的开头口型异常（读第一段开头时嘴先闭上又张开）
         mouthSmooth = 0.1;
         rmsSmooth = 0;
@@ -1341,6 +1365,9 @@ function buildLipSyncStep(
         // RMS 短期平滑：减波形瞬时抖动（噪声/辅音起音），同时快速跟随（0.65）让开头响应及时
         rmsSmooth += (rms - rmsSmooth) * 0.65;
         mouthSmooth = smoothMouth(mouthSmooth, rmsSmooth);
+        // 朗读中保持「说话态」最低开口：句间/词间停顿、静音段也至少微张（0.1），
+        // 避免口型突然完全闭合（看起来「断了/没加载出来」）；朗读结束才回落 0
+        if (mouthSmooth < 0.1) mouthSmooth = 0.1;
       }
       for (const p of mouthParams) {
         try {
@@ -1436,17 +1463,17 @@ export function speakAudio(
     // 口型参数存在才跑波形循环；不存在则纯播放声音
     const core = getCoreModel();
     const mouthParams = core ? getMouthParams(core) : [];
-    // 开头预置微张嘴（0.12）：避免「刚开始说话嘴不动」（从 0 爬升 + 前导静音段响应慢）；
-    // 声音一来 RMS 快速爬升（0.65），口型立即张大
-    mouthSmooth = 0.12;
+    const session = ++speakSession;
+    // 注册 lipSync step（analyserRef 指向模块级 audioAnalyser）：
+    // play 前音频缓冲（无波形）→ 准备态保持 0.1；出声后无缝切到波形驱动
+    mouthSmooth = 0.1;
     rmsSmooth = 0;
-    // 注册到共享 ticker：模型 update（含 motion 覆盖）先跑，随后本步设置口型 → 渲染能看见
     addLipSyncToTicker(
       buildLipSyncStep(
-        () => !!audioEl && !audioEl.paused && !audioEl.ended && !!audioAnalyser,
+        () => session === speakSession && lipSyncActive && !!audioEl,
         core,
         mouthParams,
-        audioAnalyser,
+        () => audioAnalyser,
       ),
     );
     const el = audioEl; // 本函数新建的 Audio，非空；供播放用
@@ -1514,6 +1541,23 @@ export function speakAudioBuffer(
     } catch {
       srcBuf = buffer;
     }
+    const core = getCoreModel();
+    const mouthParams = core ? getMouthParams(core) : [];
+    const session = ++speakSession;
+    // 注册 lipSync step（decode 前）：decode 期间 audioAnalyser=null → 准备态保持 0.1
+    // （覆盖 idle/motion 置 0，点击朗读后口型稳定微张不闭合）；decode 完成设 audioAnalyser
+    // → 同一步无缝切换波形驱动，朗读全程口型连续不闭合。
+    mouthSmooth = 0.1;
+    rmsSmooth = 0;
+    audioAnalyser = null;
+    addLipSyncToTicker(
+      buildLipSyncStep(
+        () => session === speakSession && lipSyncActive,
+        core,
+        mouthParams,
+        () => audioAnalyser,
+      ),
+    );
     ctx.decodeAudioData(
       srcBuf,
       (audioBuf) => {
@@ -1530,22 +1574,8 @@ export function speakAudioBuffer(
           src.connect(analyser);
           analyser.connect(gain);
           gain.connect(ctx.destination);
-          audioAnalyser = analyser;
+          audioAnalyser = analyser; // 切换波形（已注册的 step 无缝接管）
           src.onended = finish;
-          const core = getCoreModel();
-          const mouthParams = core ? getMouthParams(core) : [];
-          // 开头预置微张嘴（0.12）：避免「刚开始说话嘴不动」；声音一来快速张大
-          mouthSmooth = 0.12;
-          rmsSmooth = 0;
-          // 注册到共享 ticker：模型 update（含 motion 覆盖）先跑，随后设置口型 → 渲染能看见
-          addLipSyncToTicker(
-            buildLipSyncStep(
-              () => audioBufferSrc === src && !!audioAnalyser,
-              core,
-              mouthParams,
-              analyser,
-            ),
-          );
           // 移动端：先等 AudioContext resume 完成再 start（自动播放策略，不等会静音）
           const start = () => {
             try {
