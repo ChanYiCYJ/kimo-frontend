@@ -12,9 +12,14 @@ import {
   EMOTION_PRESETS,
   buildLive2dSettings,
   fetchBuildData,
-  fetchThirdPartyModel,
+  fetchThirdPartyModelSafe,
   parseActionCommands,
+  pickTapReaction,
+  resolveHitRegion,
+  rmsToMouth,
+  LOOK_TARGETS,
   type Emotion,
+  type LookDirection,
 } from "./live2d";
 // 低性能设备检测：用于降分辨率/限帧率/流式期间暂停渲染等降级策略
 import { isLowPerfDevice } from "./perf";
@@ -87,6 +92,13 @@ let lastEmotionAt = 0;
 let lastAmbientMotion = "";
 /** 强情绪连播第二个动作的定时器（换情绪/卸载时清理） */
 let sequenceTimer: number | null = null;
+/**
+ * 动作优先级（pixi-live2d-display MotionPriority：IDLE=1 / NORMAL=2 / FORCE=3）。
+ * 情绪与 AI 动作指令用 FORCE（永不被 ambient 打断）；ambient 随机小动作用 NORMAL
+ * （让位给情绪）——避免"点一下角色，眨眼小动作把情绪动作顶掉"的抢播。
+ */
+const MOTION_PRIORITY_NORMAL = 2;
+const MOTION_PRIORITY_FORCE = 3;
 
 function setState(patch: Partial<Live2dCoreState>): void {
   state = { ...state, ...patch };
@@ -134,8 +146,12 @@ async function ensureEngine(): Promise<{ PIXI: any; Live2DModel: any }> {
   if (engineCache) return engineCache;
   await ensureRuntime();
   const PIXI: any = await import("pixi.js");
-  // pixi-live2d-display/cubism2 依赖 window.PIXI 全局
+  // pixi-live2d-display 依赖 window.PIXI 全局
   (window as any).PIXI = PIXI;
+  // 注意：默认入口（index，含 cubism2+cubism4）当前在线上渲染为空白（双运行时注册被
+  // 树摇/注册时序影响），bestdori 全部为 Cubism2 .moc，故固定用 cubism2 子路径（稳定渲染）。
+  // Cubism3/4 加载链路（buildLive2dSettingsFromModel3/fetchThirdPartyModelSafe）已就绪，
+  // 待 index bundle 渲染问题解决后可切回：import("pixi-live2d-display")
   const mod: any = await import("pixi-live2d-display/cubism2");
   engineCache = { PIXI, Live2DModel: mod.Live2DModel };
   return engineCache;
@@ -187,8 +203,24 @@ function fitModel(): void {
     canvas.style.width = w + "px";
     canvas.style.height = h + "px";
   }
-  const mw = modelBaseW || 1;
-  const mh = modelBaseH || 1;
+  const mw0 = modelBaseW || 1;
+  const mh0 = modelBaseH || 1;
+  let mw = mw0;
+  let mh = mh0;
+  // 基础（未缩放）尺寸异常时（如模型刚就绪 internalModel 尺寸未暴露 → 回落为 1），
+  // 用当前显示尺寸反推真实基础尺寸，避免缩放算出微小模型导致"空白"。
+  if (mw < 10 || mh < 10) {
+    try {
+      const sx = model.scale?.x || 1;
+      const sy = model.scale?.y || 1;
+      if (model.width && model.width > 10 && sx > 0) mw = model.width / sx;
+      if (model.height && model.height > 10 && sy > 0) mh = model.height / sy;
+      if (mw > 10 && mh > 10) {
+        modelBaseW = mw;
+        modelBaseH = mh;
+      }
+    } catch {}
+  }
   let s = Math.min(w / mw, h / mh) * 0.88;
   if (!Number.isFinite(s) || s <= 0) s = 1;
   // 只保留上限钳制（防极小容器比例爆炸）；不要设下限——大纹理模型在窄面板下计算出的
@@ -237,14 +269,15 @@ function playEmotionMotion(emotion: Emotion): boolean {
     b = other;
   }
   try {
-    model.motion(a).catch(() => {});
+    // FORCE：情绪动作永不被 ambient（NORMAL）打断
+    model.motion(a, 0, MOTION_PRIORITY_FORCE).catch(() => {});
     if (b) {
       if (sequenceTimer) clearTimeout(sequenceTimer);
       const target = b;
       sequenceTimer = window.setTimeout(() => {
         sequenceTimer = null;
         try {
-          model?.motion(target).catch(() => {});
+          model?.motion(target, 0, MOTION_PRIORITY_FORCE).catch(() => {});
         } catch {}
       }, 500);
     }
@@ -344,9 +377,9 @@ export async function loadModel(name: string): Promise<void> {
   modelBaseH = 1;
   try {
     const { PIXI, Live2DModel } = await ensureEngine();
-    // 第三方 model.json 网址 → 走第三方加载；否则 bestdori 模型名
+    // 第三方 model.json/model3.json 网址 → 走第三方加载；否则 bestdori 模型名
     const settings = /^https?:\/\//i.test(clean)
-      ? await fetchThirdPartyModel(clean)
+      ? await fetchThirdPartyModelSafe(clean)
       : buildLive2dSettings(clean, await fetchBuildData(clean));
 
     // 纹理 404 探测 → 透明 PNG 兜底（防破图）
@@ -403,6 +436,11 @@ export async function loadModel(name: string): Promise<void> {
       m.interactive = false;
     } catch {}
     m.anchor.set(0.5, 0.5);
+    // 切换角色/重载时重置用户拖拽旋转（新模型姿态从 0 开始）
+    userRot = 0;
+    try {
+      m.rotation = 0;
+    } catch {}
     // 缓存模型本地边界顶部偏移（拖拽中动作变形不再导致 model.y 跳动闪烁）
     try {
       const b = m.getLocalBounds ? m.getLocalBounds() : null;
@@ -569,7 +607,8 @@ function playAmbientMotion(): void {
   }
   lastAmbientMotion = name;
   try {
-    model.motion(name).catch(() => {});
+    // NORMAL：ambient 小动作让位给情绪（FORCE）与 AI 指令（FORCE）
+    model.motion(name, 0, MOTION_PRIORITY_NORMAL).catch(() => {});
   } catch {}
 }
 
@@ -695,6 +734,128 @@ function bindVisibility(): void {
   });
 }
 
+// ---- 点击/触摸交互：命中反应 + 拖拽旋转（参考 pixi-live2d-display hit-testing 与 live2d-widget drag）----
+// 不依赖 pixi 的 autoInteract（其 auto-focus 会驱动眼睛注视，与既有 blink/gaze 冲突），
+// 改为在 attach 容器上自绑 pointer 事件：
+//   - 点按（位移 < 阈值）= tap → 按角色包围盒上下分头/身 → 播反应动作 + 表情
+//   - 拖动（位移 ≥ 阈值）= drag → model.rotation 跟随（±MAX_USER_ROT），松开缓动回正
+// 桌面鼠标与手机触摸都走 PointerEvent（两端都启用，符合用户确认）。
+
+const TAP_DRAG_THRESHOLD_PX = 8;
+/** 拖拽旋转上限（弧度，±25°），避免转得离谱 */
+const MAX_USER_ROT = (25 * Math.PI) / 180;
+let userRot = 0;
+let userRotAnimId = 0;
+let pointerActive = false;
+let pointerMoved = false;
+let pointerStartX = 0;
+let pointerStartY = 0;
+let lastHitAt = 0;
+/** 交互防抖：两次命中反应的最小间隔（ms），防连点刷屏 */
+const HIT_DEBOUNCE_MS = 1200;
+
+function onPointerDown(e: PointerEvent): void {
+  if (!attachedEl || !model) return;
+  pointerActive = true;
+  pointerMoved = false;
+  pointerStartX = e.clientX;
+  pointerStartY = e.clientY;
+  if (userRotAnimId) cancelAnimationFrame(userRotAnimId);
+  userRotAnimId = 0;
+}
+
+function onPointerMove(e: PointerEvent): void {
+  if (!pointerActive || !model) return;
+  const dx = e.clientX - pointerStartX;
+  const dy = e.clientY - pointerStartY;
+  const dist = Math.hypot(dx, dy);
+  if (!pointerMoved) {
+    if (dist < TAP_DRAG_THRESHOLD_PX) return;
+    pointerMoved = true; // 超过阈值 → 判定为拖拽（不再算 tap）
+  }
+  userRot = Math.max(-MAX_USER_ROT, Math.min(MAX_USER_ROT, dx * 0.008));
+  try {
+    model.rotation = userRot;
+  } catch {}
+}
+
+function onPointerUp(e: PointerEvent): void {
+  if (!pointerActive) return;
+  pointerActive = false;
+  const wasTap = !pointerMoved;
+  pointerMoved = false;
+  if (wasTap) {
+    handleTap(e.clientX, e.clientY);
+  }
+  easeRotBack();
+}
+
+/** 点按命中：按角色包围盒分头/身 → 反应动作 + 表情（防连点） */
+function handleTap(clientX: number, clientY: number): void {
+  if (!attachedEl || !model) return;
+  const now = performance.now();
+  if (now - lastHitAt < HIT_DEBOUNCE_MS) return;
+  lastHitAt = now;
+  const r = attachedEl.getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  // 逻辑坐标 == CSS 像素（autoDensity）；model.x/y 即画布内中心
+  const px = clientX - r.left;
+  const py = clientY - r.top;
+  const s = model.scale?.x ?? 1;
+  const region = resolveHitRegion(
+    px,
+    py,
+    model.x,
+    model.y,
+    modelBaseW * s,
+    modelBaseH * s,
+  );
+  if (!region) return;
+  const reaction = pickTapReaction(region);
+  // setEmotion 会播放对应情绪动作（EMOTION_MOTIONS）——与 TAP_REACTIONS 动作一致，
+  // 直接复用避免重复播动作；参数表情叠加由 setEmotion 内部完成。
+  setEmotion(reaction.emotion);
+}
+
+/** 松开后把旋转缓动回正（spring 感，控制权还给动作播放） */
+function easeRotBack(): void {
+  if (userRotAnimId) cancelAnimationFrame(userRotAnimId);
+  const from = userRot;
+  if (Math.abs(from) < 0.001) return;
+  const start = performance.now();
+  const DURATION = 500;
+  const step = (now: number) => {
+    const t = Math.min(1, (now - start) / DURATION);
+    const k = 1 - Math.pow(1 - t, 3); // easeOutCubic
+    userRot = from * (1 - k);
+    try {
+      if (model) model.rotation = userRot;
+    } catch {}
+    if (t < 1) userRotAnimId = requestAnimationFrame(step);
+    else userRotAnimId = 0;
+  };
+  userRotAnimId = requestAnimationFrame(step);
+}
+
+function setupInteraction(): void {
+  if (!attachedEl) return;
+  attachedEl.addEventListener("pointerdown", onPointerDown);
+  attachedEl.addEventListener("pointermove", onPointerMove);
+  attachedEl.addEventListener("pointerup", onPointerUp);
+  attachedEl.addEventListener("pointercancel", onPointerUp);
+}
+
+function teardownInteraction(): void {
+  if (!attachedEl) return;
+  attachedEl.removeEventListener("pointerdown", onPointerDown);
+  attachedEl.removeEventListener("pointermove", onPointerMove);
+  attachedEl.removeEventListener("pointerup", onPointerUp);
+  attachedEl.removeEventListener("pointercancel", onPointerUp);
+  pointerActive = false;
+  if (userRotAnimId) cancelAnimationFrame(userRotAnimId);
+  userRotAnimId = 0;
+}
+
 // ---- 挂载 / 卸载 ----
 export function attach(container: HTMLElement): void {
   attachedEl = container;
@@ -709,6 +870,7 @@ export function attach(container: HTMLElement): void {
     ro.observe(container);
   }
   bindVisibility();
+  setupInteraction();
   startAmbient();
   startGaze();
   syncTicker(); // 有容器 + 可见 + 未 busy → 恢复渲染
@@ -723,6 +885,7 @@ export function detach(container: HTMLElement): void {
   }
   stopAmbient();
   stopGaze();
+  teardownInteraction();
   syncTicker(); // 无 attach 容器 → 停 PIXI 渲染，避免白耗 GPU
 }
 
@@ -782,8 +945,21 @@ export function dispose(): void {
   }
   stopSpeaking();
   stopGaze();
+  teardownInteraction();
+  // 清理音频口型资源（AudioContext/Audio 元素）
+  audioEl = null;
+  audioAnalyser = null;
+  audioEndedCb = null;
+  if (audioCtx) {
+    try {
+      audioCtx.close();
+    } catch {}
+    audioCtx = null;
+  }
   if (cmdAnimId) cancelAnimationFrame(cmdAnimId);
   cmdAnimId = 0;
+  if (lookAnimId) cancelAnimationFrame(lookAnimId);
+  lookAnimId = 0;
   attachedEl = null;
   setState({ status: "idle", emotion: "neutral", modelName: "" });
 }
@@ -795,6 +971,8 @@ export function dispose(): void {
 //   表情预设 → 切换（模型有才切）
 
 let cmdAnimId = 0;
+/** [LOOK:] 头部视线动画 id（结束时回正） */
+let lookAnimId = 0;
 
 function paramExists(core: any, id: string): boolean {
   try {
@@ -809,11 +987,12 @@ function paramExists(core: any, id: string): boolean {
 /** 执行 AI 回复里的动作指令（参数/动作/表情预设），无指令则什么都不做 */
 export function applyActionCommands(text: string): void {
   const cmds = parseActionCommands(text);
-  if (!cmds.params.length && !cmds.motion && !cmds.expression) return;
-  // 动作：只播模型真实存在的动作
+  if (!cmds.params.length && !cmds.motion && !cmds.expression && !cmds.look)
+    return;
+  // 动作：只播模型真实存在的动作（FORCE 优先级，不被 ambient 打断）
   if (cmds.motion && motionNames?.has(cmds.motion) && model?.motion) {
     try {
-      model.motion(cmds.motion).catch(() => {});
+      model.motion(cmds.motion, 0, MOTION_PRIORITY_FORCE).catch(() => {});
     } catch {}
   }
   // 表情预设：pixi-live2d-display 的 model.expression(name)
@@ -821,6 +1000,10 @@ export function applyActionCommands(text: string): void {
     try {
       model.expression(cmds.expression).catch(() => {});
     } catch {}
+  }
+  // 视线：驱动 ParamAngleX/Y 短时转头/点头（不打断动作；结束后回正）
+  if (cmds.look) {
+    applyLook(cmds.look);
   }
   // 参数：平滑插值到目标值（只作用于真实存在的参数）
   const core = getCoreModel();
@@ -852,6 +1035,65 @@ export function applyActionCommands(text: string): void {
     else cmdAnimId = 0;
   };
   cmdAnimId = requestAnimationFrame(step);
+}
+
+/** 视线指令执行：ParamAngleX/Y 平滑转到位 → 保持 ~900ms → 缓动回正（不打断动作/表情） */
+function applyLook(dir: LookDirection): void {
+  const core = getCoreModel();
+  if (!core) return;
+  const hasX = paramExists(core, "ParamAngleX");
+  const hasY = paramExists(core, "ParamAngleY");
+  if (!hasX && !hasY) return;
+  const target = LOOK_TARGETS[dir] || LOOK_TARGETS.center;
+  if (lookAnimId) cancelAnimationFrame(lookAnimId);
+  const EASE = 260;
+  const HOLD = 900;
+  const BACK = 360;
+  const read = (id: string): number => {
+    try {
+      const v = core.getParamFloat ? core.getParamFloat(id) : 0;
+      return typeof v === "number" && Number.isFinite(v) ? v : 0;
+    } catch {
+      return 0;
+    }
+  };
+  const fromX = hasX ? read("ParamAngleX") : 0;
+  const fromY = hasY ? read("ParamAngleY") : 0;
+  const start = performance.now();
+  const step = (now: number) => {
+    const el = now - start;
+    // 阶段一：ease 到目标；阶段二：保持；阶段三：回正
+    let x = fromX;
+    let y = fromY;
+    if (el < EASE) {
+      const k = easeInOutCubic(el / EASE);
+      x = fromX + (target.x - fromX) * k;
+      y = fromY + (target.y - fromY) * k;
+    } else if (el < EASE + HOLD) {
+      x = target.x;
+      y = target.y;
+    } else if (el < EASE + HOLD + BACK) {
+      const k = easeInOutCubic((el - EASE - HOLD) / BACK);
+      x = target.x * (1 - k);
+      y = target.y * (1 - k);
+    } else {
+      lookAnimId = 0;
+      x = 0;
+      y = 0;
+    }
+    if (hasX) {
+      try {
+        core.setParamFloat("ParamAngleX", x);
+      } catch {}
+    }
+    if (hasY) {
+      try {
+        core.setParamFloat("ParamAngleY", y);
+      } catch {}
+    }
+    if (lookAnimId !== 0) lookAnimId = requestAnimationFrame(step);
+  };
+  lookAnimId = requestAnimationFrame(step);
 }
 
 // ---- 口型同步（文本/时长驱动 ParamMouthOpenY，TTS 播放时嘴部跟着动）----
@@ -910,11 +1152,106 @@ export function stopSpeaking(): void {
   if (lipSyncId) cancelAnimationFrame(lipSyncId);
   lipSyncId = 0;
   lipSyncUntil = 0;
+  stopAudioLipSync();
   const core = getCoreModel();
   if (core) {
     try {
       core.setParamFloat(MOUTH_PARAM, 0);
     } catch {}
+  }
+}
+
+// ---- 真实音频口型同步（Web Audio AnalyserNode 波形 RMS 驱动，参考官方 MotionSync 思路 + l2d 的 RMS 方案）----
+// 与 speakText（文本时长估算）不同：这里拿「可播放的音频 URL」用波形实时驱动 ParamMouthOpenY，
+// 嘴部随真实声音节奏开合，比固定节奏更自然。无音频源时 AIChat 仍走 speechSynthesis + speakText 回退。
+
+let audioCtx: AudioContext | null = null;
+let audioEl: HTMLAudioElement | null = null;
+let audioAnalyser: AnalyserNode | null = null;
+let lipSyncAudioId = 0;
+let audioEndedCb: (() => void) | null = null;
+
+function stopAudioLipSync(): void {
+  if (lipSyncAudioId) cancelAnimationFrame(lipSyncAudioId);
+  lipSyncAudioId = 0;
+  if (audioEl) {
+    try {
+      audioEl.onended = null;
+      audioEl.pause();
+    } catch {}
+  }
+  // 保留 audioCtx 供下次复用；仅断开分析器引用
+  audioAnalyser = null;
+  audioEndedCb = null;
+}
+
+/**
+ * 播放音频并用真实波形驱动口型（Web Audio AnalyserNode RMS → ParamMouthOpenY）。
+ * @param url 音频 URL（同源 / 经 worker 代理均可）
+ * @param opts.volume 音量 0~1（默认 1）
+ * @param opts.onEnd 播放结束回调（AIChat 用来收尾/清状态）
+ * @returns 是否成功进入真实音频口型（模型无口型参数时仍播放声音但返回 false）
+ */
+export function speakAudio(
+  url: string,
+  opts?: { volume?: number; onEnd?: () => void },
+): boolean {
+  stopSpeaking();
+  if (!url) return false;
+  try {
+    if (!audioCtx) {
+      const AC: typeof AudioContext =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext })
+          .webkitAudioContext;
+      if (!AC) return false;
+      audioCtx = new AC();
+    }
+    audioEl = new Audio();
+    audioEl.src = url;
+    audioEl.volume = Math.max(0, Math.min(1, opts?.volume ?? 1));
+    // 每个 audio 元素只能 createMediaElementSource 一次（本次新建元素 → 新建 source+analyser）
+    // 注意：一旦走 MediaElementSource，该元素音频只从 Web Audio 图输出 → 必须 connect(destination)
+    const source = audioCtx.createMediaElementSource(audioEl);
+    audioAnalyser = audioCtx.createAnalyser();
+    audioAnalyser.fftSize = 512;
+    source.connect(audioAnalyser);
+    audioAnalyser.connect(audioCtx.destination);
+    audioEndedCb = opts?.onEnd || null;
+    audioEl.onended = () => {
+      stopSpeaking();
+      const cb = audioEndedCb;
+      audioEndedCb = null;
+      cb?.();
+    };
+    // 口型参数存在才跑波形循环；不存在则纯播放声音
+    const core = getCoreModel();
+    const hasMouth = !!core && paramExists(core, MOUTH_PARAM);
+    const data = new Uint8Array(audioAnalyser?.fftSize || 512);
+    const step = () => {
+      if (!audioEl || audioEl.paused || audioEl.ended || !audioAnalyser) {
+        lipSyncAudioId = 0;
+        return;
+      }
+      audioAnalyser.getByteTimeDomainData(data);
+      let sum = 0;
+      for (let i = 0; i < data.length; i++) {
+        const v = (data[i] - 128) / 128;
+        sum += v * v;
+      }
+      if (hasMouth) {
+        const rms = Math.sqrt(sum / data.length);
+        try {
+          core.setParamFloat(MOUTH_PARAM, rmsToMouth(rms));
+        } catch {}
+      }
+      lipSyncAudioId = requestAnimationFrame(step);
+    };
+    lipSyncAudioId = requestAnimationFrame(step);
+    audioEl.play().catch(() => {});
+    return hasMouth;
+  } catch {
+    return false;
   }
 }
 

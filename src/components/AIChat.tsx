@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { AIChatConfig, Page } from "../lib/types";
 import { useSite } from "../lib/site";
+import { resolveAsset } from "../lib/api";
 import { useTheme } from "../lib/theme";
 import {
   searchFast,
@@ -20,7 +21,7 @@ import {
 } from "../lib/search";
 import type { SearchResult } from "../lib/search";
 import { todayStr, hasSearchApi, loadSearchApiCfg } from "../lib/searchApi";
-import { searchSegmented } from "../lib/searchPlanner";
+import { searchSegmented, rankAndConsolidate } from "../lib/searchPlanner";
 import type { SearchProgress } from "../lib/searchPlanner";
 import {
   hashMessage,
@@ -59,6 +60,14 @@ import {
   compressMemory,
   loadPersonaKnowledge,
   savePersonaKnowledge,
+  loadTtsAudioUrl,
+  buildTtsAudioUrl,
+  loadTtsOn,
+  saveTtsOn,
+  loadTtsVolume,
+  saveTtsVolume,
+  ttsVolumeValue,
+  type TtsVolume,
   type ChatFontSize,
   type ChatNetMode,
   type ChatSearchSpeed,
@@ -91,6 +100,7 @@ import {
   loadModel,
   setEmotion as applyL2dModelEmotion,
   setLive2dBusy,
+  speakAudio,
   speakText,
   stopSpeaking,
   subscribe,
@@ -227,6 +237,7 @@ const MessageItem = memo(function MessageItem({
   fontSizeCls,
   toolCalls,
   speakingIdx,
+  ttsOn,
   onSpeak,
   onOpenAgent,
   onToolClick,
@@ -241,6 +252,8 @@ const MessageItem = memo(function MessageItem({
   fontSizeCls: string;
   toolCalls: ChatToolCall[];
   speakingIdx: number;
+  /** TTS 总开关：关闭时隐藏「朗读」按钮 */
+  ttsOn: boolean;
   onSpeak: (text: string, idx: number) => void;
   onOpenAgent: (url: string | undefined) => void;
   onToolClick: (tc: ChatToolCall) => void;
@@ -409,25 +422,27 @@ const MessageItem = memo(function MessageItem({
                 />
               </svg>
             </button>
-            <button
-              onClick={() => onSpeak(m.content, index)}
-              className={`rounded-md p-1 transition ${speakingIdx === index ? "text-blue-600 dark:text-blue-400" : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"}`}
-              title="朗读"
-            >
-              <svg
-                className="h-4 w-4"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
+            {ttsOn && (
+              <button
+                onClick={() => onSpeak(m.content, index)}
+                className={`rounded-md p-1 transition ${speakingIdx === index ? "text-blue-600 dark:text-blue-400" : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"}`}
+                title="朗读"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z"
-                />
-              </svg>
-            </button>
+                <svg
+                  className="h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z"
+                  />
+                </svg>
+              </button>
+            )}
             <button
               onClick={() => {
                 const urls = m.content.match(
@@ -624,6 +639,37 @@ function BotAvatar({
   );
 }
 
+/**
+ * 空态快捷建议：基于现有功能（Live2D / 知识库操作 / 站点文档）的紧凑提示，点击直接发送给 AI 回复。
+ */
+const EMPTY_PROMPTS = [
+  "介绍一下你的 Live2D 角色",
+  "看看我的知识库里有什么",
+  "介绍一下这个站点的使用文档",
+];
+
+function EmptyStateFeatures({
+  className = "",
+  onPick,
+}: {
+  className?: string;
+  onPick: (text: string) => void;
+}) {
+  return (
+    <div className={"flex w-full flex-wrap justify-center gap-2 " + className}>
+      {EMPTY_PROMPTS.map((s) => (
+        <button
+          key={s}
+          onClick={() => onPick(s)}
+          className="rounded-full border border-gray-300 bg-white px-4 py-2 text-sm text-gray-600 transition hover:border-gray-500 hover:text-gray-900 active:scale-95 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:text-white"
+        >
+          {s}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export interface BotItem {
   id: number;
   name: string;
@@ -773,6 +819,7 @@ async function streamChat(
   lorePrompt = "",
   pureRole = false,
   l2dEnabled = false,
+  ttsMode = false,
 ) {
   // skill 模块化：按轮次上下文与开关「just-in-time」组装 system 提示词。
   // 每个功能一个独立 skill 段（搜索/知识库/View/人格/记忆/Live2D），只注入相关段，
@@ -794,6 +841,7 @@ async function streamChat(
     autoMode,
     fastMode,
     l2dEnabled,
+    ttsMode,
   });
   const t0 = performance.now();
   const res = await fetch(
@@ -890,12 +938,13 @@ async function streamChat(
 }
 
 /** TTS 朗读文本 */
-function speak(text: string) {
+function speak(text: string, volume = 1) {
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = "zh-CN";
   u.rate = 1.1;
   u.pitch = 1;
+  u.volume = Math.max(0, Math.min(1, volume));
   window.speechSynthesis.speak(u);
 }
 
@@ -1209,6 +1258,14 @@ export function AIChat({
   const { settings } = useSite();
   const { toast } = useToast();
   const { mode: themeMode, setMode: setThemeMode } = useTheme();
+  // 站点标签/图标：AI Chat 页面用当前 AI 机器人的名称与头像（Layout/SiteProvider 在 /ai 路径已跳过站点标题设置，避免覆盖）
+  useEffect(() => {
+    document.title = config.botName || "AI";
+    if (config.avatar) {
+      const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+      if (link) link.href = resolveAsset(config.avatar);
+    }
+  }, [config.botName, config.avatar]);
   const [sessions, setSessions] = useState<Session[]>(() => {
     try {
       const r = localStorage.getItem(SESSION_STORAGE(pageId));
@@ -1510,6 +1567,20 @@ export function AIChat({
       : chatFontSize === "lg"
         ? "text-lg"
         : "text-[15px]";
+  /** TTS 总开关（默认关闭）：关闭时隐藏消息「朗读」按钮，不朗读 */
+  const [ttsOn, setTtsOn] = useState<boolean>(() => loadTtsOn());
+  const toggleTts = () => {
+    setTtsOn((v) => {
+      saveTtsOn(!v);
+      return !v;
+    });
+  };
+  /** TTS 音量（音频输出控制） */
+  const [ttsVolume, setTtsVolume] = useState<TtsVolume>(() => loadTtsVolume());
+  const setTtsVolumePersist = (v: TtsVolume) => {
+    setTtsVolume(v);
+    saveTtsVolume(v);
+  };
   /** 网络模式：Auto(智能,默认,先按速度回答，缺准确数据自动升级) / search(联网搜索并自动生成综合文章；原 view 已整合进 search) */
   const [netMode, setNetMode] = useState<ChatNetMode>(() => loadNetMode());
   const browseAgentOn = netMode === "search"; // 仅 Deep 模式（netMode=search）：搜索并生成综合文章，View 页面仅此模式可调用
@@ -2069,6 +2140,8 @@ export function AIChat({
 
   const playTTS = useCallback(
     (text: string, idx: number) => {
+      // TTS 总开关关闭时不朗读（隐藏按钮兜底）
+      if (!ttsOn) return;
       if (speakingIdx === idx) {
         window.speechSynthesis.cancel();
         stopSpeaking();
@@ -2077,9 +2150,29 @@ export function AIChat({
       }
       setSpeakingIdx(idx);
       const clean = text.replace(/[*_`#~>\[\]\(\)]/g, "").slice(0, 600);
-      // 口型同步：TTS 播放期间角色嘴部跟着动（时长按文本估算）
+      // 朗读时也触发 Live2D 表情/动作指令：用「原始文本」（含 [表情:]/[PARAM:]/[LOOK:] 等，
+      // 尚未被清洗）让角色在朗读时同步表演——AI 对话里的隐藏指令被 TTS 朗读调用
+      if (l2dEnabled) {
+        applyActionCommands(text);
+        const te = parseEmotionTag(text);
+        applyL2dModelEmotion(te || detectReplyEmotion(text));
+      }
+      const vol = ttsVolumeValue(ttsVolume);
+      // 音频 TTS（真实波形驱动口型）：配置了音频 TTS 地址才走；否则回退浏览器语音
+      const ttsUrl = loadTtsAudioUrl();
+      if (buildTtsAudioUrl(ttsUrl, clean)) {
+        speakAudio(buildTtsAudioUrl(ttsUrl, clean)!, {
+          volume: vol,
+          onEnd: () => {
+            stopSpeaking();
+            setSpeakingIdx(-1);
+          },
+        });
+        return;
+      }
+      // 回退：浏览器 speechSynthesis + 文本时长估算口型
       if (l2dEnabled) speakText(clean);
-      speak(clean);
+      speak(clean, vol);
       const check = setInterval(() => {
         if (!window.speechSynthesis.speaking) {
           stopSpeaking();
@@ -2089,7 +2182,7 @@ export function AIChat({
       }, 300);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [speakingIdx, l2dEnabled],
+    [speakingIdx, l2dEnabled, ttsOn, ttsVolume],
   );
 
   // 知识库：根据选择 + 本地笔记组装文本（KbModal 保存后调用 refreshKb 刷新缓存）
@@ -2375,64 +2468,60 @@ export function AIChat({
         t.length >= 15) &&
       !/^[哈嘿嗯哦嘻呵呜哇噗喵嗷啧]{1,6}$/.test(t);
     // 已搜索到的结果（供 auto 重答复用：一次搜索、避免二次联网/清空卡片）
+    // 先答后搜：预搜改为后台并行（不阻塞首字流式输出），完成后写 preSearched/preAnswer + 结果卡；
+    // AI 发 [SEARCH:] 时 autoSearchAndReanswer 复用后台结果重答，不再二次联网
     let preSearched: SearchResult[] | null = null;
+    let preAnswer = "";
     if (!browseAgentOn && !urlMatch && isInfoQuery && searchMode === "auto") {
       // 仅 Auto 模式做前端适当联网搜索（Fast=纯本地不做；Deep 由浏览面板搜索生成文章承担）
-      setSearchPlan({ stage: "thinking" });
-      try {
-        let results: SearchResult[] | null = null;
-        let answer = "";
-        const scfg = loadSearchApiCfg();
-        if (hasSearchApi(scfg) && scfg.provider === "tavily") {
-          // 配置 Tavily：直连专属路径（advanced 深度 + AI 直接答案 answer），
-          // 一次搜索、不与免费引擎混排稀释（与 Tavily 官网同一套参数）
-          const r = await searchFastWithAnswer(t, 8);
-          results = r.results;
-          answer = r.answer;
-        } else {
-          // 未配置 Tavily：保留分段多引擎搜索
-          const seg = await searchSegmented(t, {
-            speed: "standard",
-            limit: 8,
-            onProgress: (p) => setSearchPlan(p),
-          });
-          if (seg.results.length > 0) results = seg.results;
-        }
-        if (results && results.length > 0) {
-          setSearching(true);
-          const webBlock =
-            "今天是 " +
-            todayStr() +
-            (answer
-              ? "。以下是 Tavily 官方 AI 直接答案（基于实时检索）：\n" +
-                answer +
-                "\n\n以及来自网络的最新搜索结果，请基于它们回答，引用具体数据/来源：\n"
-              : "。以下是来自网络的最新搜索结果，请基于它们回答，引用具体数据/来源：\n") +
-            results
-              .map(
-                (r, i) =>
-                  `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.description || ""}`,
-              )
-              .join("\n\n");
-          if (webBlock) {
-            web = webBlock;
-            preSearched = results;
+      (async () => {
+        setSearchPlan({ stage: "thinking" });
+        setSearching(true);
+        try {
+          // 用 AI 从对话上下文提炼更准的关键词（快任务路由 fast 角色；失败回退原始消息）
+          const derivedKw = await deriveSearchKeyword(
+            routeModel(resolveModelRoles(effCfg), "fast"),
+            allMsgs,
+          ).catch(() => "");
+          const searchQ = (derivedKw || t.trim()).slice(0, 60);
+          if (!searchQ) return;
+          let results: SearchResult[] | null = null;
+          const scfg = loadSearchApiCfg();
+          if (hasSearchApi(scfg) && scfg.provider === "tavily") {
+            // 配置 Tavily：直连专属路径（advanced 深度 + AI 直接答案 answer），
+            // 一次搜索、不与免费引擎混排稀释（与 Tavily 官网同一套参数）
+            const r = await searchFastWithAnswer(searchQ, 8);
+            results = r.results;
+            preAnswer = r.answer;
+          } else {
+            // 未配置 Tavily：保留分段多引擎搜索
+            const seg = await searchSegmented(searchQ, {
+              speed: "standard",
+              limit: 8,
+              onProgress: (p) => setSearchPlan(p),
+            });
+            if (seg.results.length > 0) results = seg.results;
+          }
+          if (results && results.length > 0) {
+            // 相关性排序：去重/去噪音/AI 结果降权，注入与展示都更准
+            const ranked = rankAndConsolidate(results, searchQ, { limit: 6 });
+            preSearched = ranked.length ? ranked : results;
             // 折叠结果卡：展示来源（违规内容已默默过滤）；点击在新标签打开来源，不打开 view
             setDialogResults(
-              filterSensitiveResults(results).map((r) => ({
+              filterSensitiveResults(preSearched).map((r) => ({
                 title: r.title,
                 url: r.url,
                 source: r.source,
               })),
             );
           }
+        } catch {
+          /* 搜索失败不阻塞对话 */
+        } finally {
+          setSearching(false);
+          setSearchPlan(null);
         }
-      } catch {
-        /* 搜索失败不阻塞对话 */
-      } finally {
-        setSearching(false);
-        setSearchPlan(null);
-      }
+      })();
     }
     // 流式：始终只保留一条正在增长的 assistant 消息（替换上一条）
     // 性能优化：高频 chunk 经 rAF 节流合并（同一帧多次更新只渲一次；低性能设备刷写间隔更长），
@@ -2508,6 +2597,7 @@ export function AIChat({
         lorePrompt,
         personaMode === "role",
         l2dEnabled,
+        ttsOn && !!loadTtsAudioUrl(),
       );
       reply = result.content;
     } catch (e: unknown) {
@@ -2539,7 +2629,13 @@ export function AIChat({
 
     // AI→Agent 工具调用：解析 [BROWSE:url] / [SEARCH:query] / [EDIT:content] / [VIEW:文章] / [KB:指令]
     const browseCmd = reply.match(/\[BROWSE:\s*(https?:\/\/[^\s\]]+)\s*\]/);
-    const searchCmd = reply.match(/\[SEARCH:\s*([^\]]+)\s*\]/);
+    const searchCmdClosed = reply.match(/\[SEARCH:\s*([^\]]+)\s*\]/);
+    // 兼容 AI 漏写闭合 ] 的 [SEARCH:（深思考模型偶发截断在 '[' 或未闭合）→ 提取已有关键词
+    const searchCmdOpen =
+      !searchCmdClosed && reply.includes("[SEARCH:")
+        ? reply.match(/\[SEARCH:\s*([^\n\]]*)/)
+        : null;
+    const searchCmd = searchCmdClosed || searchCmdOpen;
     // EDIT 内容可能较长且 AI 偶尔不写闭合 ]，兼容未闭合到末尾的情况
     const editClosed = reply.match(/\[EDIT:\s*([\s\S]*?)\s*\]/);
     const editOpen =
@@ -2664,9 +2760,10 @@ export function AIChat({
         let results: SearchResult[] | null = null;
         let answer = "";
         if (preSearched && preSearched.length > 0) {
-          // 一次搜索 + 复用：本消息已在前端搜到结果，直接基于已有资料重答——
+          // 一次搜索 + 复用：本消息已在前端后台搜到结果，直接基于已有资料重答——
           // 不再二次联网（避免"清空重新搜一遍"），不清空/覆盖结果卡
           results = preSearched;
+          answer = preAnswer;
         } else {
           const scfg = loadSearchApiCfg();
           if (hasSearchApi(scfg) && scfg.provider === "tavily") {
@@ -2681,6 +2778,11 @@ export function AIChat({
           // 引擎全空时 AI 兜底：保证搜索后必有结果卡 + 重答（不出现"搜索了却没结果"）
           if (!results || !results.length) {
             results = await searchAI(sq, 6).catch(() => []);
+          }
+          // 相关性排序去噪音（无后台预搜时也应用；后台结果已排序）
+          if (results && results.length) {
+            const ranked = rankAndConsolidate(results, sq, { limit: 6 });
+            if (ranked.length) results = ranked;
           }
         }
         const webBlock =
@@ -2731,6 +2833,7 @@ export function AIChat({
               lorePrompt,
               personaMode === "role",
               l2dEnabled,
+              ttsOn && !!loadTtsAudioUrl(),
             );
             newReply = result.content;
             upsertAssistant(newReply);
@@ -2841,8 +2944,12 @@ export function AIChat({
       // Deep：仅此模式可调用 View 页面（[BROWSE:url] 抓取并生成文章）；Auto/Fast 中用户粘贴 URL 已由顶部 urlMatch 自动抓取注入上下文
       setAgentEditContent(undefined);
       triggerBrowse(browseCmd[1], "Search", { keepReply: true });
-    } else if (searchCmd) {
-      const sq = searchCmd[1].trim();
+    } else if (
+      searchCmd ||
+      // 兜底：AI 回复被截断在 '['（本应是 [SEARCH:...]）→ 视为搜索意图，用原查询重答
+      (searchMode === "auto" && isInfoQuery && /[\[【]\s*$/.test(reply))
+    ) {
+      const sq = (searchCmd ? searchCmd[1] : "").trim() || t.trim();
       if (browseAgentOn) {
         // Deep 搜索模式开启时自动生成文章：桌面自动开面板，手机只出卡片（生成中→可点）
         if (sq) triggerBrowse(sq, "Search");
@@ -3035,6 +3142,10 @@ export function AIChat({
       customModelOn,
       onToggleCustomModel: toggleCustomModel,
       allowCustomApi: customApiEnabled,
+      ttsOn,
+      onToggleTts: toggleTts,
+      ttsVolume,
+      onSetTtsVolume: setTtsVolumePersist,
     }),
     [
       pageId,
@@ -3048,6 +3159,10 @@ export function AIChat({
       customModelOn,
       toggleCustomModel,
       customApiEnabled,
+      ttsOn,
+      toggleTts,
+      ttsVolume,
+      setTtsVolumePersist,
     ],
   );
 
@@ -3598,22 +3713,12 @@ export function AIChat({
                     <p className="mt-1 text-sm text-gray-400">
                       有什么可以帮你？
                     </p>
-                    <div className="mt-8 flex w-full max-w-md flex-wrap justify-center gap-2">
-                      {[
-                        "搜索最新科技资讯并生成文章",
-                        "把这段内容存入知识库",
-                        "介绍一下这个网站",
-                        "帮我写一段代码",
-                      ].map((s) => (
-                        <button
-                          key={s}
-                          onClick={() => setInput(s)}
-                          className="rounded-full border border-gray-300 bg-white px-4 py-2 text-sm text-gray-600 transition hover:border-gray-500 hover:text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:text-white"
-                        >
-                          {s}
-                        </button>
-                      ))}
-                    </div>
+                    <EmptyStateFeatures
+                      className="mt-8 max-w-md"
+                      onPick={(s) => {
+                        void send(s);
+                      }}
+                    />
                   </div>
                 ) : (
                   <>
@@ -3632,6 +3737,7 @@ export function AIChat({
                         fontSizeCls={fontSizeCls}
                         toolCalls={toolCallsByMsg[i] || []}
                         speakingIdx={speakingIdx}
+                        ttsOn={ttsOn}
                         onSpeak={playTTS}
                         onOpenAgent={handleOpenAgent}
                         onToolClick={handleToolClick}
@@ -3888,24 +3994,12 @@ export function AIChat({
                   <span className="text-gray-500 dark:text-gray-400">
                     {config.botName || "AI"} 有什么可以帮你？
                   </span>
-                  <div className="flex flex-wrap justify-center gap-1.5">
-                    {[
-                      "搜索最新科技资讯并生成文章",
-                      "把这段内容存入知识库",
-                      "介绍一下这个网站",
-                      "帮我写一段代码",
-                    ].map((s) => (
-                      <button
-                        key={s}
-                        onClick={() => {
-                          void send(s);
-                        }}
-                        className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-600 transition hover:border-gray-500 hover:text-gray-900 active:scale-95 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:text-white"
-                      >
-                        {s}
-                      </button>
-                    ))}
-                  </div>
+                  <EmptyStateFeatures
+                    className="mt-2"
+                    onPick={(s) => {
+                      void send(s);
+                    }}
+                  />
                 </div>
               )}
             </div>
@@ -4303,9 +4397,17 @@ export function AIChat({
               </svg>
             </button>
           </div>
-          <p className="mt-2 px-1 text-[11px] font-medium text-gray-400 dark:text-gray-500">
-            {settings.title || "Kimo"}
-          </p>
+          {/* 站点标识：默认使用当前 AI 机器人的名称与头像（在 AI Chat 页面以 AI 作为站点） */}
+          <div className="mt-2 flex items-center gap-1.5 px-1">
+            <BotAvatar
+              src={config.avatar}
+              name={config.botName || "AI"}
+              className="h-5 w-5"
+            />
+            <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-gray-400 dark:text-gray-500">
+              {config.botName || "AI 助手"}
+            </span>
+          </div>
           <p className="px-1 pb-1 text-[10px] leading-relaxed text-gray-300 dark:text-gray-600">
             AI 生成内容仅供参考
           </p>

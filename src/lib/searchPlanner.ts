@@ -56,7 +56,7 @@ function diversifyByDomain(
 // ====== 查询分段 ======
 
 const SPLIT_RE =
-  /(?:和|与|以及|还有|还有啥|另外|此外|同时|顺便|也|对比|比较|区别|vs\.?|VS|，|；|;|、)/;
+  /(?:和|与|以及|还有|还有啥|另外|此外|同时|顺便|对比|比较|区别|vs\.?|VS|，|；|;)/;
 
 /** 季节/列表通用词 */
 const SEASON_RE =
@@ -112,18 +112,22 @@ export function enrichKeywords(
   if (!q) return q;
   const parts = [q];
 
-  // 非英文：追加已有拉丁词或泛化英文
+  // 非英文：追加已有拉丁词（原文已包含则跳过，避免重复拼接稀释相关性）
   if (lang !== "en") {
     const enWords = q.match(/[a-zA-Z]{2,}/g);
     if (enWords && enWords.length > 0) {
-      parts.push(enWords.join(" "));
+      const en = enWords.join(" ");
+      if (!q.includes(en)) parts.push(en);
     }
   }
 
-  // anime：追加日文关键词块
+  // anime：追加日文关键词块（已包含则跳过）
   if (type.anime) {
     const jp = q.match(/[\u3040-\u30ff\u4e00-\u9fff]{2,}/g);
-    if (jp) parts.push(jp.join(" "));
+    if (jp) {
+      const j = jp.join(" ");
+      if (!q.includes(j)) parts.push(j);
+    }
   }
   return parts.join(" ");
 }
@@ -155,6 +159,196 @@ export function filterRelevant(
     const t = (r.title || "").toLowerCase();
     return tokens.some((tk) => t.includes(tk));
   });
+}
+
+// ====== 相关性排序与合并（反噪音，供 AI 上下文注入） ======
+
+/** 已知噪音/低质站点（保守黑名单，按需补充——内容农场/聚合/纯转码站） */
+const NOISE_DOMAINS = new Set<string>([
+  // 占位：后续实测发现垃圾站再补充（避免误伤正常站）
+]);
+
+/** 清理 URL：还原搜索跳转 + 去跟踪参数 + 去尾斜杠/首页路径（保留大小写，供展示/抓取） */
+function cleanUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./i, "");
+    // 搜索引擎点击追踪链接 → 还原真实地址（bing /ck/a 的 u 为 base64）
+    if (/^\/ck\/a/i.test(u.pathname) && u.searchParams.get("u")) {
+      try {
+        const real = atob(u.searchParams.get("u")!);
+        if (/^https?:\/\//i.test(real)) return cleanUrl(real);
+      } catch {
+        /* 非法 base64 忽略 */
+      }
+    }
+    if (
+      host.includes("baidu.com") &&
+      (u.pathname.startsWith("/link") || u.pathname.startsWith("/s?")) &&
+      u.searchParams.get("url")
+    ) {
+      const real = u.searchParams.get("url")!;
+      if (/^https?:\/\//i.test(real)) return cleanUrl(real);
+    }
+    // 去掉常见跟踪参数
+    [
+      "utm_source",
+      "utm_medium",
+      "utm_campaign",
+      "utm_term",
+      "utm_content",
+      "ref",
+      "spm",
+      "from",
+      "from_source",
+      "from_column",
+      "trace",
+      "share_token",
+    ].forEach((k) => u.searchParams.delete(k));
+    u.search = u.searchParams.toString();
+    u.hash = "";
+    let s = u.href.replace(/\/+$/, "");
+    s = s.replace(/\/index\.(html|php|aspx?)$/, "");
+    return s;
+  } catch {
+    return url.trim();
+  }
+}
+
+/** 从 URL 提取规范化 key（小写，用于去重） */
+function normalizeUrlKey(url: string): string {
+  return cleanUrl(url).toLowerCase();
+}
+
+/** 查询核心 token（去标点/停用数字），用于相关性打分 */
+function queryTokens(query: string): string[] {
+  return (query || "")
+    .toLowerCase()
+    .split(/[\s,，。、;；:：()（）\[\]【】\-–—_/]+/)
+    .filter((t) => t.length >= 2 && !/^\d+$/.test(t));
+}
+
+/** 字符 bigram 集合（中文近重复检测用） */
+function bigramSet(s: string): Set<string> {
+  const chars = s.replace(/[\s\p{P}\p{S}]+/gu, "");
+  const set = new Set<string>();
+  for (let i = 0; i + 1 < chars.length; i++) set.add(chars.slice(i, i + 2));
+  return set;
+}
+
+/** Dice 系数（0-1）：两串的重叠度，≥0.7 视为近重复 */
+function overlapScore(a: string, b: string): number {
+  const A = bigramSet(a);
+  const B = bigramSet(b);
+  if (!A.size || !B.size) return 0;
+  let inter = 0;
+  for (const c of A) if (B.has(c)) inter++;
+  return (2 * inter) / (A.size + B.size);
+}
+
+/** 单条结果相关性打分（越高越可信） */
+function rankResult(r: SearchResult, qTokens: string[]): number {
+  let score = 0;
+  const title = (r.title || "").toLowerCase();
+  const desc = (r.description || "").toLowerCase();
+  if (qTokens.length) {
+    let hit = 0;
+    for (const t of qTokens) if (title.includes(t)) hit++;
+    const ratio = hit / qTokens.length;
+    if (ratio >= 0.9) score += 3;
+    else if (ratio >= 0.5) score += 2;
+    else if (ratio >= 0.25) score += 1;
+    let dHit = 0;
+    for (const t of qTokens) if (desc.includes(t)) dHit++;
+    if (dHit / qTokens.length >= 0.5) score += 1;
+  }
+  // AI 兜底结果：可能是生成/未验证 → 降权
+  if (r.engine === "ai") score -= 2;
+  let host = "";
+  try {
+    host = new URL(r.url || "").hostname.replace(/^www\./i, "");
+  } catch {
+    /* ignore */
+  }
+  // 搜索引擎/点击追踪域：不该作为结果（Wikipedia 除外）
+  if (
+    /(^|\.)(bing|duckduckgo|baidu|google|qwant|mojeek)\.(com|org|net|cn|co\.jp|io)$/.test(
+      host,
+    ) &&
+    !host.includes("wikipedia.org")
+  ) {
+    score -= 4;
+  }
+  if (NOISE_DOMAINS.has(host)) score -= 3;
+  // 权威域加成（官网/文档/百科/学术/代码托管）
+  if (
+    /wikipedia\.org$|\.gov$|\.edu$|^github\.com$|\.mdn\.|developer\.mozilla|typescriptlang|\.stackoverflow|\.dev$/.test(
+      host,
+    )
+  ) {
+    score += 1;
+  }
+  // 模板/无意义标题
+  const tt = (r.title || "").trim();
+  if (/^(首页|主页|搜索|下载|最新更新|未找到|404)$/i.test(tt)) score -= 1;
+  if (/(百度百科|搜狗百科|360百科)[\s\-—|]/i.test(tt)) score -= 1;
+  if (!tt) score -= 1;
+  return score;
+}
+
+/**
+ * 相关性排序与合并（反噪音）：
+ *   1. URL 规范化去重（剥跟踪参数/还原跳转）
+ *   2. 近重复标题去重（Dice ≥0.7 视为同一篇）
+ *   3. 相关性打分排序（权威域加成 / AI 结果降权 / 噪音域减分），截取 top N
+ * 供 AI 上下文注入与结果卡使用（抓取目标仍用 diversifyByDomain 保证覆盖）。
+ */
+export function rankAndConsolidate(
+  results: SearchResult[],
+  query: string,
+  opts: { limit?: number } = {},
+): SearchResult[] {
+  const limit = opts.limit ?? 6;
+  const qTokens = queryTokens(query);
+  // 1) URL 规范化去重（输出清理后的真实 URL）
+  const seenUrl = new Set<string>();
+  const urlDeduped: SearchResult[] = [];
+  for (const r of results) {
+    const key = normalizeUrlKey(r.url || "");
+    if (!key || seenUrl.has(key)) continue;
+    seenUrl.add(key);
+    urlDeduped.push({ ...r, url: cleanUrl(r.url || "") });
+  }
+  // 2) 近重复标题去重（长度差 ≤1 + Dice ≥0.85 才视为同一篇；保守避免误删正常结果）
+  const seenTitle: string[] = [];
+  const titleDeduped: SearchResult[] = [];
+  for (const r of urlDeduped) {
+    const norm = (r.title || "").toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
+    if (!norm) {
+      titleDeduped.push(r);
+      continue;
+    }
+    if (
+      seenTitle.some(
+        (s) =>
+          Math.abs(s.length - norm.length) <= 1 &&
+          overlapScore(s, norm) >= 0.85,
+      )
+    ) {
+      continue;
+    }
+    seenTitle.push(norm);
+    titleDeduped.push(r);
+  }
+  // 3) 相关性打分排序 + 截取
+  return titleDeduped
+    .map((r) => ({ r, s: rankResult(r, qTokens) }))
+    .sort(
+      (a, b) =>
+        b.s - a.s || (b.r.title || "").length - (a.r.title || "").length,
+    )
+    .slice(0, limit)
+    .map((x) => x.r);
 }
 
 // ====== 无结果自动纠错 ======

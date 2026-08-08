@@ -28,6 +28,7 @@ import {
   isFreshQuery,
 } from "./searchApi";
 import { loadSearchSpeed } from "./chatSettings";
+import { Readability } from "@mozilla/readability";
 
 // ======================== 类型定义 ========================
 
@@ -261,18 +262,19 @@ export async function searchBackend(
     if (type.weather) engines = "weather,wikipedia,googlenews";
     else if (type.anime) engines = "bangumi,bilibili,wikipedia";
     else if (type.news || type.fresh)
-      engines = "googlenews,bingnews,bing,duckduckgo,wikipedia";
+      engines = "googlenews,bingnews,bing,wikipedia";
     else if (fast) engines = "duckduckgo,wikipedia,bing";
-    else
-      engines =
-        "bilibili,baidu,bing,googlenews,mojeek,qwant,duckduckgo,brave,wikipedia";
+    // 通用查询：只保留高质量可靠引擎（去掉 baidu/qwant/mojeek/bilibili/brave 噪音源，提速提准）
+    else engines = "wikipedia,bing,duckduckgo,googlenews";
     params.set("engines", engines);
     params.set("lang", lang);
     if (fast) params.set("fast", "1");
 
     // 多语言搜索：非英文查询额外并行一次 lang=en（关键词本身已是多语言混合时，
-    // 英文 mkt/locale 能命中英文数据库/海外源，显著提升多语言准确度），结果合并去重
-    const langs = lang === "en" ? ["en"] : [lang, "en"];
+    // 英文 mkt/locale 能命中英文数据库/海外源，显著提升多语言准确度），结果合并去重。
+    // Tavily 直连已覆盖多语言 → 回退 backend 时单次调用即可（提速）
+    const tavilyOn = hasSearchApi(cfg) && cfg.provider === "tavily";
+    const langs = lang === "en" || tavilyOn ? [lang] : [lang, "en"];
     const settled = await Promise.allSettled(
       langs.map((l) => {
         const p = new URLSearchParams(params);
@@ -916,6 +918,22 @@ export async function webSearch(query: string): Promise<string> {
 
 // ======================== 网页抓取 ========================
 
+/** 用 @mozilla/readability（Firefox 同款）提取网页正文，失败返回空串（回退 worker content） */
+function extractReadable(html: string): string {
+  try {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const reader = new Readability(doc);
+    const article = reader.parse();
+    const text = (
+      article && article.textContent ? article.textContent : ""
+    ).trim();
+    if (text.length >= 40) return normalizeText(text);
+  } catch {
+    /* 解析失败回退 */
+  }
+  return "";
+}
+
 async function fetchWebContentInner(
   url: string,
   maxChars: number = MAX_CHARS_DEFAULT,
@@ -932,7 +950,7 @@ async function fetchWebContentInner(
 
   try {
     const res = await fetchWithTimeout(
-      `/api/fetch?url=${encodeURIComponent(u)}&maxChars=${maxChars}`,
+      `/api/fetch?url=${encodeURIComponent(u)}&maxChars=${maxChars}&raw=1`,
       { headers: { Accept: "text/plain,application/json" } },
       12000,
     );
@@ -940,20 +958,38 @@ async function fetchWebContentInner(
       const ct = res.headers.get("content-type") || "";
       if (ct.includes("json")) {
         const j = await res.json();
-        if (j?.content) {
+        const base = {
+          url: u,
+          finalUrl: (j && j.finalUrl) || u,
+          contentType: (j && j.contentType) || "text/html",
+          title: (j && j.title) || "",
+          ogImage: (j && j.ogImage) || "",
+          images: Array.isArray(j && j.images)
+            ? j.images.filter(
+                (im: string) =>
+                  /^https?:\/\//i.test(im) && !im.includes("data:"),
+              )
+            : [],
+          retrievalMethod: "proxy" as const,
+        };
+        // readability 优先：浏览器端提取干净正文（无导航/页脚噪音）
+        if (j && typeof j.rawHtml === "string") {
+          const readContent = extractReadable(j.rawHtml);
+          if (readContent) {
+            const truncated = readContent.length > maxChars;
+            return {
+              ...base,
+              truncated,
+              content: truncated
+                ? readContent.slice(0, maxChars) +
+                  `\n\n[...truncated ${readContent.length - maxChars} characters]`
+                : readContent,
+            };
+          }
+        }
+        if (j && j.content) {
           return {
-            url: u,
-            finalUrl: j.finalUrl || u,
-            contentType: j.contentType || "text/html",
-            title: j.title || "",
-            ogImage: j.ogImage || "",
-            images: Array.isArray(j.images)
-              ? j.images.filter(
-                  (im: string) =>
-                    /^https?:\/\//i.test(im) && !im.includes("data:"),
-                )
-              : [],
-            retrievalMethod: "proxy",
+            ...base,
             truncated: j.truncated || false,
             content: normalizeText(j.content),
           };
@@ -1207,6 +1243,7 @@ export async function webSearchToArticle(
 
   // 1) 来源：优先复用已抓取到的 URL（避免并发重复搜索被限流导致空结果），
   //    否则多引擎搜索
+  let tavilyAnswer = "";
   let results: SearchResult[] = seedUrls.map((u) => {
     let host = "";
     try {
@@ -1223,16 +1260,19 @@ export async function webSearchToArticle(
     };
   });
   if (!results.length) {
-    // backend 已含 bing/duckduckgo/brave/news 等；Tavily 前端直连提供深度搜索；wikipedia 为 CORS 友好兜底
-    const engines = ["backend", "wikipedia"];
-    if (
-      hasSearchApi(loadSearchApiCfg()) &&
-      loadSearchApiCfg().provider === "tavily"
-    ) {
-      engines.unshift("tavily");
+    const scfg = loadSearchApiCfg();
+    const tavilyOn = hasSearchApi(scfg) && scfg.provider === "tavily";
+    if (tavilyOn) {
+      // Tavily 专属：advanced + AI 直接答案（answer 作蒸馏信号注入文章，提高准确度）
+      const tv = await searchTavilyDeep(query, 8);
+      results = dedupeByUrl(tv.results);
+      tavilyAnswer = tv.answer || "";
     }
-    const multi = await searchMulti(query, engines, 10);
-    results = dedupeByUrl(multi.results);
+    // Tavily 结果不足时用免费引擎补充（backend 含 bing/duckduckgo/news；wikipedia CORS 兜底）
+    if (results.length < 4) {
+      const multi = await searchMulti(query, ["backend", "wikipedia"], 10);
+      results = dedupeByUrl([...results, ...multi.results]);
+    }
     if (!results.length) {
       const ai = await searchAI(query, 6);
       results = dedupeByUrl(ai);
@@ -1298,7 +1338,13 @@ export async function webSearchToArticle(
     "- 引用事实时用 `> 引用` 块，末尾附「参考来源」列表（Markdown 链接，只能列真实来源）\n" +
     "- 安全合规：若主题涉及成人/敏感/争议内容，仅做客观克制的信息介绍，绝不输出露骨、色情、暴力、仇恨或违法违规内容；资料不足时如实说明\n" +
     "- 只输出文章正文，不要额外说明";
-  const userMsg = `查询主题：${query}\n\n【搜索结果】\n${results
+  const userMsg = `${
+    tavilyAnswer
+      ? "Tavily 官方 AI 检索答案（优先依据，可作核心参考）：\n" +
+        tavilyAnswer +
+        "\n\n"
+      : ""
+  }查询主题：${query}\n\n【搜索结果】\n${results
     .slice(0, 10)
     .map(
       (r, i) =>

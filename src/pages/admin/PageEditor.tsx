@@ -1,87 +1,114 @@
-import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { pageApi } from '../../lib/api'
-import type { PageDisplayType, PageType, AIChatConfig } from '../../lib/types'
-import { AI_CHAT_MARKER, encodeKey, decodeKey } from '../../lib/types'
-import { MdEditor } from '../../components/MdEditor'
-import { PageSpinner } from '../../components/Spinner'
-import { useToast } from '../../lib/toast'
+import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { pageApi } from "../../lib/api";
+import type {
+  Page,
+  PageDisplayType,
+  PageType,
+  AIChatConfig,
+} from "../../lib/types";
+import { AI_CHAT_MARKER, decodeKey } from "../../lib/types";
+import { MdEditor } from "../../components/MdEditor";
+import { PageSpinner } from "../../components/Spinner";
+import { BotEditorModal } from "../../components/BotEditorModal";
+import { btnPrimary } from "../../components/ui";
+import { useToast } from "../../lib/toast";
+import type { BotItem } from "../../components/AIChat";
 
-const TYPE_OPTIONS: Array<{ value: PageDisplayType; label: string; desc: string }> = [
-  { value: 'markdown', label: 'Markdown', desc: '富文本页面，适合「关于」「归档」' },
-  { value: 'html', label: 'HTML', desc: '自定义 HTML / JS 内容' },
-  { value: 'list', label: 'List', desc: '链接列表，如「友链」' },
-  { value: 'ai-chat', label: 'AI 对话', desc: '内嵌 AI 聊天组件，无需内容' },
-  { value: 'link', label: 'Link', desc: '跳转到外部链接' },
-]
+const TYPE_OPTIONS: Array<{
+  value: PageDisplayType;
+  label: string;
+  desc: string;
+}> = [
+  {
+    value: "markdown",
+    label: "Markdown",
+    desc: "富文本页面，适合「关于」「归档」",
+  },
+  { value: "html", label: "HTML", desc: "自定义 HTML / JS 内容" },
+  { value: "list", label: "List", desc: "链接列表，如「友链」" },
+  { value: "ai-chat", label: "AI 对话", desc: "内嵌 AI 聊天组件，无需内容" },
+  { value: "link", label: "Link", desc: "跳转到外部链接" },
+];
+
+/** 把 AI 页面解析为 BotItem（供 BotEditorModal 编辑复用，密钥还原） */
+function parseBotFromPage(p: Page): BotItem | null {
+  if (p.type !== "html" || !p.content?.startsWith(AI_CHAT_MARKER)) return null;
+  try {
+    const raw = JSON.parse(
+      p.content.slice(AI_CHAT_MARKER.length),
+    ) as AIChatConfig;
+    return {
+      id: p.id,
+      name: p.name,
+      config: { ...raw, apiKey: decodeKey(raw.apiKey) },
+      page: p,
+    };
+  } catch {
+    return null;
+  }
+}
 
 export function PageEditor() {
-  const { id } = useParams<{ id: string }>()
-  const isEdit = !!id
-  const navigate = useNavigate()
-  const { success, error } = useToast()
+  const { id } = useParams<{ id: string }>();
+  const isEdit = !!id;
+  const navigate = useNavigate();
+  const { success, error } = useToast();
 
-  const [name, setName] = useState('')
-  const [type, setType] = useState<PageDisplayType>('markdown')
-  const [content, setContent] = useState('')
-  const [loading, setLoading] = useState(isEdit)
-  const [saving, setSaving] = useState(false)
-  const [hidden, setHidden] = useState(false)
+  const [name, setName] = useState("");
+  const [type, setType] = useState<PageDisplayType>("markdown");
+  const [content, setContent] = useState("");
+  const [loading, setLoading] = useState(isEdit);
+  const [saving, setSaving] = useState(false);
+  const [hidden, setHidden] = useState(false);
 
-  // AI 对话配置
-  const [aiEndpoint, setAiEndpoint] = useState('')
-  const [aiKey, setAiKey] = useState('')
-  const [aiModel, setAiModel] = useState('')
-  const [aiBotName, setAiBotName] = useState('')
-  const [aiAvatar, setAiAvatar] = useState('')
-  const [aiPrompt, setAiPrompt] = useState('')
-  const [aiMaxMsg, setAiMaxMsg] = useState('')
-  const [aiCooldown, setAiCooldown] = useState('')
-  const [aiAutoTTS, setAiAutoTTS] = useState(false)
-  const [showKey, setShowKey] = useState(false)
+  // AI 对话配置（复用统一的 BotEditorModal）
+  const [botModalOpen, setBotModalOpen] = useState(false);
+  const [editingBot, setEditingBot] = useState<BotItem | null>(null);
+  const [botSummary, setBotSummary] = useState<{
+    name: string;
+    model: string;
+    endpoint: string;
+  } | null>(null);
 
   useEffect(() => {
     if (isEdit) {
       pageApi
         .get(Number(id))
         .then((p) => {
-          setName(p.name)
-          setHidden(p.status !== 0)
-          if (p.type === 'html' && p.content?.startsWith(AI_CHAT_MARKER)) {
-            setType('ai-chat')
-            setContent('')
-            try {
-              const cfg: AIChatConfig = JSON.parse(p.content.slice(AI_CHAT_MARKER.length))
-              setAiEndpoint(cfg.endpoint || '')
-              setAiKey(decodeKey(cfg.apiKey || ''))
-              setAiModel(cfg.model || '')
-              setAiBotName(cfg.botName || '')
-              setAiAvatar(cfg.avatar || '')
-              setAiPrompt(cfg.systemPrompt || '')
-              setAiMaxMsg(cfg.maxMessages ? String(cfg.maxMessages) : '')
-              setAiCooldown(cfg.cooldown ? String(cfg.cooldown) : '')
-              setAiAutoTTS(!!cfg.autoTTS)
-            } catch {}
+          setName(p.name);
+          setHidden(p.status !== 0);
+          if (p.type === "html" && p.content?.startsWith(AI_CHAT_MARKER)) {
+            setType("ai-chat");
+            setContent("");
+            const b = parseBotFromPage(p);
+            if (b) {
+              setBotSummary({
+                name: b.config.botName || b.name,
+                model: b.config.model || "",
+                endpoint: b.config.endpoint || "",
+              });
+            }
           } else {
-            setType(p.type as PageDisplayType)
-            setContent(p.content ?? '')
+            setType(p.type as PageDisplayType);
+            setContent(p.content ?? "");
           }
         })
-        .catch((e: Error) => error(e.message || '加载失败'))
-        .finally(() => setLoading(false))
+        .catch((e: Error) => error(e.message || "加载失败"))
+        .finally(() => setLoading(false));
     }
-  }, [isEdit, id, error])
+  }, [isEdit, id, error]);
 
-  if (loading) return <PageSpinner />
+  if (loading) return <PageSpinner />;
 
   const inputCls =
-    'w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-gray-400 focus:ring-2 focus:ring-gray-100'
+    "w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-gray-400 focus:ring-2 focus:ring-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:placeholder:text-gray-500";
 
   const renderContentEditor = () => {
     switch (type) {
-      case 'markdown':
-        return <MdEditor value={content} onChange={setContent} height={420} />
-      case 'html':
+      case "markdown":
+        return <MdEditor value={content} onChange={setContent} height={420} />;
+      case "html":
         return (
           <textarea
             value={content}
@@ -90,8 +117,8 @@ export function PageEditor() {
             placeholder="<p>HTML 内容...</p>"
             className={`${inputCls} font-mono`}
           />
-        )
-      case 'list':
+        );
+      case "list":
         return (
           <div className="space-y-2">
             <textarea
@@ -102,12 +129,19 @@ export function PageEditor() {
               className={`${inputCls} font-mono`}
             />
             <p className="text-xs text-gray-400">
-              使用 JSON 数组格式，每项包含 <code className="rounded bg-gray-100 px-1">title</code> 与{' '}
-              <code className="rounded bg-gray-100 px-1">description</code>（若 description 为链接会自动渲染「前往」按钮）
+              使用 JSON 数组格式，每项包含{" "}
+              <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">
+                title
+              </code>{" "}
+              与{" "}
+              <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">
+                description
+              </code>
+              （若 description 为链接会自动渲染「前往」按钮）
             </p>
           </div>
-        )
-      case 'link':
+        );
+      case "link":
         return (
           <input
             value={content}
@@ -115,81 +149,138 @@ export function PageEditor() {
             placeholder="https://example.com"
             className={inputCls}
           />
-        )
+        );
     }
-  }
+  };
+
+  // 打开统一的 AI 助手编辑器（新建时预填页面名；编辑时构造 BotItem）
+  const openBotModal = () => {
+    if (isEdit) {
+      pageApi
+        .get(Number(id))
+        .then((p) => {
+          setEditingBot(
+            parseBotFromPage({ ...p, name: name.trim() || p.name }),
+          );
+          setBotModalOpen(true);
+        })
+        .catch(() => {
+          setEditingBot(null);
+          setBotModalOpen(true);
+        });
+    } else {
+      setEditingBot(null);
+      setBotModalOpen(true);
+    }
+  };
+
+  const onBotSaved = async () => {
+    setBotModalOpen(false);
+    if (isEdit) {
+      try {
+        const p = await pageApi.get(Number(id));
+        const b = parseBotFromPage(p);
+        if (b) {
+          setBotSummary({
+            name: b.config.botName || b.name,
+            model: b.config.model || "",
+            endpoint: b.config.endpoint || "",
+          });
+        }
+        success("AI 助手已更新");
+      } catch {
+        /* 忽略 */
+      }
+    } else {
+      success("AI 助手已创建");
+      navigate("/dashboard/pages");
+    }
+  };
 
   const handleSubmit = async () => {
     if (!name.trim()) {
-      error('请输入页面名称')
-      return
+      error("请输入页面名称");
+      return;
     }
-    if (type !== 'list' && type !== 'ai-chat' && !content.trim()) {
-      error('请输入页面内容')
-      return
+    if (type === "ai-chat") {
+      openBotModal();
+      return;
     }
-    if (type === 'list') {
+    if (type !== "list" && !content.trim()) {
+      error("请输入页面内容");
+      return;
+    }
+    if (type === "list") {
       try {
-        JSON.parse(content || '[]')
+        JSON.parse(content || "[]");
       } catch {
-        error('List 内容必须是合法的 JSON')
-        return
+        error("List 内容必须是合法的 JSON");
+        return;
       }
     }
-    setSaving(true)
-    // ai-chat 编码：用 html 类型 + JSON 配置存储，兼容后端 type 校验
-    const saveType: PageType = type === 'ai-chat' ? 'html' : type
-    const saveContent = type === 'ai-chat'
-      ? AI_CHAT_MARKER + JSON.stringify({
-          endpoint: aiEndpoint.trim(),
-          apiKey: encodeKey(aiKey.trim()),
-          model: aiModel.trim(),
-          botName: aiBotName.trim(),
-          avatar: aiAvatar.trim() || undefined,
-          systemPrompt: aiPrompt.trim(),
-          maxMessages: aiMaxMsg ? Number(aiMaxMsg) : undefined,
-          cooldown: aiCooldown ? Number(aiCooldown) : undefined,
-          autoTTS: aiAutoTTS || undefined,
-        } as AIChatConfig)
-      : (content || null)
-    const payload = { name: name.trim(), type: saveType, content: saveContent, status: hidden ? 1 : 0 }
+    setSaving(true);
+    const payload = {
+      name: name.trim(),
+      type: type as PageType,
+      content: content || null,
+      status: hidden ? 1 : 0,
+    };
     try {
       if (isEdit) {
-        await pageApi.update(Number(id), payload)
-        success('页面已更新')
+        await pageApi.update(Number(id), payload);
+        success("页面已更新");
       } else {
-        await pageApi.create(payload)
-        success('页面已创建')
+        await pageApi.create(payload);
+        success("页面已创建");
       }
-      navigate('/dashboard/pages')
+      navigate("/dashboard/pages");
     } catch (e) {
-      error(e instanceof Error ? e.message : '保存失败')
+      error(e instanceof Error ? e.message : "保存失败");
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   return (
     <div className="fade-up space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button
-          onClick={() => navigate('/dashboard/pages')}
-          className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm text-gray-600 transition hover:bg-gray-50"
+          onClick={() => navigate("/dashboard/pages")}
+          className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
         >
           ← 返回
         </button>
         <button
           onClick={handleSubmit}
           disabled={saving}
-          className="flex items-center gap-2 rounded-xl bg-gray-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 active:scale-[0.98] disabled:opacity-60"
+          className="flex items-center gap-2 rounded-xl bg-gray-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 active:scale-[0.98] disabled:opacity-60 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
         >
           {saving && (
-            <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            <svg
+              className="h-4 w-4 animate-spin"
+              viewBox="0 0 24 24"
+              fill="none"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+              />
             </svg>
           )}
-          {isEdit ? '保存修改' : '创建页面'}
+          {type === "ai-chat"
+            ? "配置 AI 助手"
+            : isEdit
+              ? "保存修改"
+              : "创建页面"}
         </button>
       </div>
 
@@ -199,17 +290,24 @@ export function PageEditor() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="页面名称，如：about / 关于"
-          className="flex-1 rounded-2xl border border-gray-200 bg-white px-5 py-3.5 text-xl font-semibold text-gray-900 outline-none transition placeholder:text-gray-300 focus:border-gray-300 focus:ring-2 focus:ring-gray-100"
+          className="flex-1 rounded-2xl border border-gray-200 bg-white px-5 py-3.5 text-xl font-semibold text-gray-900 outline-none transition placeholder:text-gray-300 focus:border-gray-300 focus:ring-2 focus:ring-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-600"
         />
-        <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-500 transition hover:bg-gray-50">
-          <input type="checkbox" checked={hidden} onChange={e => setHidden(e.target.checked)} className="h-4 w-4 accent-gray-900" />
+        <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-500 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400 dark:hover:bg-gray-800">
+          <input
+            type="checkbox"
+            checked={hidden}
+            onChange={(e) => setHidden(e.target.checked)}
+            className="h-4 w-4 accent-gray-900"
+          />
           隐藏
         </label>
       </div>
 
       {/* 类型选择 */}
       <div>
-        <label className="mb-2 block text-sm font-medium text-gray-600">页面类型</label>
+        <label className="mb-2 block text-sm font-medium text-gray-600 dark:text-gray-300">
+          页面类型
+        </label>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {TYPE_OPTIONS.map((opt) => (
             <button
@@ -217,78 +315,81 @@ export function PageEditor() {
               onClick={() => setType(opt.value)}
               className={`rounded-2xl border p-3.5 text-left transition ${
                 type === opt.value
-                  ? 'border-gray-400 bg-gray-100 ring-2 ring-gray-100'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
+                  ? "border-gray-400 bg-gray-100 ring-2 ring-gray-100 dark:border-gray-500 dark:bg-gray-800 dark:ring-gray-700"
+                  : "border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-gray-600"
               }`}
             >
-              <p className={`text-sm font-semibold ${type === opt.value ? 'text-gray-900' : 'text-gray-700'}`}>
+              <p
+                className={`text-sm font-semibold ${type === opt.value ? "text-gray-900 dark:text-gray-100" : "text-gray-700 dark:text-gray-300"}`}
+              >
                 {opt.label}
               </p>
-              <p className="mt-1 text-xs leading-relaxed text-gray-400">{opt.desc}</p>
+              <p className="mt-1 text-xs leading-relaxed text-gray-400">
+                {opt.desc}
+              </p>
             </button>
           ))}
         </div>
       </div>
 
       {/* 内容 / AI配置 */}
-      {type === 'ai-chat' ? (
+      {type === "ai-chat" ? (
         <div className="card space-y-4 p-5">
-          <h3 className="text-sm font-semibold text-gray-800">AI 对话配置</h3>
-          <p className="text-xs text-gray-400">密钥经 base64 混淆存储，仅用于本页面 AI 请求。</p>
+          <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+            AI 对话配置
+          </h3>
+          <p className="text-xs leading-relaxed text-gray-400">
+            AI 对话页面使用统一的「AI 助手编辑器」配置（名称 / 模型 / 接口 /
+            密钥 / 提示词 / 上限 / 冷却等），与「AI
+            管理」中的助手完全一致，字段与功能同步维护。
+          </p>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">机器人名称</label>
-              <input value={aiBotName} onChange={e => setAiBotName(e.target.value)} placeholder="如：小K" className={inputCls} />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">模型</label>
-              <input value={aiModel} onChange={e => setAiModel(e.target.value)} placeholder="如：gpt-4o-mini" className={inputCls} />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">头像 URL</label>
-              <input value={aiAvatar} onChange={e => setAiAvatar(e.target.value)} placeholder="https://...（可选）" className={inputCls} />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">对话上限（条）</label>
-              <input value={aiMaxMsg} onChange={e => setAiMaxMsg(e.target.value.replace(/\D/g,''))} placeholder="不限制" className={inputCls} />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">发送冷却（秒）</label>
-              <input value={aiCooldown} onChange={e => setAiCooldown(e.target.value.replace(/\D/g,''))} placeholder="60" className={inputCls} />
-            </div>
-            <div className="flex items-end pb-2">
-              <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-500 transition hover:bg-gray-50">
-                <input type="checkbox" checked={aiAutoTTS} onChange={e => setAiAutoTTS(e.target.checked)} className="h-4 w-4 accent-gray-900" />
-                自动朗读
-              </label>
-            </div>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-500">API 接口地址</label>
-            <input value={aiEndpoint} onChange={e => setAiEndpoint(e.target.value)} placeholder="https://api.openai.com/v1" className={inputCls} />
-          </div>
-
-          <div className="relative">
-            <label className="mb-1 block text-xs font-medium text-gray-500">API 密钥</label>
-            <input value={aiKey} onChange={e => setAiKey(e.target.value)} placeholder="sk-..." type={showKey ? 'text' : 'password'} className={`${inputCls} pr-16`} />
-            <button type="button" onClick={() => setShowKey(!showKey)} className="absolute bottom-2 right-2 rounded-lg px-2 py-1 text-xs text-gray-400 hover:text-gray-600">{showKey ? '隐藏' : '显示'}</button>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-500">系统提示词 <span className="text-gray-400">（定义机器人角色和行为）</span></label>
-            <textarea value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} rows={3} placeholder="你是一个友好的助手..." className={`${inputCls} resize-none`} />
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/50 p-4 dark:border-gray-800 dark:bg-gray-800/50">
+            {botSummary ? (
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">
+                  {botSummary.name}
+                </p>
+                <p className="truncate text-xs text-gray-400">
+                  {botSummary.model} · {botSummary.endpoint}
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400">
+                尚未配置 AI 助手，点击右侧按钮创建。
+              </p>
+            )}
+            <button onClick={openBotModal} className={btnPrimary}>
+              <svg
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path strokeLinecap="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              {isEdit ? "编辑配置" : "创建配置"}
+            </button>
           </div>
         </div>
       ) : (
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-600">内容</label>
+          <label className="mb-1.5 block text-sm font-medium text-gray-600">
+            内容
+          </label>
           {renderContentEditor()}
         </div>
       )}
+
+      {/* 统一的 AI 助手编辑器 */}
+      <BotEditorModal
+        open={botModalOpen}
+        onClose={() => setBotModalOpen(false)}
+        bot={editingBot}
+        defaultName={name.trim()}
+        onSaved={onBotSaved}
+      />
     </div>
-  )
+  );
 }

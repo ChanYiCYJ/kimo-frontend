@@ -49,4 +49,6 @@ export interface SkillContext {
   fastMode?: boolean;
   /** Live2D 开启：注入表情标签 + 动作指令 */
   l2dEnabled?: boolean;
+  /** 音频 TTS 模式：注入「回复简短口语化」提示（更适合语音朗读） */
+  ttsMode?: boolean;
 }

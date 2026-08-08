@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   getLocalCfg,
   saveLocalCfg,
@@ -12,8 +12,10 @@ import {
 } from "../lib/providerPresets";
 import {
   testModelConnection,
+  fetchProviderModels,
   formatLatency,
   type TestConnectionResult,
+  type FetchModelsResult,
 } from "../lib/providerTest";
 
 /**
@@ -37,17 +39,6 @@ export interface LocalApiFormProps {
 const inputCls =
   "w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800";
 
-/** 服务商识别徽标（DeepSeek / Kimi 等） */
-function ProviderBadge({ id }: { id: AiProvider }) {
-  if (id === "other") return null;
-  const preset = PROVIDER_PRESETS.find((p) => p.id === id);
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-      {preset?.name || id}
-    </span>
-  );
-}
-
 export function LocalApiForm({
   pageId,
   onSaved,
@@ -62,10 +53,40 @@ export function LocalApiForm({
   const [testResult, setTestResult] = useState<TestConnectionResult | null>(
     null,
   );
+  // 自动搜索模型：从 {endpoint}/models 拉取可用列表
+  const [modelFetchState, setModelFetchState] = useState<
+    "idle" | "loading" | "done"
+  >("idle");
+  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
+  const [fetchResult, setFetchResult] = useState<FetchModelsResult | null>(
+    null,
+  );
   const isModal = variant === "modal";
 
   const provider = detectProvider(cfg.endpoint, cfg.model);
   const preset = PROVIDER_PRESETS.find((p) => p.id === provider);
+
+  /** 模型下拉候选 = 预设列表 + 自动搜索到的模型（去重，最新优先） */
+  const modelOptions = useMemo(() => {
+    const set = new Set<string>();
+    preset?.models.forEach((m) => set.add(m));
+    fetchedModels.forEach((m) => set.add(m));
+    return Array.from(set);
+  }, [preset, fetchedModels]);
+
+  /** 自动搜索模型：读取 {endpoint}/models 并填入候选列表 */
+  const fetchModels = async () => {
+    if (modelFetchState === "loading") return;
+    setModelFetchState("loading");
+    setFetchResult(null);
+    const r = await fetchProviderModels({
+      endpoint: cfg.endpoint,
+      apiKey: cfg.apiKey,
+    });
+    setFetchedModels(r.models);
+    setFetchResult(r);
+    setModelFetchState("done");
+  };
 
   /** 测试并保存：先保存配置，再自动发起连接测试（校验 接口/密钥/模型 是否可用） */
   const saveAndTest = async () => {
@@ -113,32 +134,29 @@ export function LocalApiForm({
       <div className="space-y-1">
         {isModal && (
           <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">
-            快捷预设（一键填充接口与模型）
+            快捷预设
           </label>
         )}
         <div className="flex flex-wrap gap-1.5">
-          {PROVIDER_PRESETS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => applyPreset(p.id)}
-              title={p.desc}
-              className={`rounded-full border px-2.5 py-1 text-xs transition active:scale-95 ${
-                provider === p.id
-                  ? "border-gray-900 bg-gray-900 text-white dark:border-gray-200 dark:bg-gray-200 dark:text-gray-900"
-                  : "border-gray-200 bg-white text-gray-600 hover:border-gray-400 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:text-white"
-              }`}
-            >
-              {p.name}
-            </button>
-          ))}
+          {PROVIDER_PRESETS.map((p) => {
+            const active = provider === p.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => applyPreset(p.id)}
+                title={p.desc}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition active:scale-95 ${
+                  active
+                    ? "border-gray-900 bg-gray-900 text-white dark:border-gray-200 dark:bg-gray-200 dark:text-gray-900"
+                    : "border-gray-200 bg-white text-gray-600 hover:border-gray-400 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:text-white"
+                }`}
+              >
+                {p.name}
+              </button>
+            );
+          })}
         </div>
-        {preset && (
-          <p className="flex items-center gap-1.5 text-[11px] text-gray-400">
-            <ProviderBadge id={provider} />
-            <span className="truncate">{preset.desc}</span>
-          </p>
-        )}
       </div>
 
       <div className="space-y-2">
@@ -220,20 +238,90 @@ export function LocalApiForm({
               模型（留空使用默认）
             </label>
           )}
-          <input
-            value={cfg.model}
-            onChange={(e) => setCfg({ ...cfg, model: e.target.value })}
-            list="kimo-ai-model-list"
-            placeholder={isModal ? "gpt-4o-mini" : "模型（留空用默认）"}
-            className={inputCls}
-          />
-          {/* 当前识别服务商的可选模型下拉（datalist，不强制） */}
-          {preset && preset.models.length > 0 && (
+          <div className="flex gap-1.5">
+            <input
+              value={cfg.model}
+              onChange={(e) => setCfg({ ...cfg, model: e.target.value })}
+              list="kimo-ai-model-list"
+              placeholder={isModal ? "gpt-4o-mini" : "模型（留空用默认）"}
+              className={inputCls}
+            />
+            <button
+              type="button"
+              onClick={fetchModels}
+              disabled={modelFetchState === "loading"}
+              title="调用 /models 接口自动拉取该服务商可用模型"
+              className="shrink-0 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 transition hover:border-gray-400 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-gray-500"
+            >
+              {modelFetchState === "loading" ? (
+                <svg
+                  className="h-4 w-4 animate-spin"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+              ) : (
+                "自动搜索"
+              )}
+            </button>
+          </div>
+          {/* 模型候选：预设 + 自动搜索合并（datalist，不强制） */}
+          {modelOptions.length > 0 && (
             <datalist id="kimo-ai-model-list">
-              {preset.models.map((m) => (
+              {modelOptions.map((m) => (
                 <option key={m} value={m} />
               ))}
             </datalist>
+          )}
+          {/* 自动搜索结果 */}
+          {fetchResult && (
+            <p
+              className={`mt-1 flex items-center gap-1.5 text-[11px] leading-relaxed ${
+                fetchResult.ok
+                  ? "text-green-600 dark:text-green-400"
+                  : "text-red-500 dark:text-red-400"
+              }`}
+            >
+              {fetchResult.ok ? "✓" : "✗"}
+              <span className="min-w-0 flex-1">{fetchResult.message}</span>
+            </p>
+          )}
+          {fetchedModels.length > 0 && (
+            <div className="mt-1.5 max-h-28 space-y-1 overflow-y-auto pr-1">
+              <div className="flex flex-wrap gap-1">
+                {fetchedModels.map((m) => {
+                  const chosen = cfg.model === m;
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setCfg({ ...cfg, model: m })}
+                      title={m}
+                      className={`max-w-full truncate rounded-full border px-2 py-0.5 text-[10px] transition active:scale-95 ${
+                        chosen
+                          ? "border-indigo-500 bg-indigo-500 text-white"
+                          : "border-gray-200 bg-gray-50 text-gray-600 hover:border-indigo-400 hover:text-indigo-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-indigo-500 dark:hover:text-indigo-300"
+                      }`}
+                    >
+                      {m}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           )}
         </div>
       </div>
@@ -333,7 +421,7 @@ export function LocalApiForm({
           </button>
           {showEnabledHint && (
             <p className="text-[11px] text-indigo-500 dark:text-indigo-400">
-              ✓ 自定义 API 已启用（次数/冷却限制已解除）
+              自定义 API 已启用（次数/冷却限制已解除）
             </p>
           )}
         </>

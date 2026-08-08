@@ -24,6 +24,16 @@ import {
   mergeEffCfg,
   loadCustomModelOn,
   saveCustomModelOn,
+  loadTtsAudioUrl,
+  saveTtsAudioUrl,
+  buildTtsAudioUrl,
+  loadTtsMode,
+  saveTtsMode,
+  loadTtsOn,
+  saveTtsOn,
+  loadTtsVolume,
+  saveTtsVolume,
+  ttsVolumeValue,
 } from "../chatSettings";
 import type { AIChatConfig } from "../types";
 import type { LocalAIConfig } from "../localCfg";
@@ -286,5 +296,84 @@ describe("chatSettings · mergeEffCfg", () => {
       prompts: [{ name: "A", systemPrompt: "人设A" }],
     };
     expect(mergeEffCfg(cfg, local, 5).systemPrompt).toBe("默认人设");
+  });
+});
+
+describe("chatSettings · 音频 TTS 地址（真实音频口型）", () => {
+  it("load/save 读写（trim）", () => {
+    expect(loadTtsAudioUrl()).toBe("");
+    saveTtsAudioUrl("  https://tts.example.com/tts?text={text}  ");
+    expect(loadTtsAudioUrl()).toBe("https://tts.example.com/tts?text={text}");
+    saveTtsAudioUrl("");
+    expect(loadTtsAudioUrl()).toBe("");
+  });
+
+  it("buildTtsAudioUrl：{text} 占位符替换（URL 编码）", () => {
+    const u = buildTtsAudioUrl(
+      "https://x.com/tts?voice=zh&text={text}",
+      "你好，世界",
+    );
+    expect(u).toBe(
+      "https://x.com/tts?voice=zh&text=" + encodeURIComponent("你好，世界"),
+    );
+  });
+
+  it("buildTtsAudioUrl：无占位符拼 ?text=", () => {
+    const u = buildTtsAudioUrl("https://x.com/tts", "hi");
+    expect(u).toBe("https://x.com/tts?text=hi");
+    // 已有 query 用 & 拼接
+    const u2 = buildTtsAudioUrl("https://x.com/tts?a=1", "hi");
+    expect(u2).toBe("https://x.com/tts?a=1&text=hi");
+  });
+
+  it("buildTtsAudioUrl：空模板/空文本返回 null", () => {
+    expect(buildTtsAudioUrl("", "hi")).toBeNull();
+    expect(buildTtsAudioUrl("https://x.com/tts", "  ")).toBeNull();
+    expect(buildTtsAudioUrl("  ", "  ")).toBeNull();
+  });
+});
+
+describe("chatSettings · 朗读模式（TtsMode）", () => {
+  it("默认浏览器朗读；无 URL 时 audio 模式回落 browser", () => {
+    expect(loadTtsMode()).toBe("browser");
+    saveTtsMode("audio");
+    // 没配 URL → 仍为 browser
+    expect(loadTtsMode()).toBe("browser");
+  });
+
+  it("配了 URL + 存 audio 模式 → 生效为 audio", () => {
+    saveTtsAudioUrl("https://x.com/tts?text={text}");
+    saveTtsMode("audio");
+    expect(loadTtsMode()).toBe("audio");
+  });
+
+  it("存 browser 模式 → 即使有 URL 也回退 browser", () => {
+    saveTtsAudioUrl("https://x.com/tts?text={text}");
+    saveTtsMode("browser");
+    expect(loadTtsMode()).toBe("browser");
+  });
+});
+
+describe("chatSettings · TTS 总开关 + 音量", () => {
+  it("TTS 总开关默认关闭；开启/关闭可持久化", () => {
+    expect(loadTtsOn()).toBe(false);
+    saveTtsOn(true);
+    expect(loadTtsOn()).toBe(true);
+    saveTtsOn(false);
+    expect(loadTtsOn()).toBe(false);
+  });
+
+  it("音量默认中；非法值回退中", () => {
+    expect(loadTtsVolume()).toBe("medium");
+    saveTtsVolume("high");
+    expect(loadTtsVolume()).toBe("high");
+    saveTtsVolume("low");
+    expect(loadTtsVolume()).toBe("low");
+  });
+
+  it("ttsVolumeValue 档位映射到 0~1 数值", () => {
+    expect(ttsVolumeValue("low")).toBe(0.5);
+    expect(ttsVolumeValue("medium")).toBe(0.8);
+    expect(ttsVolumeValue("high")).toBe(1);
   });
 });

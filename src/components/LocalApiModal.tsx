@@ -48,7 +48,7 @@ export function LocalApiModal({
 
         <div className="space-y-3 p-4">
           <p className="rounded-xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
-            🔒 <span className="font-medium">安全与使用规则：</span>
+            <span className="font-medium">安全与使用规则</span>
           </p>
           <ul className="ml-5 list-disc space-y-1 rounded-xl bg-gray-50 p-3 text-xs leading-relaxed text-gray-500 dark:bg-gray-800 dark:text-gray-400">
             <li>

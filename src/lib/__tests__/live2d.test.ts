@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import {
   assetUrl,
   buildDataUrl,
@@ -34,6 +34,15 @@ import {
   resolveLive2dModel,
   saveAutoPick,
   type BuildData,
+  type HitRegion,
+  pickTapReaction,
+  resolveHitRegion,
+  TAP_REACTIONS,
+  rmsToMouth,
+  isModel3Url,
+  buildLive2dSettingsFromModel3,
+  fetchThirdPartyModelSafe,
+  LOOK_TARGETS,
 } from "../live2d";
 
 beforeEach(() => {
@@ -507,5 +516,188 @@ describe("live2d · 角色分组 + 自定义模型导入", () => {
     const c = removeCustomModel("026_casual");
     expect(c).toEqual([]);
     expect(loadCustomModels()).toEqual([]);
+  });
+});
+
+describe("live2d · 点击/触摸命中反应（Tap 交互）", () => {
+  it("TAP_REACTIONS 头=惊讶、身=开心", () => {
+    expect(TAP_REACTIONS.head.emotion).toBe("surprised");
+    expect(TAP_REACTIONS.body.emotion).toBe("happy");
+    expect(TAP_REACTIONS.head.motions.length).toBeGreaterThan(0);
+    expect(TAP_REACTIONS.body.motions.length).toBeGreaterThan(0);
+  });
+
+  it("pickTapReaction 返回对应区域反应且动作候选非空", () => {
+    const h = pickTapReaction("head");
+    expect(h.emotion).toBe("surprised");
+    expect(h.motions.length).toBe(1);
+    const b = pickTapReaction("body");
+    expect(b.emotion).toBe("happy");
+    expect(b.motions.length).toBe(1);
+  });
+
+  it("resolveHitRegion：盒内上部=头、下部=身、盒外=null", () => {
+    // 中心 (100,100)，包围盒 200x300
+    // 上部（y < 100 - 300*0.05 = 85）→ head
+    expect(resolveHitRegion(100, 50, 100, 100, 200, 300)).toBe("head");
+    expect(resolveHitRegion(100, 10, 100, 100, 200, 300)).toBe("head");
+    // 下部 → body
+    expect(resolveHitRegion(100, 200, 100, 100, 200, 300)).toBe("body");
+    expect(resolveHitRegion(100, 240, 100, 100, 200, 300)).toBe("body");
+    // 盒外 → null（左右/上下越界）
+    expect(resolveHitRegion(-10, 100, 100, 100, 200, 300)).toBeNull();
+    expect(resolveHitRegion(100, 400, 100, 100, 200, 300)).toBeNull();
+    expect(resolveHitRegion(210, 100, 100, 100, 200, 300)).toBeNull();
+  });
+
+  it("resolveHitRegion：零尺寸安全返回 null", () => {
+    expect(resolveHitRegion(10, 10, 0, 0, 0, 0)).toBeNull();
+    expect(resolveHitRegion(10, 10, 0, 0, -1, 5)).toBeNull();
+  });
+
+  it("resolveHitRegion：类型收窄为 HitRegion", () => {
+    const r: HitRegion | null = resolveHitRegion(100, 50, 100, 100, 200, 300);
+    expect(r).not.toBeNull();
+  });
+});
+
+describe("live2d · rmsToMouth（真实音频口型映射）", () => {
+  it("静音/无效输入 → 微张 0.06", () => {
+    expect(rmsToMouth(0)).toBeCloseTo(0.06, 5);
+    expect(rmsToMouth(-1)).toBeCloseTo(0.06, 5);
+    expect(rmsToMouth(NaN)).toBeCloseTo(0.06, 5);
+    expect(rmsToMouth(Infinity)).toBeCloseTo(0.06, 5);
+  });
+
+  it("音量越大嘴张越大，且封顶 0.6", () => {
+    const low = rmsToMouth(0.1);
+    const mid = rmsToMouth(0.3);
+    const high = rmsToMouth(1.0);
+    expect(low).toBeGreaterThan(0.06);
+    expect(mid).toBeGreaterThan(low);
+    expect(high).toBeCloseTo(0.6, 5);
+    expect(rmsToMouth(5)).toBeCloseTo(0.6, 5); // 超量封顶
+  });
+
+  it("范围始终在 [0.06, 0.6] 内", () => {
+    for (const r of [0.01, 0.05, 0.2, 0.5, 0.8, 2]) {
+      const v = rmsToMouth(r);
+      expect(v).toBeGreaterThanOrEqual(0.06);
+      expect(v).toBeLessThanOrEqual(0.6);
+    }
+  });
+});
+
+describe("live2d · Cubism3/4（.model3.json）加载链路", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("isModel3Url 识别 .model3.json", () => {
+    expect(isModel3Url("https://x.com/Haru/Haru.model3.json")).toBe(true);
+    expect(isModel3Url("https://x.com/shizuku/shizuku.model.json")).toBe(false);
+    expect(isModel3Url("")).toBe(false);
+  });
+
+  it("buildLive2dSettingsFromModel3 解析 FileReferences + HitAreas（绝对代理 URL）", async () => {
+    const modelJson = {
+      FileReferences: {
+        Moc: "Haru.moc3",
+        Textures: ["Haru.2048/texture_00.png"],
+        Physics: "Haru.physics3.json",
+        Expressions: [{ Name: "f01", File: "expressions/f01.exp3.json" }],
+        Motions: {
+          Idle: [{ File: "motions/idle_0.motion3.json" }],
+          TapBody: [{ File: "motions/tap.motion3.json" }],
+        },
+      },
+      HitAreas: [{ Id: "HitArea", Name: "Body" }],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => modelJson,
+      }),
+    );
+    const url = "https://raw.example.com/models/Haru/Haru.model3.json";
+    const s = await buildLive2dSettingsFromModel3(url);
+    expect(s.model).toContain("/api/live2d/proxy?url=");
+    expect(s.model).toContain(
+      encodeURIComponent("https://raw.example.com/models/Haru/Haru.moc3"),
+    );
+    expect(s.textures.length).toBe(1);
+    expect(s.textures[0]).toContain("texture_00.png");
+    expect(s.physics).toContain("Haru.physics3.json");
+    expect(s.expressions[0].name).toBe("f01");
+    expect(s.motions.Idle[0].file).toContain("idle_0.motion3.json");
+    expect(s.hitAreas).toEqual([{ name: "Body", id: "HitArea" }]);
+  });
+
+  it("buildLive2dSettingsFromModel3 缺 Moc 抛错", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ FileReferences: {} }),
+      }),
+    );
+    await expect(
+      buildLive2dSettingsFromModel3("https://x.com/m/M.model3.json"),
+    ).rejects.toThrow();
+  });
+
+  it("fetchThirdPartyModelSafe 按扩展名分流（model3 vs model.json）", async () => {
+    const m3 = {
+      FileReferences: { Moc: "a.moc3", Textures: ["t.png"], Motions: {} },
+    };
+    const m2 = { model: "a.moc", textures: ["t.png"], motions: {} };
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (u: RequestInfo) => {
+        const ustr = String(u);
+        calls.push(ustr);
+        if (ustr.includes("M.model3.json"))
+          return { ok: true, json: async () => m3 };
+        return { ok: true, json: async () => m2 };
+      }),
+    );
+    const s3 = await fetchThirdPartyModelSafe(
+      "https://x.com/models/M/M.model3.json",
+    );
+    expect(s3.model).toContain("a.moc3");
+    const s2 = await fetchThirdPartyModelSafe(
+      "https://x.com/models/S/S.model.json",
+    );
+    expect(s2.model).toContain("a.moc");
+  });
+});
+
+describe("live2d · [LOOK:方向] 视线指令", () => {
+  it("解析 LOOK 中英文别名方向", () => {
+    expect(parseActionCommands("[LOOK:left]").look).toBe("left");
+    expect(parseActionCommands("【看:右】").look).toBe("right");
+    expect(parseActionCommands("[视线:up]").look).toBe("up");
+    expect(parseActionCommands("朝下看 [看:down]").look).toBe("down");
+    expect(parseActionCommands("[LOOK:center]").look).toBe("center");
+  });
+
+  it("非法方向不设置 look", () => {
+    const c = parseActionCommands("[LOOK:sideways]");
+    expect(c.look).toBeUndefined();
+  });
+
+  it("stripActionCommands 剥离 LOOK 指令", () => {
+    const s = stripActionCommands("他点了点头 [LOOK:down] 继续说着");
+    expect(s).toBe("他点了点头  继续说着");
+  });
+
+  it("LOOK_TARGETS 方向角度映射", () => {
+    expect(LOOK_TARGETS.left.x).toBeLessThan(0);
+    expect(LOOK_TARGETS.right.x).toBeGreaterThan(0);
+    expect(LOOK_TARGETS.up.y).toBeLessThan(0);
+    expect(LOOK_TARGETS.down.y).toBeGreaterThan(0);
+    expect(LOOK_TARGETS.center).toEqual({ x: 0, y: 0 });
   });
 });

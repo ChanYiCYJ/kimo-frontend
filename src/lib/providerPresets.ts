@@ -19,8 +19,10 @@ export interface ProviderPreset {
   endpoint: string;
   /** 默认（推荐）模型 */
   model: string;
-  /** 可选模型列表（下拉/提示用） */
+  /** 可选模型列表（下拉/提示用，按推荐度排序，最新在前） */
   models: string[];
+  /** 最新（推荐）模型，用于卡片「最新」角标 */
+  latest: string[];
   /** 说明文案（展示给用户） */
   desc: string;
 }
@@ -29,9 +31,11 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     id: "deepseek",
     name: "DeepSeek",
-    endpoint: "https://api.deepseek.com/v1",
-    model: "deepseek-chat",
+    endpoint: "https://api.deepseek.com",
+    model: "deepseek-v4-flash",
     models: [
+      "deepseek-v4-flash",
+      "deepseek-v4-pro",
       "deepseek-chat",
       "deepseek-reasoner",
       "deepseek-v3.2",
@@ -39,24 +43,30 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
       "deepseek-v3",
       "deepseek-r1",
     ],
-    desc: "OpenAI 兼容接口。deepseek-reasoner 为推理模型，回答更深入但速度较慢",
+    latest: ["deepseek-v4-flash", "deepseek-v4-pro"],
+    desc: "OpenAI 兼容接口。最新 v4-flash 支持 1M 上下文与思考/非思考双模式，性价比高",
   },
   {
     id: "kimi",
     name: "Kimi",
     endpoint: "https://api.moonshot.cn/v1",
-    model: "moonshot-v1-8k",
+    model: "kimi-k2.6",
     models: [
+      "kimi-k2.6",
+      "kimi-k3",
+      "kimi-k2.7-code",
+      "kimi-k2.7-code-highspeed",
+      "kimi-latest",
       "moonshot-v1-8k",
       "moonshot-v1-32k",
       "moonshot-v1-128k",
-      "kimi-latest",
       "kimi-k2-turbo-preview",
-      "kimi-k2-0905-preview",
       "kimi-k2-thinking-preview",
+      "kimi-k2-0905-preview",
       "kimi-k2-0711-preview",
     ],
-    desc: "月之暗面 Moonshot 兼容接口。默认输出上限 1024 tokens，本应用已自动调大避免长文被截断",
+    latest: ["kimi-k2.6", "kimi-k3"],
+    desc: "月之暗面兼容接口。最新 kimi-k2.6 支持 256K 上下文与思考模式；默认输出上限已自动调大避免长文被截断",
   },
   {
     id: "openai",
@@ -64,6 +74,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     endpoint: "https://api.openai.com/v1",
     model: "gpt-4o-mini",
     models: ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1-nano"],
+    latest: ["gpt-4o-mini"],
     desc: "OpenAI 官方兼容接口",
   },
 ];

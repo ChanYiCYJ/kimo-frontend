@@ -838,6 +838,59 @@ describe("search · fetchWebContent 会话内缓存（view 提速）", () => {
   });
 });
 
+describe("search · fetchWebContent readability 正文提取", () => {
+  it("有 rawHtml 时用 readability 提取干净正文（排除导航/页脚噪音）", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        const u = String(url);
+        if (u.startsWith("/api/fetch")) {
+          return jsonResponse({
+            url: "https://news.example/a",
+            content: "服务端提取的正文（含导航）",
+            rawHtml:
+              "<html><head><title>测试新闻</title></head><body>" +
+              "<nav>导航菜单 链接一 链接二 链接三 链接四 链接五</nav>" +
+              "<article><h1>测试新闻标题</h1>" +
+              "<p>这是通过可读性提取出来的干净正文内容，包含足够长的文本以便被主内容识别算法正确判断为文章主体，并且应当排除页面上的导航链接、页脚版权声明以及无关侧边栏内容。</p>" +
+              "<p>第二段补充信息，进一步增强文章正文长度，确保提取结果完整可靠。</p></article>" +
+              "<footer>页脚版权信息 2026</footer>" +
+              "</body></html>",
+            title: "测试新闻",
+            ogImage: "",
+            images: [],
+          });
+        }
+        return jsonResponse({});
+      }),
+    );
+    const r = await fetchWebContent("https://news.example/a", 2000);
+    expect(r.content).toContain("干净正文");
+    // readability 应排除导航/页脚噪音
+    expect(r.content).not.toContain("导航菜单");
+    expect(r.content).not.toContain("页脚版权信息");
+  });
+
+  it("无 rawHtml（旧代理/纯文本）回退服务端 content", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        const u = String(url);
+        if (u.startsWith("/api/fetch")) {
+          return jsonResponse({
+            url: "https://b.example/x",
+            content: "服务端正文",
+            title: "B",
+          });
+        }
+        return jsonResponse({});
+      }),
+    );
+    const r = await fetchWebContent("https://b.example/x", 2000);
+    expect(r.content).toBe("服务端正文");
+  });
+});
+
 describe("search · filterSensitiveResults（违规内容默默隐藏）", () => {
   const base = {
     url: "https://a.com",

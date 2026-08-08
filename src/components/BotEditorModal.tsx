@@ -14,6 +14,8 @@ interface BotEditorModalProps {
   onClose: () => void;
   bot: BotItem | null;
   onSaved: () => void;
+  /** bot 为 null（新建）时的默认页面名 */
+  defaultName?: string;
 }
 
 const inputCls =
@@ -24,6 +26,7 @@ export function BotEditorModal({
   onClose,
   bot,
   onSaved,
+  defaultName = "",
 }: BotEditorModalProps) {
   const [name, setName] = useState("");
   const [botName, setBotName] = useState("");
@@ -67,7 +70,7 @@ export function BotEditorModal({
       setDailyLimit(c.dailyLimit ? String(c.dailyLimit) : "");
       setPrompts(c.prompts ? [...c.prompts] : []);
     } else {
-      setName("");
+      setName(defaultName);
       setBotName("");
       setAvatar("");
       setModel("gpt-4o-mini");
@@ -81,7 +84,7 @@ export function BotEditorModal({
       setDailyLimit("");
       setPrompts([]);
     }
-  }, [open, bot]);
+  }, [open, bot, defaultName]);
 
   // 应用提示词模板预设（自我进化 AI / 通用助手）
   const applyPreset = (id: string) => {

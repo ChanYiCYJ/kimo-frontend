@@ -143,15 +143,78 @@ const ICON = {
       />
     </svg>
   ),
+  media: (
+    <svg
+      className="h-5 w-5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25z"
+      />
+    </svg>
+  ),
+  logs: (
+    <svg
+      className="h-5 w-5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+      />
+    </svg>
+  ),
+  comments: (
+    <svg
+      className="h-5 w-5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"
+      />
+    </svg>
+  ),
+  backup: (
+    <svg
+      className="h-5 w-5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 5.625c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"
+      />
+    </svg>
+  ),
 };
 
 const NAV: NavItem[] = [
   { to: "/dashboard", end: true, label: "概览", icon: ICON.home },
-  { to: "/dashboard/articles/new", label: "新建文章", icon: ICON.article },
   { to: "/dashboard/articles", label: "文章管理", icon: ICON.manage },
   { to: "/dashboard/ai", label: "AI 管理", icon: ICON.ai },
   { to: "/dashboard/pages", label: "页面管理", icon: ICON.pages },
   { to: "/dashboard/categories", label: "分类标签", icon: ICON.tag },
+  { to: "/dashboard/comments", label: "评论管理", icon: ICON.comments },
+  { to: "/dashboard/media", label: "媒体库", icon: ICON.media },
+  { to: "/dashboard/logs", label: "操作日志", icon: ICON.logs },
+  { to: "/dashboard/backups", label: "站点备份", icon: ICON.backup },
   { to: "/dashboard/users", label: "用户管理", icon: ICON.users },
   { to: "/dashboard/settings", label: "站点设置", icon: ICON.settings },
 ];
@@ -163,6 +226,10 @@ const TITLES: Array<[string, string]> = [
   ["/dashboard/pages/new", "新建页面"],
   ["/dashboard/pages", "页面管理"],
   ["/dashboard/categories", "分类 / 标签"],
+  ["/dashboard/comments", "评论管理"],
+  ["/dashboard/media", "媒体库"],
+  ["/dashboard/logs", "操作日志"],
+  ["/dashboard/backups", "站点备份"],
   ["/dashboard/users", "用户管理"],
   ["/dashboard/settings", "站点设置"],
   ["/dashboard", "控制台"],
@@ -244,7 +311,7 @@ export function AdminLayout() {
       <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-gray-200/70 bg-white/80 px-4 backdrop-blur dark:border-gray-800 dark:bg-gray-950/80 lg:hidden">
         <button
           onClick={() => setSidebarOpen(true)}
-          className="rounded-lg p-1.5 text-gray-600 transition hover:bg-gray-100"
+          className="rounded-lg p-1.5 text-gray-600 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
           aria-label="打开菜单"
         >
           <svg
@@ -260,7 +327,9 @@ export function AdminLayout() {
             />
           </svg>
         </button>
-        <h1 className="text-base font-semibold text-gray-900">{title}</h1>
+        <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+          {title}
+        </h1>
         <span className="grid h-8 w-8 place-content-center rounded-full bg-gray-100 text-xs font-bold text-gray-700 dark:bg-gray-800 dark:text-gray-200">
           {(user?.user_name || user?.email || "U").slice(0, 1).toUpperCase()}
         </span>
@@ -283,7 +352,7 @@ export function AdminLayout() {
         {/* Logo */}
         <div className="flex h-14 items-center justify-between px-4 lg:h-20 lg:justify-center lg:px-0">
           <a href="/" className="flex items-center gap-3 lg:justify-center">
-            <span className="grid h-9 w-9 place-content-center overflow-hidden rounded-xl bg-gray-100 lg:h-12 lg:w-12">
+            <span className="grid h-9 w-9 place-content-center overflow-hidden rounded-xl bg-gray-100 lg:h-12 lg:w-12 dark:bg-gray-800">
               {settings.avatar ? (
                 <img
                   src={resolveAsset(settings.avatar)}
@@ -291,16 +360,18 @@ export function AdminLayout() {
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <span className="text-lg font-bold text-gray-900">K</span>
+                <span className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                  K
+                </span>
               )}
             </span>
-            <span className="text-sm font-semibold text-gray-900 lg:hidden">
+            <span className="text-sm font-semibold text-gray-900 lg:hidden dark:text-gray-100">
               {settings.title || "Kimo"}
             </span>
           </a>
           <button
             onClick={() => setSidebarOpen(false)}
-            className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 lg:hidden"
+            className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 lg:hidden dark:hover:bg-gray-800"
             aria-label="关闭菜单"
           >
             <svg
@@ -336,8 +407,8 @@ export function AdminLayout() {
                 className={({ isActive }) =>
                   `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition lg:flex-col lg:justify-center lg:gap-1 lg:px-2 lg:py-2.5 ${
                     isActive
-                      ? "bg-gray-100 text-gray-900"
-                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                      ? "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100"
+                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-300"
                   }`
                 }
               >
@@ -359,7 +430,7 @@ export function AdminLayout() {
             <a
               href="/"
               title="返回前台"
-              className="flex flex-1 items-center justify-center gap-2 rounded-xl py-2 text-sm text-gray-500 transition hover:bg-gray-50 hover:text-gray-700 lg:h-11 lg:w-11 lg:flex-none"
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl py-2 text-sm text-gray-500 transition hover:bg-gray-50 hover:text-gray-700 lg:h-11 lg:w-11 lg:flex-none dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-300"
             >
               <svg
                 className="h-5 w-5"
@@ -404,17 +475,19 @@ export function AdminLayout() {
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:pl-0">
         {/* 桌面顶栏 */}
         <header className="hidden h-14 items-center justify-between border-b border-gray-200/70 bg-white/80 px-6 backdrop-blur dark:border-gray-800 dark:bg-gray-950/80 lg:flex">
-          <h1 className="text-lg font-semibold text-gray-900">{title}</h1>
+          <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            {title}
+          </h1>
           <div className="flex items-center gap-3">
             <div className="text-right text-xs">
-              <p className="font-medium text-gray-700">
+              <p className="font-medium text-gray-700 dark:text-gray-300">
                 {user?.user_name || user?.email}
               </p>
-              <p className="text-gray-400">
+              <p className="text-gray-400 dark:text-gray-500">
                 {user?.role === 0 ? "管理员" : "用户"}
               </p>
             </div>
-            <span className="grid h-8 w-8 place-content-center rounded-full bg-gray-100 text-xs font-bold text-gray-700">
+            <span className="grid h-8 w-8 place-content-center rounded-full bg-gray-100 text-xs font-bold text-gray-700 dark:bg-gray-800 dark:text-gray-200">
               {(user?.user_name || user?.email || "U")
                 .slice(0, 1)
                 .toUpperCase()}

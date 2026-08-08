@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { articleApi, resolveAsset } from "../../lib/api";
-import type { ArticleListItem } from "../../lib/types";
-import { Badge, EmptyState, Skeleton } from "../../components/ui";
+import { articleApi, categoryApi, resolveAsset } from "../../lib/api";
+import type { ArticleListItem, Category } from "../../lib/types";
+import {
+  Badge,
+  EmptyState,
+  PageHeader,
+  Skeleton,
+  btnPrimary,
+  inputCls,
+} from "../../components/ui";
+import { Pagination } from "../../components/Pagination";
 import { ConfirmDialog } from "../../components/Modal";
 import { useToast } from "../../lib/toast";
 import { formatDate } from "../../lib/format";
@@ -15,20 +23,35 @@ export function ManageArticles() {
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<ArticleListItem | null>(null);
   const [busy, setBusy] = useState(false);
+  // 筛选
+  const [keyword, setKeyword] = useState("");
+  const [categoryId, setCategoryId] = useState<number | "">("");
+  const [pageSize, setPageSize] = useState(10);
+  const [categories, setCategories] = useState<Category[]>([]);
   const { success, error } = useToast();
 
-  const load = useCallback((p: number) => {
-    setLoading(true);
-    articleApi
-      .list(p)
-      .then((res) => {
-        setArticles(res.items);
-        setTotalPage(res.total_page);
-        setTotal(res.total);
-      })
-      .catch(() => setArticles([]))
-      .finally(() => setLoading(false));
+  useEffect(() => {
+    categoryApi
+      .list()
+      .then(setCategories)
+      .catch(() => {});
   }, []);
+
+  const load = useCallback(
+    (p: number) => {
+      setLoading(true);
+      articleApi
+        .list(p, categoryId || undefined, keyword.trim() || undefined, pageSize)
+        .then((res) => {
+          setArticles(res.items);
+          setTotalPage(res.total_page);
+          setTotal(res.total);
+        })
+        .catch(() => setArticles([]))
+        .finally(() => setLoading(false));
+    },
+    [categoryId, keyword, pageSize],
+  );
 
   useEffect(() => {
     load(page);
@@ -56,17 +79,68 @@ export function ManageArticles() {
 
   return (
     <div className="fade-up space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-gray-500">共 {total} 篇文章</p>
-        <Link
-          to="/dashboard/articles/new"
-          className="flex items-center gap-1.5 rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 active:scale-[0.98]"
-        >
-          <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-            <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+      <PageHeader
+        title="文章管理"
+        desc={`共 ${total} 篇文章`}
+        action={
+          <Link to="/dashboard/articles/new" className={btnPrimary}>
+            <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+            </svg>
+            新建文章
+          </Link>
+        }
+      />
+
+      {/* 搜索 / 筛选工具栏 */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-0 flex-1 sm:max-w-xs">
+          <svg
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
+            />
           </svg>
-          新建文章
-        </Link>
+          <input
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && setPage(1)}
+            placeholder="搜索文章标题…"
+            className={`${inputCls} pl-9`}
+          />
+        </div>
+        <select
+          value={categoryId}
+          onChange={(e) =>
+            setCategoryId(e.target.value === "" ? "" : Number(e.target.value))
+          }
+          className={`${inputCls} w-auto sm:w-40`}
+        >
+          <option value="">全部分类</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={pageSize}
+          onChange={(e) => setPageSize(Number(e.target.value))}
+          className={`${inputCls} w-auto`}
+        >
+          {[5, 10, 20, 50].map((n) => (
+            <option key={n} value={n}>
+              {n} 条/页
+            </option>
+          ))}
+        </select>
       </div>
 
       {loading ? (
@@ -125,14 +199,14 @@ export function ManageArticles() {
               {/* 信息 */}
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <h3 className="truncate font-medium text-gray-800">
+                  <h3 className="truncate font-medium text-gray-800 dark:text-gray-100">
                     {a.title}
                   </h3>
                   {a.category_name && (
                     <Badge tone="gray">{a.category_name}</Badge>
                   )}
                 </div>
-                <p className="mt-1 flex items-center gap-3 text-xs text-gray-400">
+                <p className="mt-1 flex items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
                   <span>{formatDate(a.created)}</span>
                   {a.tags.length > 0 && (
                     <span className="truncate">
@@ -147,19 +221,19 @@ export function ManageArticles() {
                 <Link
                   to={`/article/${a.id}`}
                   target="_blank"
-                  className="rounded-lg px-3 py-2 text-xs font-medium text-gray-500 transition hover:bg-gray-100 active:bg-gray-100 sm:px-3 sm:py-1.5"
+                  className="rounded-lg px-3 py-2 text-xs font-medium text-gray-500 transition hover:bg-gray-100 active:bg-gray-100 sm:px-3 sm:py-1.5 dark:hover:bg-gray-800"
                 >
                   查看
                 </Link>
                 <Link
                   to={`/dashboard/articles/${a.id}/edit`}
-                  className="rounded-lg px-3 py-2 text-xs font-medium text-blue-600 transition hover:bg-blue-50 active:bg-blue-50 sm:px-3 sm:py-1.5"
+                  className="rounded-lg px-3 py-2 text-xs font-medium text-blue-600 transition hover:bg-blue-50 active:bg-blue-50 sm:px-3 sm:py-1.5 dark:hover:bg-blue-500/10"
                 >
                   编辑
                 </Link>
                 <button
                   onClick={() => setDeleting(a)}
-                  className="rounded-lg px-3 py-2 text-xs font-medium text-red-600 transition hover:bg-red-50 active:bg-red-50 sm:px-3 sm:py-1.5"
+                  className="rounded-lg px-3 py-2 text-xs font-medium text-red-600 transition hover:bg-red-50 active:bg-red-50 sm:px-3 sm:py-1.5 dark:hover:bg-red-500/10"
                 >
                   删除
                 </button>
@@ -171,24 +245,8 @@ export function ManageArticles() {
 
       {/* 分页 */}
       {!loading && totalPage > 1 && (
-        <div className="flex items-center justify-center gap-3 pt-2">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
-            className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm text-gray-600 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            ← 上一页
-          </button>
-          <span className="text-sm text-gray-500">
-            {page} / {totalPage}
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPage, p + 1))}
-            disabled={page >= totalPage}
-            className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm text-gray-600 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            下一页 →
-          </button>
+        <div className="flex items-center justify-center pt-2">
+          <Pagination page={page} totalPage={totalPage} onChange={setPage} />
         </div>
       )}
 

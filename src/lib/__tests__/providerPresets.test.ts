@@ -16,18 +16,26 @@ describe("providerPresets · 预设", () => {
     expect(ids).toContain("kimi");
     expect(ids).toContain("openai");
   });
-  it("DeepSeek 预设：接口 + 推理模型 + 别名", () => {
+  it("DeepSeek 预设：接口 + 最新 v4 + 历史别名", () => {
     const p = getPreset("deepseek")!;
-    expect(p.endpoint).toBe("https://api.deepseek.com/v1");
-    expect(p.model).toBe("deepseek-chat");
+    expect(p.endpoint).toBe("https://api.deepseek.com");
+    expect(p.model).toBe("deepseek-v4-flash");
+    expect(p.models).toContain("deepseek-v4-flash");
+    expect(p.models).toContain("deepseek-v4-pro");
+    expect(p.latest).toContain("deepseek-v4-flash");
     expect(p.models).toContain("deepseek-reasoner");
     expect(p.models).toContain("deepseek-v3.2");
     expect(p.models).toContain("deepseek-v3");
     expect(p.models).toContain("deepseek-r1");
   });
-  it("Kimi 预设：Moonshot 接口 + 长上下文模型 + K2 系列", () => {
+  it("Kimi 预设：Moonshot 接口 + 最新 K2.6/K3 + 历史模型", () => {
     const p = getPreset("kimi")!;
     expect(p.endpoint).toBe("https://api.moonshot.cn/v1");
+    expect(p.model).toBe("kimi-k2.6");
+    expect(p.models).toContain("kimi-k2.6");
+    expect(p.models).toContain("kimi-k3");
+    expect(p.models).toContain("kimi-k2.7-code");
+    expect(p.latest).toContain("kimi-k2.6");
     expect(p.models).toContain("moonshot-v1-128k");
     expect(p.models).toContain("kimi-latest");
     expect(p.models).toContain("kimi-k2-turbo-preview");

@@ -12,6 +12,7 @@ import {
   searchSegmented,
   applyFeedbackToSearch,
   getPatternScore,
+  rankAndConsolidate,
 } from "../searchPlanner";
 
 function animeType() {
@@ -48,14 +49,14 @@ describe("searchPlanner · splitSubQueries 查询分段", () => {
     expect(r[1]).toContain("Vue");
   });
 
-  it("中文顿号拆分", () => {
+  it("中文顿号不拆分（保留整句，避免过度切分噪音）", () => {
     const r = splitSubQueries(
       "苹果、华为、小米",
       "zh",
       generalType(),
       "standard",
     );
-    expect(r.length).toBe(3);
+    expect(r).toEqual(["苹果、华为、小米"]);
   });
 
   it("「还有」拆分", () => {
@@ -324,5 +325,147 @@ describe("searchPlanner · searchSegmented 编排", () => {
     expect(stages).toContain("planning");
     expect(stages).toContain("merging");
     expect(stages).toContain("done");
+  });
+});
+
+// ======================== rankAndConsolidate ========================
+
+describe("searchPlanner · rankAndConsolidate 相关性排序合并", () => {
+  const base = {
+    source: "x.com",
+    engine: "backend",
+    description: "",
+  };
+
+  it("URL 跟踪参数去重（同页不同追踪参数视为同一篇）", () => {
+    const results = [
+      {
+        ...base,
+        title: "React 19 发布",
+        url: "https://a.com/p?utm_source=twitter",
+      },
+      {
+        ...base,
+        title: "React 19 发布",
+        url: "https://a.com/p?utm_source=newsletter&utm_campaign=x",
+      },
+      {
+        ...base,
+        title: "React 19 新特性详解",
+        url: "https://b.com/react19",
+      },
+    ];
+    const r = rankAndConsolidate(results, "react 19 发布", { limit: 10 });
+    expect(r.length).toBe(2);
+  });
+
+  it("bing 点击追踪链接还原真实地址后去重", () => {
+    const real = "https://example.com/article";
+    const bing = "https://www.bing.com/ck/a?a=x&u=" + btoa(real);
+    const results = [
+      { ...base, title: "示例文章", url: bing },
+      { ...base, title: "示例文章", url: real },
+    ];
+    const r = rankAndConsolidate(results, "示例", { limit: 10 });
+    expect(r.length).toBe(1);
+    expect(r[0].url).toBe(real);
+  });
+
+  it("近重复标题去重（Dice ≥0.7 视为同一篇）", () => {
+    const results = [
+      { ...base, title: "React 19 新特性全面解析", url: "https://a.com/1" },
+      { ...base, title: "React 19 新特性全面解析", url: "https://b.com/2" },
+      { ...base, title: "完全不同的内容", url: "https://c.com/3" },
+    ];
+    const r = rankAndConsolidate(results, "react 19", { limit: 10 });
+    expect(r.length).toBe(2);
+  });
+
+  it("相关性排序：标题命中核心词优先", () => {
+    const results = [
+      {
+        ...base,
+        title: "Python 教程",
+        url: "https://a.com/python",
+        description: "学习 Python",
+      },
+      {
+        ...base,
+        title: "每天一道算法题",
+        url: "https://b.com/algo",
+        description: "Python 算法",
+      },
+      {
+        ...base,
+        title: "Python 入门指南",
+        url: "https://c.com/py",
+        description: "Python 基础教程",
+      },
+    ];
+    const r = rankAndConsolidate(results, "python 入门", { limit: 10 });
+    expect(r[0].title).toBe("Python 入门指南");
+  });
+
+  it("AI 兜底结果被降权排后", () => {
+    const results = [
+      {
+        ...base,
+        title: "AI 整理的 Python 内容",
+        url: "https://a.com/ai",
+        description: "Python 相关",
+        engine: "ai",
+      },
+      {
+        ...base,
+        title: "Python 入门指南",
+        url: "https://b.com/py",
+        description: "Python 基础教程",
+        engine: "backend",
+      },
+    ];
+    const r = rankAndConsolidate(results, "python 入门", { limit: 10 });
+    expect(r[0].engine).toBe("backend");
+  });
+
+  it("搜索引擎/点击追踪域不作为结果（降权）", () => {
+    const results = [
+      {
+        ...base,
+        title: "Python 入门",
+        url: "https://www.bing.com/ck/a?a=x",
+        description: "跳转",
+      },
+      {
+        ...base,
+        title: "Python 官方入门文档",
+        url: "https://python.org/getting-started",
+        description: "官方入门",
+      },
+    ];
+    const r = rankAndConsolidate(results, "python 入门", { limit: 10 });
+    expect(r[0].url).toContain("python.org");
+  });
+
+  it("limit 截取 top N", () => {
+    const titles = [
+      "Python 安装教程",
+      "Python 语法详解",
+      "Python 标准库",
+      "Python 性能优化",
+      "Python 并发编程",
+      "Python 单元测试",
+      "Python 部署指南",
+      "Python 生态工具",
+      "Python 常见问题",
+      "Python 进阶路线",
+    ];
+    const results = titles.map((title, i) => ({
+      ...base,
+      title,
+      url: `https://a.com/${i}`,
+      description: "Python 相关内容",
+    }));
+    const r = rankAndConsolidate(results, "python", { limit: 3 });
+    expect(r.length).toBe(3);
   });
 });

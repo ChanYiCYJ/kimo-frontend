@@ -122,16 +122,16 @@ export function ArticleEditor() {
   const aiEnabled = getAIConfig().enabled;
 
   const inputCls =
-    "w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-gray-400 focus:ring-2 focus:ring-gray-100";
+    "w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-gray-400 focus:ring-2 focus:ring-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:placeholder:text-gray-500";
 
   return (
     <div className="fade-up">
       {/* 顶栏：返回 + 标题 + 发布（紧凑） */}
-      <div className="sticky top-0 z-20 -mx-4 mb-4 flex items-center gap-2 border-b border-gray-200/70 bg-white/80 px-3 py-2.5 backdrop-blur sm:px-5 lg:top-14 lg:-mx-6 lg:-mt-4 lg:px-6 lg:py-2.5">
+      <div className="sticky top-0 z-20 -mx-4 mb-4 flex items-center gap-2 border-b border-gray-200/70 bg-white/80 px-3 py-2.5 backdrop-blur sm:px-5 lg:top-14 lg:-mx-6 lg:-mt-4 lg:px-6 lg:py-2.5 dark:border-gray-800 dark:bg-gray-950/80">
         <button
           onClick={() => navigate("/dashboard/articles")}
           title="返回"
-          className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
+          className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-300"
         >
           <svg
             className="h-5 w-5"
@@ -151,12 +151,12 @@ export function ArticleEditor() {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="输入文章标题..."
-          className="min-w-0 flex-1 bg-transparent text-xl font-semibold text-gray-900 outline-none placeholder:text-gray-300"
+          className="min-w-0 flex-1 bg-transparent text-xl font-semibold text-gray-900 outline-none placeholder:text-gray-300 dark:text-gray-100 dark:placeholder:text-gray-600"
         />
         <button
           onClick={handleSubmit}
           disabled={saving}
-          className="flex shrink-0 items-center gap-1.5 rounded-xl bg-gray-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 active:scale-[0.98] disabled:opacity-60 sm:gap-2 sm:px-5"
+          className="flex shrink-0 items-center gap-1.5 rounded-xl bg-gray-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 active:scale-[0.98] disabled:opacity-60 sm:gap-2 sm:px-5 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
         >
           {saving && (
             <svg
@@ -193,14 +193,21 @@ export function ArticleEditor() {
         {/* 正文编辑器：限宽居中，像写作产品（不撑满整页，避免“很长一条”） */}
         <div className="min-w-0">
           <div className="mx-auto w-full max-w-[760px]">
-            <MdEditor value={content} onChange={setContent} height={560} aiCommand={aiEnabled ? handleAiGenerate : undefined} />
+            <MdEditor
+              value={content}
+              onChange={setContent}
+              height={560}
+              aiCommand={aiEnabled ? handleAiGenerate : undefined}
+            />
           </div>
         </div>
 
         {/* 元信息面板（右侧 sticky） */}
         <aside className="lg:sticky lg:top-20 lg:self-start">
           <div className="card space-y-4 p-5">
-            <h2 className="text-sm font-semibold text-gray-700">文章设置</h2>
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+              文章设置
+            </h2>
 
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-500">
@@ -264,8 +271,8 @@ export function ArticleEditor() {
               <div
                 className={`flex h-28 cursor-pointer flex-col items-center justify-center gap-1.5 overflow-hidden rounded-xl border-2 border-dashed transition ${
                   coverImage
-                    ? "border-gray-300 bg-gray-100/50"
-                    : "border-gray-200 bg-white hover:border-gray-300"
+                    ? "border-gray-300 bg-gray-100/50 dark:border-gray-600 dark:bg-gray-800/50"
+                    : "border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-gray-600"
                 }`}
                 onClick={() => coverInputRef.current?.click()}
               >

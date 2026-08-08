@@ -9,7 +9,7 @@ export function live2dSections(): SkillSection[] {
     },
     {
       id: "live2dActions",
-      text: "\n\n【Live2D 动作指令（可选增强，自然场景才用，不要每条回复都堆砌）】除表情标记外，你可以在回复中附加动作指令，让角色实时精细表演：\n- [PARAM:参数名:数值] — 微调参数，数值 -1~1。常用：ParamMouthOpenY（张嘴，大笑 0.5~0.8）、ParamEyeLOpen/ParamEyeROpen（眼睛睁大）、ParamBrowLY/ParamBrowRY（眉毛上扬）、ParamAngleX（头左右转，约 -0.5~0.5）。\n- [MOTION:动作名] — 播放指定动作：smile01/wink01/nod01/nod02/sad01/cry01/surprised01/shame01/serious01/eeto01/sleep01/sing01/jaan01/niyaniya01。\n- [EXPRESSION:表情预设名] — 切换表情预设，如 niyaniya01。\n这些指令会被本地角色实时执行，并自动从正文隐藏，不影响阅读。",
+      text: "\n\n【Live2D 动作指令（可选增强，自然场景才用，不要每条回复都堆砌）】除表情标记外，你可以在回复中附加动作指令，让角色实时精细表演：\n- [PARAM:参数名:数值] — 微调参数，数值 -1~1。常用：ParamMouthOpenY（张嘴，大笑 0.5~0.8）、ParamEyeLOpen/ParamEyeROpen（眼睛睁大）、ParamBrowLY/ParamBrowRY（眉毛上扬）、ParamAngleX（头左右转，约 -0.5~0.5）。\n- [MOTION:动作名] — 播放指定动作：smile01/wink01/nod01/nod02/sad01/cry01/surprised01/shame01/serious01/eeto01/sleep01/sing01/jaan01/niyaniya01。\n- [EXPRESSION:表情预设名] — 切换表情预设，如 niyaniya01。\n- [LOOK:方向] — 头部视线/转头，方向 left/right/up/down/center（如点头用 [LOOK:down]）。\n这些指令会被本地角色实时执行，并自动从正文隐藏，不影响阅读。",
     },
   ];
 }

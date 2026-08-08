@@ -32,6 +32,7 @@
     "@milkdown/prose": "^7.22.0",
     "@milkdown/react": "^7.22.0",
     "@milkdown/utils": "^7.22.0",
+    "@mozilla/readability": "^0.6.0",
     "dompurify": "^3.4.13",
     "highlight.js": "^11.11.1",
     "lucide-react": "^1.28.0",

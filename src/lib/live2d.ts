@@ -32,6 +32,8 @@ export interface Live2dSettings {
   textures: string[];
   motions: Record<string, { file: string }[]>;
   expressions: { name: string; file: string }[];
+  /** 命中区域（点击/触摸交互用）：{ name, id }，id 为模型 drawable 名/索引 */
+  hitAreas?: { name: string; id: string }[];
 }
 
 export interface Live2dModelInfo {
@@ -238,6 +240,18 @@ export function buildLive2dSettings(
 export const THIRD_PARTY_DEMO_MODEL =
   "https://raw.githubusercontent.com/guansss/pixi-live2d-display/master/test/assets/shizuku/shizuku.model.json";
 
+/** Cubism3/4 示例模型（.model3.json，升级双运行时后支持；经 /api/live2d/proxy 加载） */
+export interface Cubism34Model {
+  name: string;
+  url: string;
+}
+export const CUBISM34_MODELS: Cubism34Model[] = [
+  {
+    name: "Mao（Cubism3 · 发型/表情/口型组齐全）",
+    url: "https://model.hacxy.cn/Mao/Mao.model3.json",
+  },
+];
+
 /** 是否为第三方 model.json 输入（http(s) 网址，或含路径/ .json） */
 export function isThirdPartyModelInput(v: string): boolean {
   const s = (v || "").trim();
@@ -303,6 +317,77 @@ export async function fetchThirdPartyModel(
       file: absoluteLive2dProxyUrl(abs(e.file)),
     })),
   };
+}
+
+// ---- Cubism3/4（.model3.json）加载链路（升级到双运行时后支持）----
+
+/** 是否为 Cubism3/4 模型入口（.model3.json） */
+export function isModel3Url(v: string): boolean {
+  return /\.model3\.json$/i.test((v || "").trim());
+}
+
+/**
+ * 解析第三方 Cubism3/4 model3.json 并构造 pixi-live2d-display settings。
+ * 结构：FileReferences.Moc/Textures/Physics/Pose/Expressions/Motions + HitAreas + Groups。
+ * 全部资源转绝对代理 URL（同 fetchThirdPartyModel 的处理）。
+ */
+export async function buildLive2dSettingsFromModel3(
+  modelUrl: string,
+): Promise<Live2dSettings> {
+  const res = await fetch(live2dProxyUrl(modelUrl));
+  if (!res.ok) throw new Error("model3.json HTTP " + res.status);
+  const json: unknown = await res.json();
+  const j = (json || {}) as {
+    FileReferences?: {
+      Moc?: string;
+      Textures?: string[];
+      Physics?: string;
+      Pose?: string;
+      Expressions?: { Name?: string; File?: string }[];
+      Motions?: Record<string, { File?: string }[]>;
+    };
+    HitAreas?: { Id?: string; Name?: string }[];
+  };
+  const fr = j.FileReferences || {};
+  if (!fr.Moc) throw new Error("model3.json 缺少 FileReferences.Moc");
+  const base = modelUrl.slice(0, modelUrl.lastIndexOf("/") + 1);
+  const abs = (p: string): string => {
+    try {
+      return new URL(p, base).href;
+    } catch {
+      return base + p;
+    }
+  };
+  const motions: Record<string, { file: string }[]> = {};
+  for (const [k, arr] of Object.entries(fr.Motions || {})) {
+    motions[k] = (arr || [])
+      .filter((m) => m && m.File)
+      .map((m) => ({ file: absoluteLive2dProxyUrl(abs(m.File!)) }));
+  }
+  const hitAreas = (j.HitAreas || [])
+    .filter((h) => h && h.Id && h.Name)
+    .map((h) => ({ name: h.Name!, id: h.Id! }));
+  return {
+    url: modelUrl,
+    model: absoluteLive2dProxyUrl(abs(fr.Moc)),
+    physics: fr.Physics ? absoluteLive2dProxyUrl(abs(fr.Physics)) : undefined,
+    textures: (fr.Textures || []).map((t) => absoluteLive2dProxyUrl(abs(t))),
+    motions,
+    expressions: (fr.Expressions || []).map((e) => ({
+      name: e.Name || "exp",
+      file: absoluteLive2dProxyUrl(abs(e.File || "")),
+    })),
+    hitAreas: hitAreas.length ? hitAreas : undefined,
+  };
+}
+
+/** 统一第三方模型加载入口：model3（.model3.json）走 Cubism3/4 链路，否则 Cubism2 */
+export async function fetchThirdPartyModelSafe(
+  modelUrl: string,
+): Promise<Live2dSettings> {
+  return isModel3Url(modelUrl)
+    ? buildLive2dSettingsFromModel3(modelUrl)
+    : fetchThirdPartyModel(modelUrl);
 }
 
 // ---- 表情（借鉴 SoulLink_Live2D 预设 + 平滑过渡）----
@@ -468,6 +553,66 @@ export const EMOTION_MOTIONS: Record<Emotion, string[]> = {
   sleepy: ["sleep01", "sleep02"],
   wink: ["wink01", "smile05", "smile06"],
 };
+
+// ---- 点击/触摸命中反应（借鉴开源看板娘"戳头/摸身"互动，不限于表情）----
+// 桌面 + 手机沉浸都启用：点角色头/身触发对应情绪动作 + 表情。
+
+/** 命中区域（按角色包围盒上下划分：上部=头，下部=身） */
+export type HitRegion = "head" | "body";
+
+/** 区域 → 反应：情绪 + 可用动作候选（随机选一个，播不出来则用参数表情兜底） */
+export interface TapReaction {
+  emotion: Emotion;
+  motions: string[];
+}
+export const TAP_REACTIONS: Record<HitRegion, TapReaction> = {
+  head: {
+    emotion: "surprised",
+    motions: ["surprised01", "surprised02", "surprised03", "scared01"],
+  },
+  body: {
+    emotion: "happy",
+    motions: ["smile01", "smile02", "niyaniya01", "oowarai01", "jaan01"],
+  },
+};
+
+/** 随机挑一个区域反应（同一区域每次反应动作不同） */
+export function pickTapReaction(region: HitRegion): TapReaction {
+  const r = TAP_REACTIONS[region] || TAP_REACTIONS.body;
+  const list = r.motions.length ? r.motions : ["idle01"];
+  return {
+    emotion: r.emotion,
+    motions: [list[Math.floor(Math.random() * list.length)]],
+  };
+}
+
+/**
+ * 由点击/触摸点在角色包围盒内的位置判断命中区域（纯函数，可单测）。
+ * 模型以 (cx, cy) 为中心、包围盒宽高 (w, h)（已含缩放）。
+ * @returns "head"（上部 ~45%）| "body"（下部）| null（盒外）
+ */
+export function resolveHitRegion(
+  px: number,
+  py: number,
+  cx: number,
+  cy: number,
+  w: number,
+  h: number,
+): HitRegion | null {
+  if (!(w > 0) || !(h > 0)) return null;
+  if (Math.abs(px - cx) > w / 2 || Math.abs(py - cy) > h / 2) return null;
+  return py < cy - h * 0.05 ? "head" : "body";
+}
+
+/**
+ * 音频 RMS 音量（0~1）→ 嘴张幅度（ParamMouthOpenY 0~0.6）映射（纯函数，可单测）。
+ * 低音量保持微张（0.06）避免"僵住闭嘴"，高音量渐进到最大开合。
+ */
+export function rmsToMouth(rms: number): number {
+  if (!Number.isFinite(rms) || rms <= 0) return 0.06;
+  const v = Math.min(1, rms * 3.2); // 放大中低音量区间
+  return Math.min(0.6, 0.06 + v * 0.54); // 0.06 ~ 0.6（钳制浮点误差）
+}
 
 /** 本地规则情感检测（关键词 + 表情符号，按命中数取最高；无命中 → neutral） */
 const EMOTION_RULES: ReadonlyArray<readonly [Emotion, RegExp]> = [
@@ -811,9 +956,24 @@ export interface Live2dActionCommands {
   params: Live2dParamCmd[];
   motion?: string;
   expression?: string;
+  /** 头部视线方向（[LOOK:left] 等，驱动 ParamAngleX/Y 短时） */
+  look?: LookDirection;
 }
 
-const ACTION_TAG_NAMES = "(?:PARAM|参数|MOTION|动作|EXPRESSION|表情预设)";
+/** 视线方向 */
+export type LookDirection = "left" | "right" | "up" | "down" | "center";
+
+/** 视线方向 → ParamAngleX/Y 目标角度（左/右摇头、上/下点头） */
+export const LOOK_TARGETS: Record<LookDirection, { x: number; y: number }> = {
+  left: { x: -30, y: 0 },
+  right: { x: 30, y: 0 },
+  up: { x: 0, y: -18 },
+  down: { x: 0, y: 18 },
+  center: { x: 0, y: 0 },
+};
+
+const ACTION_TAG_NAMES =
+  "(?:PARAM|参数|MOTION|动作|EXPRESSION|表情预设|LOOK|看|视线)";
 
 /** 单条指令正则（[PARAM:ParamEyeLOpen:0.8] 等；值可带小数/负号/空格） */
 const ACTION_CMD_RE = new RegExp(
@@ -830,6 +990,7 @@ export function parseActionCommands(text: string): Live2dActionCommands {
   const params = new Map<string, number>();
   let motion: string | undefined;
   let expression: string | undefined;
+  let look: LookDirection | undefined;
   const t = text || "";
   ACTION_CMD_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
@@ -848,12 +1009,33 @@ export function parseActionCommands(text: string): Live2dActionCommands {
       if (body) motion = body;
     } else if (kind === "EXPRESSION" || kind === "表情预设") {
       if (body) expression = body;
+    } else if (kind === "LOOK" || kind === "看" || kind === "视线") {
+      const dir = body.toLowerCase().replace(/[\s，,。、]/g, "");
+      // 中文方向词归一化（左/右/上/下/中间 → left/right/up/down/center）
+      const zhMap: Record<string, LookDirection> = {
+        左: "left",
+        左边: "left",
+        右: "right",
+        右边: "right",
+        上: "up",
+        上面: "up",
+        下: "down",
+        下面: "down",
+        中: "center",
+        中间: "center",
+        中央: "center",
+        正: "center",
+        正中: "center",
+      };
+      const normalized = zhMap[dir] || dir;
+      if (normalized in LOOK_TARGETS) look = normalized as LookDirection;
     }
   }
   return {
     params: [...params.entries()].map(([id, value]) => ({ id, value })),
     motion,
     expression,
+    look,
   };
 }
 
@@ -861,7 +1043,7 @@ export function parseActionCommands(text: string): Live2dActionCommands {
 export function stripActionCommands(text: string): string {
   return (text || "")
     .replace(
-      /[\[【]\s*(?:PARAM|参数|MOTION|动作|EXPRESSION|表情预设)\s*[:：]\s*[^\]】\n]{1,60}?[\]】]/gi,
+      /[\[【]\s*(?:PARAM|参数|MOTION|动作|EXPRESSION|表情预设|LOOK|看|视线)\s*[:：]\s*[^\]】\n]{1,60}?[\]】]/gi,
       "",
     )
     .trim();

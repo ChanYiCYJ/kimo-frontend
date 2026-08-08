@@ -7,7 +7,7 @@ import {
 } from "../../lib/types";
 import { PageSpinner } from "../../components/Spinner";
 import { ConfirmDialog } from "../../components/Modal";
-import { EmptyState } from "../../components/ui";
+import { EmptyState, Switch, btnPrimary } from "../../components/ui";
 import { useToast } from "../../lib/toast";
 import { useSite } from "../../lib/site";
 import { getAIConfig, saveAIConfig, type AIConfig } from "../../lib/ai";
@@ -180,13 +180,15 @@ export function Settings() {
   };
 
   const inputCls =
-    "w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-gray-400 focus:ring-2 focus:ring-gray-100";
+    "w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-gray-400 focus:ring-2 focus:ring-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:placeholder:text-gray-500";
 
   return (
     <div className="fade-up max-w-3xl space-y-6">
       {/* 基本设置 */}
       <section className="card space-y-4 p-6">
-        <h2 className="text-base font-semibold text-gray-800">基本设置</h2>
+        <h2 className="text-base font-semibold text-gray-800 dark:text-gray-100">
+          基本设置
+        </h2>
 
         <div className="flex items-center gap-4">
           <span className="grid h-14 w-14 place-content-center overflow-hidden rounded-2xl bg-gray-100 dark:bg-gray-800">
@@ -197,7 +199,9 @@ export function Settings() {
                 className="h-full w-full object-cover"
               />
             ) : (
-              <span className="text-xl font-bold text-gray-900">K</span>
+              <span className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                K
+              </span>
             )}
           </span>
           <div>
@@ -212,7 +216,7 @@ export function Settings() {
             <button
               onClick={() => avatarInputRef.current?.click()}
               disabled={uploading}
-              className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm text-gray-600 transition hover:bg-gray-50 disabled:opacity-60"
+              className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm text-gray-600 transition hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
             >
               {uploading ? "上传中..." : "上传头像"}
             </button>
@@ -251,102 +255,46 @@ export function Settings() {
         ))}
 
         {/* 开放注册开关 */}
-        <div className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50/60 px-4 py-3">
-          <div>
-            <p className="text-sm font-medium text-gray-700">开放注册</p>
-            <p className="mt-0.5 text-xs text-gray-400">
-              关闭后，新用户无法在登录页注册（后端也会拒绝注册请求）
-            </p>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={form.allow_register !== "0"}
-            onClick={() =>
-              setForm((f) => ({
-                ...f,
-                allow_register: f.allow_register === "0" ? "1" : "0",
-              }))
+        <div className="rounded-xl border border-gray-100 p-4 dark:border-gray-800">
+          <Switch
+            on={form.allow_register !== "0"}
+            onChange={(v) =>
+              setForm((f) => ({ ...f, allow_register: v ? "1" : "0" }))
             }
-            className={`relative h-6 w-11 shrink-0 rounded-full transition ${
-              form.allow_register !== "0" ? "bg-gray-900" : "bg-gray-300"
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
-                form.allow_register !== "0" ? "left-[22px]" : "left-0.5"
-              }`}
-            />
-          </button>
+            label="开放注册"
+            sub="关闭后，新用户无法在登录页注册（后端也会拒绝注册请求）"
+          />
         </div>
 
         {/* 菜单显示开关 */}
         <div className="space-y-3">
-          <p className="text-sm font-medium text-gray-700">菜单栏显示</p>
-          <div className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50/60 px-4 py-3">
-            <div>
-              <p className="text-sm text-gray-700">后台入口</p>
-              <p className="text-xs text-gray-400">
-                在顶部菜单栏显示「管理后台」链接
-              </p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={form.show_dashboard !== "0"}
-              onClick={() =>
-                setForm((f) => ({
-                  ...f,
-                  show_dashboard: f.show_dashboard === "0" ? "1" : "0",
-                }))
+          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            菜单栏显示
+          </p>
+          <div className="rounded-xl border border-gray-100 p-4 dark:border-gray-800">
+            <Switch
+              on={form.show_dashboard !== "0"}
+              onChange={(v) =>
+                setForm((f) => ({ ...f, show_dashboard: v ? "1" : "0" }))
               }
-              className={`relative h-6 w-11 shrink-0 rounded-full transition ${
-                form.show_dashboard !== "0" ? "bg-gray-900" : "bg-gray-300"
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
-                  form.show_dashboard !== "0" ? "left-[22px]" : "left-0.5"
-                }`}
-              />
-            </button>
+              label="后台入口"
+              sub="在顶部菜单栏显示「管理后台」链接"
+            />
           </div>
-          <div className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50/60 px-4 py-3">
-            <div>
-              <p className="text-sm text-gray-700">自定义页面</p>
-              <p className="text-xs text-gray-400">
-                在顶部菜单栏显示自定义页面链接
-              </p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={form.show_pages !== "0"}
-              onClick={() =>
-                setForm((f) => ({
-                  ...f,
-                  show_pages: f.show_pages === "0" ? "1" : "0",
-                }))
+          <div className="rounded-xl border border-gray-100 p-4 dark:border-gray-800">
+            <Switch
+              on={form.show_pages !== "0"}
+              onChange={(v) =>
+                setForm((f) => ({ ...f, show_pages: v ? "1" : "0" }))
               }
-              className={`relative h-6 w-11 shrink-0 rounded-full transition ${
-                form.show_pages !== "0" ? "bg-gray-900" : "bg-gray-300"
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
-                  form.show_pages !== "0" ? "left-[22px]" : "left-0.5"
-                }`}
-              />
-            </button>
+              label="自定义页面"
+              sub="在顶部菜单栏显示自定义页面链接"
+            />
           </div>
         </div>
 
         <div className="flex justify-end">
-          <button
-            onClick={save}
-            disabled={saving}
-            className="flex items-center gap-2 rounded-xl bg-gray-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 active:scale-[0.98] disabled:opacity-60"
-          >
+          <button onClick={save} disabled={saving} className={btnPrimary}>
             {saving && (
               <svg
                 className="h-4 w-4 animate-spin"
@@ -375,23 +323,19 @@ export function Settings() {
 
       {/* AI 改写设置：默认使用「AI 管理」中的助手（本地存储，不写入站点键值） */}
       <section className="card space-y-4 p-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-gray-800">AI 改写</h2>
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-600">
-            <input
-              type="checkbox"
-              checked={ai.enabled}
-              onChange={(e) =>
-                setAi((a) => ({ ...a, enabled: e.target.checked }))
-              }
-              className="h-4 w-4 accent-gray-900"
-            />
-            启用
-          </label>
+        <h2 className="text-base font-semibold text-gray-800 dark:text-gray-100">
+          AI 改写
+        </h2>
+        <div className="rounded-xl border border-gray-100 p-4 dark:border-gray-800">
+          <Switch
+            on={ai.enabled}
+            onChange={(v) => setAi((a) => ({ ...a, enabled: v }))}
+            label="启用 AI 改写"
+            sub="在文章编辑器的工具栏中使用「AI 改写」按钮"
+          />
         </div>
         <p className="text-xs leading-relaxed text-gray-400">
-          在文章编辑器的工具栏中使用「AI 改写」按钮。默认使用「AI 管理」中创建的
-          AI 助手；请先到「AI 管理」创建助手，
+          默认使用「AI 管理」中创建的 AI 助手；请先到「AI 管理」创建助手，
           并在此选择用于改写文章的那个助手。也可手动指定 OpenAI
           兼容接口作为回退。
         </p>
@@ -474,7 +418,7 @@ export function Settings() {
               saveAIConfig(ai);
               success("AI 改写配置已保存");
             }}
-            className="rounded-xl bg-gray-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 active:scale-[0.98]"
+            className={btnPrimary}
           >
             保存 AI 改写配置
           </button>
@@ -483,76 +427,39 @@ export function Settings() {
 
       {/* 功能开关 */}
       <section className="card space-y-4 p-6">
-        <h2 className="text-base font-semibold text-gray-800">功能开关</h2>
-        <div className="flex items-center justify-between rounded-xl border border-gray-100 p-4 dark:border-gray-800">
-          <div>
-            <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-              AI 对话中「写文章」
-            </p>
-            <p className="text-xs text-gray-400">
-              开启后，在 /ai 的「＋」菜单会出现「写文章」，可直接调用后端 API
-              创建文章（需登录有权限的账号）。
-            </p>
-          </div>
-          <label className="flex cursor-pointer items-center">
-            <input
-              type="checkbox"
-              checked={form.enable_ai_articles === "1"}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  enable_ai_articles: e.target.checked ? "1" : "0",
-                }))
-              }
-              className="h-4 w-4 accent-gray-900"
-            />
-          </label>
+        <h2 className="text-base font-semibold text-gray-800 dark:text-gray-100">
+          功能开关
+        </h2>
+        <div className="rounded-xl border border-gray-100 p-4 dark:border-gray-800">
+          <Switch
+            on={form.enable_ai_articles === "1"}
+            onChange={(v) =>
+              setForm((f) => ({
+                ...f,
+                enable_ai_articles: v ? "1" : "0",
+              }))
+            }
+            label="AI 对话中「写文章」"
+            sub="开启后，在 /ai 的「＋」菜单会出现「写文章」，可直接调用后端 API 创建文章（需登录有权限的账号）。"
+          />
         </div>
-        <div className="flex items-center justify-between rounded-xl border border-gray-100 p-4 dark:border-gray-800">
-          <div>
-            <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-              主页「AI」菜单
-            </p>
-            <p className="text-xs text-gray-400">
-              关闭后首页导航不再显示「AI」入口（show_ai）。
-            </p>
-          </div>
-          <label className="flex cursor-pointer items-center">
-            <input
-              type="checkbox"
-              checked={form.show_ai !== "0"}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  show_ai: e.target.checked ? "1" : "0",
-                }))
-              }
-              className="h-4 w-4 accent-gray-900"
-            />
-          </label>
+        <div className="rounded-xl border border-gray-100 p-4 dark:border-gray-800">
+          <Switch
+            on={form.show_ai !== "0"}
+            onChange={(v) => setForm((f) => ({ ...f, show_ai: v ? "1" : "0" }))}
+            label="主页「AI」菜单"
+            sub="关闭后首页导航不再显示「AI」入口（show_ai）。"
+          />
         </div>
-        <div className="flex items-center justify-between rounded-xl border border-gray-100 p-4 dark:border-gray-800">
-          <div>
-            <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-              访客自定义模型 API
-            </p>
-            <p className="text-xs text-gray-400">
-              关闭后访客不能在侧边栏填写自己的模型 API（enable_custom_api）。
-            </p>
-          </div>
-          <label className="flex cursor-pointer items-center">
-            <input
-              type="checkbox"
-              checked={form.enable_custom_api !== "0"}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  enable_custom_api: e.target.checked ? "1" : "0",
-                }))
-              }
-              className="h-4 w-4 accent-gray-900"
-            />
-          </label>
+        <div className="rounded-xl border border-gray-100 p-4 dark:border-gray-800">
+          <Switch
+            on={form.enable_custom_api !== "0"}
+            onChange={(v) =>
+              setForm((f) => ({ ...f, enable_custom_api: v ? "1" : "0" }))
+            }
+            label="访客自定义模型 API"
+            sub="关闭后访客不能在侧边栏填写自己的模型 API（enable_custom_api）。"
+          />
         </div>
         <div className="rounded-xl border border-gray-100 p-4 dark:border-gray-800">
           <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
@@ -617,31 +524,18 @@ export function Settings() {
 
       {/* Live2D 看板娘 */}
       <section className="card space-y-4 p-6">
-        <h2 className="text-base font-semibold text-gray-800">Live2D 看板娘</h2>
-        <div className="flex items-center justify-between rounded-xl border border-gray-100 p-4 dark:border-gray-800">
-          <div>
-            <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-              启用 Live2D 看板娘
-            </p>
-            <p className="text-xs text-gray-400">
-              开启后 /ai 对话的 Agent
-              面板会出现「Live2D」tab，角色随对话实时更换情绪。模型来自
-              bestdori.com（BanG Dream 角色）。
-            </p>
-          </div>
-          <label className="flex cursor-pointer items-center">
-            <input
-              type="checkbox"
-              checked={form.live2d_enable !== "0"}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  live2d_enable: e.target.checked ? "1" : "0",
-                }))
-              }
-              className="h-4 w-4 accent-gray-900"
-            />
-          </label>
+        <h2 className="text-base font-semibold text-gray-800 dark:text-gray-100">
+          Live2D 看板娘
+        </h2>
+        <div className="rounded-xl border border-gray-100 p-4 dark:border-gray-800">
+          <Switch
+            on={form.live2d_enable !== "0"}
+            onChange={(v) =>
+              setForm((f) => ({ ...f, live2d_enable: v ? "1" : "0" }))
+            }
+            label="启用 Live2D 看板娘"
+            sub="开启后 /ai 对话的 Agent 面板会出现「Live2D」tab，角色随对话实时更换情绪。模型来自 bestdori.com（BanG Dream 角色）。"
+          />
         </div>
         <div className="rounded-xl border border-gray-100 p-4 dark:border-gray-800">
           <label className="mb-1 block text-xs text-gray-500">
@@ -664,7 +558,9 @@ export function Settings() {
 
       {/* 全部键值 */}
       <section className="card space-y-4 p-6">
-        <h2 className="text-base font-semibold text-gray-800">全部设置项</h2>
+        <h2 className="text-base font-semibold text-gray-800 dark:text-gray-100">
+          全部设置项
+        </h2>
 
         <div className="flex flex-col gap-2 sm:flex-row">
           <input
@@ -681,7 +577,7 @@ export function Settings() {
           />
           <button
             onClick={addCustomKey}
-            className="shrink-0 rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-700"
+            className="shrink-0 rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-700 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300"
           >
             添加
           </button>
@@ -690,16 +586,18 @@ export function Settings() {
         {allKeys.size === 0 ? (
           <EmptyState title="暂无设置项" />
         ) : (
-          <div className="overflow-hidden rounded-xl border border-gray-100">
+          <div className="overflow-hidden rounded-xl border border-gray-100 dark:border-gray-800">
             {[...allKeys].map((key, i) => (
               <div
                 key={key}
                 className={`flex items-center justify-between gap-3 px-4 py-2.5 ${
-                  i % 2 === 0 ? "bg-white" : "bg-gray-50/50"
+                  i % 2 === 0
+                    ? "bg-white dark:bg-gray-900"
+                    : "bg-gray-50/50 dark:bg-gray-800/50"
                 }`}
               >
                 <div className="min-w-0">
-                  <p className="font-mono text-xs font-medium text-gray-700">
+                  <p className="font-mono text-xs font-medium text-gray-700 dark:text-gray-300">
                     {key}
                   </p>
                   <p className="truncate text-sm text-gray-400">
@@ -708,7 +606,7 @@ export function Settings() {
                 </div>
                 <button
                   onClick={() => setDeletingKey(key)}
-                  className="shrink-0 rounded-lg px-2 py-1 text-xs text-red-500 transition hover:bg-red-50"
+                  className="shrink-0 rounded-lg px-2 py-1 text-xs text-red-500 transition hover:bg-red-50 dark:hover:bg-red-500/10"
                 >
                   删除
                 </button>

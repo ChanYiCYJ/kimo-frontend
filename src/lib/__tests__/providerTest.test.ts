@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   testModelConnection,
+  fetchProviderModels,
   formatLatency,
   type TestTarget,
 } from "../providerTest";
@@ -194,5 +195,75 @@ describe("providerTest · formatLatency", () => {
   it("空值返回空串", () => {
     expect(formatLatency(undefined)).toBe("");
     expect(formatLatency(null as unknown as number)).toBe("");
+  });
+});
+
+describe("providerTest · fetchProviderModels（自动搜索模型）", () => {
+  it("成功拉取模型列表", async () => {
+    const r = await fetchProviderModels(
+      { endpoint: "https://api.deepseek.com", apiKey: "sk" },
+      makeFetch(
+        jsonResponse(200, {
+          object: "list",
+          data: [
+            { id: "deepseek-v4-flash" },
+            { id: "deepseek-v4-pro" },
+            { id: "deepseek-reasoner" },
+          ],
+        }),
+      ),
+    );
+    expect(r.ok).toBe(true);
+    expect(r.models).toContain("deepseek-v4-flash");
+    expect(r.models).toHaveLength(3);
+    expect(r.message).toContain("3 个模型");
+  });
+  it("去掉尾斜杠后请求 /models", async () => {
+    let calledUrl = "";
+    const fetchImpl = (async (url: string) => {
+      calledUrl = String(url);
+      return jsonResponse(200, { data: [{ id: "m1" }] });
+    }) as unknown as typeof fetch;
+    await fetchProviderModels(
+      { endpoint: "https://api.moonshot.cn/v1/", apiKey: "sk" },
+      fetchImpl,
+    );
+    expect(calledUrl).toBe("https://api.moonshot.cn/v1/models");
+  });
+  it("缺少接口地址 / API Key", async () => {
+    const noEp = await fetchProviderModels({ endpoint: "", apiKey: "k" });
+    expect(noEp.ok).toBe(false);
+    expect(noEp.message).toContain("接口地址");
+    const noKey = await fetchProviderModels({
+      endpoint: "https://x.com",
+      apiKey: " ",
+    });
+    expect(noKey.ok).toBe(false);
+    expect(noKey.message).toContain("API Key");
+  });
+  it("401 返回认证失败", async () => {
+    const r = await fetchProviderModels(
+      { endpoint: "https://api.deepseek.com", apiKey: "bad" },
+      makeFetch(jsonResponse(401, {})),
+    );
+    expect(r.ok).toBe(false);
+    expect(r.models).toEqual([]);
+    expect(r.message).toContain("认证失败");
+  });
+  it("200 但无 data 列表视为不支持", async () => {
+    const r = await fetchProviderModels(
+      { endpoint: "https://x.com", apiKey: "sk" },
+      makeFetch(jsonResponse(200, { object: "list" })),
+    );
+    expect(r.ok).toBe(false);
+    expect(r.message).toContain("不支持 /models");
+  });
+  it("网络异常返回网络错误", async () => {
+    const r = await fetchProviderModels(
+      { endpoint: "https://x.com", apiKey: "sk" },
+      makeFetch(okResponse(), { throwOnCall: true }),
+    );
+    expect(r.ok).toBe(false);
+    expect(r.message).toContain("网络错误");
   });
 });

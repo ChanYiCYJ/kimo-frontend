@@ -141,6 +141,69 @@ export function saveTtsPref(on: boolean): void {
   lsSet(KEY_TTS, on ? "1" : "0");
 }
 
+// ---- 音频 TTS（可选）：朗读时若配置了「可返回音频的 TTS 地址」，则用真实音频波形驱动口型（speakAudio），
+//      否则回退浏览器 speechSynthesis + 文本时长估算（speakText）。
+//      地址模板支持 {text} 占位符（会被 URL 编码后的文本替换）；无占位符则文本拼在 ?text= 后。----
+const KEY_TTS_AUDIO_URL = "kimo_ai_tts_audio_url";
+export function loadTtsAudioUrl(): string {
+  return (lsGet(KEY_TTS_AUDIO_URL) || "").trim();
+}
+export function saveTtsAudioUrl(url: string): void {
+  lsSet(KEY_TTS_AUDIO_URL, (url || "").trim());
+}
+
+/** 由模板 + 文本构造音频 URL（纯函数，可单测）：有 {text} 占位符则替换，否则拼接 ?text= */
+export function buildTtsAudioUrl(
+  template: string,
+  text: string,
+): string | null {
+  const t = (template || "").trim();
+  const txt = (text || "").trim();
+  if (!t || !txt) return null;
+  const encoded = encodeURIComponent(txt);
+  if (t.includes("{text}")) return t.replace(/\{text\}/g, encoded);
+  const sep = t.includes("?") ? "&" : "?";
+  return t + sep + "text=" + encoded;
+}
+
+/** 朗读模式：browser=浏览器语音（speechSynthesis+文本估算口型）；audio=音频 TTS（真实波形驱动口型，AI 回复更简短口语化） */
+export type TtsMode = "browser" | "audio";
+const KEY_TTS_MODE = "kimo_ai_tts_mode";
+/** 读取朗读模式：音频模式仅在「保存了音频 TTS 地址」时生效，否则回退浏览器朗读 */
+export function loadTtsMode(): TtsMode {
+  return lsGet(KEY_TTS_MODE) === "audio" && loadTtsAudioUrl()
+    ? "audio"
+    : "browser";
+}
+export function saveTtsMode(mode: TtsMode): void {
+  lsSet(KEY_TTS_MODE, mode);
+}
+
+// ---- TTS 总开关（默认关闭：关闭后隐藏消息「朗读」按钮，不朗读）----
+const KEY_TTS_ON = "kimo_ai_tts_on";
+export function loadTtsOn(): boolean {
+  return lsGet(KEY_TTS_ON) === "1";
+}
+export function saveTtsOn(on: boolean): void {
+  lsSet(KEY_TTS_ON, on ? "1" : "0");
+}
+
+// ---- TTS 音量（朗读音频输出控制）----
+export type TtsVolume = "low" | "medium" | "high";
+const KEY_TTS_VOLUME = "kimo_ai_tts_volume";
+const TTS_VOLUMES: readonly TtsVolume[] = ["low", "medium", "high"];
+export function loadTtsVolume(): TtsVolume {
+  const v = lsGet(KEY_TTS_VOLUME);
+  return TTS_VOLUMES.includes(v as TtsVolume) ? (v as TtsVolume) : "medium";
+}
+export function saveTtsVolume(v: TtsVolume): void {
+  lsSet(KEY_TTS_VOLUME, v);
+}
+/** 音量档位 → 0~1 数值（speakAudio/speechSynthesis 用） */
+export function ttsVolumeValue(v: TtsVolume): number {
+  return v === "low" ? 0.5 : v === "high" ? 1 : 0.8;
+}
+
 // ---- auto-knowledge（默认开启）：对话后自动学习人格笔记，越聊越贴合人设 ----
 export function loadAutoKnowledge(): boolean {
   return lsGet(KEY_AUTO_KNOWLEDGE) !== "0";

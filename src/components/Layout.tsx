@@ -65,8 +65,9 @@ export function Layout() {
     };
   }, [location.pathname]);
 
-  // 动态设置网站图标和标题
+  // 动态设置网站图标和标题（AI 对话页/中心由 AIChat 接管 bot 名称与头像，此处跳过避免覆盖）
   useEffect(() => {
+    if (location.pathname.startsWith("/ai")) return;
     if (settings.title) {
       document.title = settings.title;
     }
@@ -74,7 +75,7 @@ export function Layout() {
       const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
       if (link) link.href = resolveAsset(settings.avatar);
     }
-  }, [settings.title, settings.avatar]);
+  }, [settings.title, settings.avatar, location.pathname]);
 
   // AI 对话页/中心：ChatGPT 风格沉浸式全屏，无全局菜单栏/侧边栏/页脚（避免顶栏重复）
   const isImmersive = isAIChat || location.pathname.startsWith("/ai");

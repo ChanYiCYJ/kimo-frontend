@@ -24,6 +24,8 @@ export function stripToolCmds(content: string): string {
       )
       // 3) 未闭合指令（到行尾，兼容 AI 漏写 ]）
       .replace(/\[(?:SEARCH|BROWSE|VIEW|KB|OPEN_KB|知识库|EDIT):[^\n]*$/gi, "")
+      // 3.5) 悬空的半截标记（AI 回复被截断在 '[' 处）：清理结尾残留的 [ / 【
+      .replace(/[\[【]\s*$/, "")
       // 4) 清理孤立标记（残留 [SEARCH] / [/SEARCH] 等）
       .replace(/\[\/?(?:SEARCH|BROWSE|VIEW|KB|OPEN_KB|知识库|EDIT)\]/gi, "")
       .replace(/\n{3,}/g, "\n\n")

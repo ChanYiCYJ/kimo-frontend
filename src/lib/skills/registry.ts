@@ -37,6 +37,13 @@ export function assembleSystem(ctx: SkillContext): string {
     ...kbSections(),
   ];
   if (ctx.l2dEnabled) sections.push(...live2dSections());
+  // 音频 TTS 模式：AI 回复更简短口语化（便于语音朗读），仍可附 Live2D 指令
+  if (ctx.ttsMode) {
+    sections.push({
+      id: "ttsShort",
+      text: "\n\n【语音朗读模式】当前开启了语音朗读（音频 TTS），回复请简短口语化（2~4 句即可），说人话、别列长清单，便于朗读；Live2D 表情/动作指令照常可附（如 [表情:开心]）。",
+    });
+  }
   return sections
     .map((s) => s.text)
     .filter(Boolean)

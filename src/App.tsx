@@ -1,53 +1,81 @@
-import { lazy, Suspense, type ComponentType } from 'react'
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
-import { AuthProvider } from './lib/auth'
-import { SiteProvider } from './lib/site'
-import { ToastProvider } from './lib/toast'
-import { Layout } from './components/Layout'
-import { AdminLayout } from './components/admin/AdminLayout'
-import { PageSpinner } from './components/Spinner'
-import { Home } from './pages/Home'
-import { Article } from './pages/Article'
-import { PageView } from './pages/PageView'
-import { AICenter } from './pages/AICenter'
-import { Login } from './pages/Login'
-import { NotFound } from './pages/NotFound'
+import { lazy, Suspense, type ComponentType } from "react";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { AuthProvider } from "./lib/auth";
+import { SiteProvider } from "./lib/site";
+import { ToastProvider } from "./lib/toast";
+import { Layout } from "./components/Layout";
+import { AdminLayout } from "./components/admin/AdminLayout";
+import { PageSpinner } from "./components/Spinner";
+import { Home } from "./pages/Home";
+import { Article } from "./pages/Article";
+import { PageView } from "./pages/PageView";
+import { AICenter } from "./pages/AICenter";
+import { Login } from "./pages/Login";
+import { NotFound } from "./pages/NotFound";
 
 // 管理后台页面按需加载（含 Markdown 编辑器，体积较大）
 const DashboardHome = lazy(() =>
-  import('./pages/admin/DashboardHome').then((m) => ({ default: m.DashboardHome })),
-)
+  import("./pages/admin/DashboardHome").then((m) => ({
+    default: m.DashboardHome,
+  })),
+);
 const ManageArticles = lazy(() =>
-  import('./pages/admin/ManageArticles').then((m) => ({ default: m.ManageArticles })),
-)
+  import("./pages/admin/ManageArticles").then((m) => ({
+    default: m.ManageArticles,
+  })),
+);
 const ArticleEditor = lazy(() =>
-  import('./pages/admin/ArticleEditor').then((m) => ({ default: m.ArticleEditor })),
-)
+  import("./pages/admin/ArticleEditor").then((m) => ({
+    default: m.ArticleEditor,
+  })),
+);
 const ManagePages = lazy(() =>
-  import('./pages/admin/ManagePages').then((m) => ({ default: m.ManagePages })),
-)
+  import("./pages/admin/ManagePages").then((m) => ({ default: m.ManagePages })),
+);
 const PageEditor = lazy(() =>
-  import('./pages/admin/PageEditor').then((m) => ({ default: m.PageEditor })),
-)
+  import("./pages/admin/PageEditor").then((m) => ({ default: m.PageEditor })),
+);
 const AIManage = lazy(() =>
-  import('./pages/admin/AIManage').then((m) => ({ default: m.AIManage })),
-)
+  import("./pages/admin/AIManage").then((m) => ({ default: m.AIManage })),
+);
 const CategoriesTags = lazy(() =>
-  import('./pages/admin/CategoriesTags').then((m) => ({ default: m.CategoriesTags })),
-)
+  import("./pages/admin/CategoriesTags").then((m) => ({
+    default: m.CategoriesTags,
+  })),
+);
 const Settings = lazy(() =>
-  import('./pages/admin/Settings').then((m) => ({ default: m.Settings })),
-)
+  import("./pages/admin/Settings").then((m) => ({ default: m.Settings })),
+);
 const UserManagement = lazy(() =>
-  import('./pages/admin/UserManagement').then((m) => ({ default: m.UserManagement })),
-)
+  import("./pages/admin/UserManagement").then((m) => ({
+    default: m.UserManagement,
+  })),
+);
+const MediaLibrary = lazy(() =>
+  import("./pages/admin/MediaLibrary").then((m) => ({
+    default: m.MediaLibrary,
+  })),
+);
+const SystemLogs = lazy(() =>
+  import("./pages/admin/SystemLogs").then((m) => ({ default: m.SystemLogs })),
+);
+const CommentManage = lazy(() =>
+  import("./pages/admin/CommentManage").then((m) => ({
+    default: m.CommentManage,
+  })),
+);
+const BackupManage = lazy(() =>
+  import("./pages/admin/BackupManage").then((m) => ({
+    default: m.BackupManage,
+  })),
+);
 
 function lazyEl(Comp: ComponentType) {
   return (
     <Suspense fallback={<PageSpinner />}>
       <Comp />
     </Suspense>
-  )
+  );
 }
 
 export default function App() {
@@ -73,7 +101,10 @@ export default function App() {
                 <Route index element={lazyEl(DashboardHome)} />
                 <Route path="articles" element={lazyEl(ManageArticles)} />
                 <Route path="articles/new" element={lazyEl(ArticleEditor)} />
-                <Route path="articles/:id/edit" element={lazyEl(ArticleEditor)} />
+                <Route
+                  path="articles/:id/edit"
+                  element={lazyEl(ArticleEditor)}
+                />
                 <Route path="pages" element={lazyEl(ManagePages)} />
                 <Route path="pages/new" element={lazyEl(PageEditor)} />
                 <Route path="pages/:id/edit" element={lazyEl(PageEditor)} />
@@ -81,11 +112,15 @@ export default function App() {
                 <Route path="categories" element={lazyEl(CategoriesTags)} />
                 <Route path="settings" element={lazyEl(Settings)} />
                 <Route path="users" element={lazyEl(UserManagement)} />
+                <Route path="media" element={lazyEl(MediaLibrary)} />
+                <Route path="logs" element={lazyEl(SystemLogs)} />
+                <Route path="comments" element={lazyEl(CommentManage)} />
+                <Route path="backups" element={lazyEl(BackupManage)} />
               </Route>
             </Routes>
           </ToastProvider>
         </SiteProvider>
       </AuthProvider>
     </BrowserRouter>
-  )
+  );
 }

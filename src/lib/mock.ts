@@ -5,9 +5,17 @@ import type {
   ArticleDetail,
   ArticleListItem,
   ArticleListResult,
+  BackupItem,
   Category,
+  CommentItem,
+  CommentListResult,
+  LogItem,
+  LogListResult,
+  MediaItem,
+  MediaListResult,
   Page,
   SiteSettings,
+  StatsOverview,
   Tag,
   User,
 } from "./types";
@@ -284,6 +292,126 @@ export let mockUsers: User[] = [
 
 const wait = (ms = 350) => new Promise((r) => setTimeout(r, ms));
 
+// 演示模式的媒体库（后端不可用时展示）
+export let mockMedia: MediaItem[] = [
+  {
+    id: 1,
+    filename: "mock-1.png",
+    original_name: "示例图片 1.png",
+    url: "https://picsum.photos/seed/kimo1/600/400",
+    size: 102400,
+    mime: "image/png",
+    created: daysAgo(3),
+  },
+  {
+    id: 2,
+    filename: "mock-2.jpg",
+    original_name: "示例图片 2.jpg",
+    url: "https://picsum.photos/seed/kimo2/600/400",
+    size: 88400,
+    mime: "image/jpeg",
+    created: daysAgo(6),
+  },
+  {
+    id: 3,
+    filename: "mock-3.webp",
+    original_name: "示例图片 3.webp",
+    url: "https://picsum.photos/seed/kimo3/600/400",
+    size: 51200,
+    mime: "image/webp",
+    created: daysAgo(9),
+  },
+];
+
+// 演示模式的操作日志（后端不可用时展示）
+export let mockLogs: LogItem[] = [
+  {
+    id: 1,
+    created: daysAgo(0),
+    user_id: 1,
+    username: "admin",
+    action: "CREATE",
+    method: "POST",
+    path: "/api/v1/articles",
+    status: 200,
+    ms: 42,
+    ip: "127.0.0.1",
+  },
+  {
+    id: 2,
+    created: daysAgo(0),
+    user_id: 1,
+    username: "admin",
+    action: "UPDATE",
+    method: "PUT",
+    path: "/api/v1/articles/1",
+    status: 200,
+    ms: 35,
+    ip: "127.0.0.1",
+  },
+  {
+    id: 3,
+    created: daysAgo(1),
+    user_id: 1,
+    username: "admin",
+    action: "DELETE",
+    method: "DELETE",
+    path: "/api/v1/categories/2",
+    status: 200,
+    ms: 28,
+    ip: "127.0.0.1",
+  },
+  {
+    id: 4,
+    created: daysAgo(2),
+    user_id: 1,
+    username: "admin",
+    action: "CREATE",
+    method: "POST",
+    path: "/api/v1/pages",
+    status: 200,
+    ms: 51,
+    ip: "127.0.0.1",
+  },
+];
+
+// 演示模式的评论（后端不可用时展示）
+export let mockComments: CommentItem[] = [
+  {
+    id: 1,
+    article_id: 1,
+    user_id: 2,
+    username: "alice",
+    content: "写得很棒，学习了！",
+    status: 1,
+    created: daysAgo(2),
+  },
+  {
+    id: 2,
+    article_id: 1,
+    user_id: 3,
+    username: "bob",
+    content: "请问 React 19 的并发特性怎么开启？",
+    status: 1,
+    created: daysAgo(1),
+  },
+  {
+    id: 3,
+    article_id: 2,
+    user_id: 4,
+    username: "charlie",
+    content: "这是一条待审核的评论示例。",
+    status: 0,
+    created: daysAgo(0),
+  },
+];
+
+// 演示模式的备份（后端不可用时展示）
+export let mockBackups: BackupItem[] = [
+  { name: "backup-20260808-120000.sql", size: 249856, created: daysAgo(0) },
+  { name: "backup-20260801-000000.sql", size: 245760, created: daysAgo(7) },
+];
+
 function toListItem(a: ArticleDetail): ArticleListItem {
   const { content: _c, content_html: _h, ...rest } = a;
   return rest;
@@ -481,5 +609,148 @@ export const mockApi = {
   async getMe(): Promise<User> {
     await wait(200);
     return mockAdmin;
+  },
+  async getMedia(
+    page = 1,
+    mimeType?: string,
+    pageSize = 24,
+  ): Promise<MediaListResult> {
+    await wait();
+    let list = [...mockMedia];
+    if (mimeType)
+      list = list.filter((m) => (m.mime || "").startsWith(mimeType));
+    const total = list.length;
+    const total_page = Math.max(1, Math.ceil(total / pageSize));
+    return {
+      items: list.slice((page - 1) * pageSize, page * pageSize),
+      total,
+      page,
+      page_size: pageSize,
+      total_page,
+    };
+  },
+  async deleteMedia(id: number): Promise<void> {
+    await wait();
+    mockMedia = mockMedia.filter((m) => m.id !== id);
+  },
+  async getLogs(
+    page = 1,
+    action?: string,
+    pageSize = 20,
+  ): Promise<LogListResult> {
+    await wait();
+    let list = [...mockLogs];
+    if (action) list = list.filter((l) => l.action === action);
+    const total = list.length;
+    const total_page = Math.max(1, Math.ceil(total / pageSize));
+    return {
+      items: list.slice((page - 1) * pageSize, page * pageSize),
+      total,
+      page,
+      page_size: pageSize,
+      total_page,
+    };
+  },
+  async listCommentsByArticle(articleId: number): Promise<CommentItem[]> {
+    await wait();
+    return mockComments.filter(
+      (c) => c.article_id === articleId && c.status === 1,
+    );
+  },
+  async createComment(payload: {
+    article_id: number;
+    content: string;
+  }): Promise<CommentItem> {
+    await wait();
+    const c: CommentItem = {
+      id: mockComments.length + 1,
+      article_id: payload.article_id,
+      user_id: null,
+      username: "游客",
+      content: payload.content,
+      status: 0,
+      created: new Date().toISOString(),
+    };
+    mockComments = [...mockComments, c];
+    return c;
+  },
+  async getComments(
+    page = 1,
+    status?: number,
+    pageSize = 20,
+  ): Promise<CommentListResult> {
+    await wait();
+    let list = [...mockComments];
+    if (status !== undefined) list = list.filter((c) => c.status === status);
+    const total = list.length;
+    const total_page = Math.max(1, Math.ceil(total / pageSize));
+    return {
+      items: list.slice((page - 1) * pageSize, page * pageSize),
+      total,
+      page,
+      page_size: pageSize,
+      total_page,
+    };
+  },
+  async updateCommentStatus(id: number, status: number): Promise<CommentItem> {
+    await wait();
+    const idx = mockComments.findIndex((c) => c.id === id);
+    if (idx === -1) throw new Error("评论不存在");
+    const updated = { ...mockComments[idx], status };
+    mockComments = mockComments.map((c, i) => (i === idx ? updated : c));
+    return updated;
+  },
+  async deleteComment(id: number): Promise<void> {
+    await wait();
+    mockComments = mockComments.filter((c) => c.id !== id);
+  },
+  async getBackups(): Promise<BackupItem[]> {
+    await wait();
+    return [...mockBackups];
+  },
+  async createBackup(): Promise<BackupItem> {
+    await wait(800);
+    const name = `backup-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-000000.sql`;
+    const b: BackupItem = {
+      name,
+      size: 102400,
+      created: new Date().toISOString(),
+    };
+    mockBackups = [b, ...mockBackups];
+    return b;
+  },
+  async deleteBackup(name: string): Promise<void> {
+    await wait();
+    mockBackups = mockBackups.filter((b) => b.name !== name);
+  },
+  async getStatsOverview(): Promise<StatsOverview> {
+    await wait(200);
+    const trendMap = new Map<string, number>();
+    mockArticles.forEach((a) => {
+      const d = (a.created || "").slice(0, 10);
+      if (d) trendMap.set(d, (trendMap.get(d) ?? 0) + 1);
+    });
+    const days = [...Array(14)].map((_, i) => {
+      const dt = new Date(Date.now() - (13 - i) * 86400000);
+      const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+      return { date: key, count: trendMap.get(key) ?? 0 };
+    });
+    const catDist = new Map<string, number>();
+    mockArticles.forEach((a) => {
+      const k = a.category_name || "未分类";
+      catDist.set(k, (catDist.get(k) ?? 0) + 1);
+    });
+    return {
+      articles: mockArticles.length,
+      categories: mockCategories.length,
+      tags: mockTags.length,
+      pages: mockPages.length,
+      users: mockUsers.length,
+      trend: days,
+      category_distribution: [...catDist.entries()].map(([name, count]) => ({
+        name,
+        count,
+      })),
+    };
   },
 };

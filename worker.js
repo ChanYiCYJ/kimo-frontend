@@ -1600,7 +1600,7 @@ export default {
 
       // 整体限时（安全网）：极端慢引擎叠加时提前返回已收集的部分结果 + truncated 标记，
       // 避免逼近 Worker 墙钟（30s 免费）导致整个请求被截断返回空（"没结果"）
-      const DEADLINE_MS = 12000;
+      const DEADLINE_MS = 8000;
       const deadline = new Promise((resolve) =>
         setTimeout(() => resolve(true), DEADLINE_MS),
       );
@@ -1698,6 +1698,8 @@ export default {
         url.searchParams.get("maxChars") || "30000",
         10,
       );
+      // raw=1：额外返回原始 HTML（供前端 @mozilla/readability 提取干净正文）
+      const wantRaw = url.searchParams.get("raw") === "1";
       try {
         const res = await fetchT(
           targetUrl,
@@ -1809,6 +1811,7 @@ export default {
             retrievalMethod: "proxy",
             truncated,
             content,
+            ...(wantRaw ? { rawHtml: raw.slice(0, 1000000) } : {}),
           }),
           {
             headers: {

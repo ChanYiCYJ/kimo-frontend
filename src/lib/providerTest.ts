@@ -122,3 +122,74 @@ export function formatLatency(ms?: number): string {
   if (ms == null) return "";
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
 }
+
+export interface FetchModelsResult {
+  ok: boolean;
+  /** 拉取到的模型名列表（失败为空数组） */
+  models: string[];
+  /** 友好中文反馈（成功含模型数量/耗时，失败为原因） */
+  message: string;
+}
+
+/**
+ * 自动搜索模型：调用 OpenAI 兼容的 GET {endpoint}/models 拉取可用模型列表。
+ * DeepSeek / Kimi / OpenAI 及各类兼容网关均支持此接口。
+ * 纯函数实现 + 可注入 fetch，便于 vitest 单测。
+ */
+export async function fetchProviderModels(
+  cfg: Pick<TestTarget, "endpoint" | "apiKey">,
+  fetchImpl: typeof fetch = fetch,
+): Promise<FetchModelsResult> {
+  const endpoint = (cfg.endpoint || "").trim();
+  const apiKey = (cfg.apiKey || "").trim();
+
+  if (!endpoint) return { ok: false, models: [], message: "请先填写接口地址" };
+  if (!apiKey) return { ok: false, models: [], message: "请先填写 API Key" };
+
+  const start = Date.now();
+  try {
+    const res = await fetchImpl(endpoint.replace(/\/+$/, "") + "/models", {
+      method: "GET",
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      const detail = text.slice(0, 200).replace(/\s+/g, " ");
+      return {
+        ok: false,
+        models: [],
+        message: describeHttpError(res.status, detail),
+      };
+    }
+
+    const data = (await res.json().catch(() => null)) as {
+      data?: { id?: unknown }[];
+    } | null;
+    const list = Array.isArray(data?.data)
+      ? (data as { data: { id?: unknown }[] }).data
+          .map((m) => (typeof m?.id === "string" ? m.id : ""))
+          .filter(Boolean)
+      : [];
+    if (!list.length) {
+      return {
+        ok: false,
+        models: [],
+        message: "接口未返回模型列表（该服务商可能不支持 /models 接口）",
+      };
+    }
+    return {
+      ok: true,
+      models: list,
+      message: `已获取 ${list.length} 个模型 · ${formatLatency(Date.now() - start)}`,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      models: [],
+      message: `网络错误：${
+        e instanceof Error ? e.message : String(e)
+      }（请检查接口地址与网络）`,
+    };
+  }
+}

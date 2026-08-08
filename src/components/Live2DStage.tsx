@@ -370,265 +370,266 @@ export function Live2DStage({ enabled = true }: { enabled?: boolean }) {
                     </button>
                   </div>
                   {/* 按乐队分组的角色列表（手风琴，默认收起；当前角色所在乐队展开） */}
-                {groups.map((g) => {
-                  const open = expandedBands.includes(g.band);
-                  return (
-                    <div key={g.band} className="mb-0.5">
-                      <button
-                        onClick={() => toggleBand(g.band)}
-                        className={
-                          "flex w-full items-center justify-between rounded-lg px-2 py-2 text-[11px] font-semibold tracking-wide transition " +
-                          (open
-                            ? "text-gray-600 dark:text-gray-200"
-                            : "text-gray-400 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-200")
-                        }
-                      >
-                        <span className="flex min-w-0 items-center gap-1.5">
-                          <span
-                            className={
-                              "h-3 w-0.5 shrink-0 rounded-full transition " +
-                              (open
-                                ? "bg-gray-400 dark:bg-gray-400"
-                                : "bg-gray-200 dark:bg-gray-700")
-                            }
-                          />
-                          <span className="truncate">{g.band}</span>
-                        </span>
-                        <svg
+                  {groups.map((g) => {
+                    const open = expandedBands.includes(g.band);
+                    return (
+                      <div key={g.band} className="mb-0.5">
+                        <button
+                          onClick={() => toggleBand(g.band)}
                           className={
-                            "h-3.5 w-3.5 shrink-0 text-gray-300 transition-transform dark:text-gray-600 " +
-                            (open ? "rotate-180" : "")
+                            "flex w-full items-center justify-between rounded-lg px-2 py-2 text-[11px] font-semibold tracking-wide transition " +
+                            (open
+                              ? "text-gray-600 dark:text-gray-200"
+                              : "text-gray-400 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-200")
                           }
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
                         >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M19.5 8.25l-7.5 7.5-7.5-7.5"
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <span
+                              className={
+                                "h-3 w-0.5 shrink-0 rounded-full transition " +
+                                (open
+                                  ? "bg-gray-400 dark:bg-gray-400"
+                                  : "bg-gray-200 dark:bg-gray-700")
+                              }
+                            />
+                            <span className="truncate">{g.band}</span>
+                          </span>
+                          <svg
+                            className={
+                              "h-3.5 w-3.5 shrink-0 text-gray-300 transition-transform dark:text-gray-600 " +
+                              (open ? "rotate-180" : "")
+                            }
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M19.5 8.25l-7.5 7.5-7.5-7.5"
+                            />
+                          </svg>
+                        </button>
+                        {open &&
+                          g.items.map((c) => {
+                            const active =
+                              c.model === core.modelName && !isAuto;
+                            return (
+                              <button
+                                key={c.model}
+                                onClick={() => pickChar(c.model)}
+                                title={c.model}
+                                className={
+                                  "flex w-full items-center rounded-lg py-1.5 pl-3 pr-1.5 text-left text-[11px] transition " +
+                                  (active
+                                    ? "bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-gray-100"
+                                    : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700")
+                                }
+                              >
+                                <span className="truncate">{c.name}</span>
+                              </button>
+                            );
+                          })}
+                      </div>
+                    );
+                  })}
+                  {/* 自定义模型导入 */}
+                  <div className="relative mt-1 border-t border-gray-100 pt-1 dark:border-gray-800">
+                    <div className="flex items-center justify-between px-1.5 py-1">
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-gray-300 dark:text-gray-600">
+                        自定义
+                      </p>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setHelpOpen((v) => !v)}
+                          title="导入模型说明"
+                          className="grid h-4 w-4 place-items-center rounded-full border border-gray-200 text-[9px] leading-none text-gray-400 transition hover:border-gray-300 hover:text-gray-600 dark:border-gray-700 dark:text-gray-500 dark:hover:text-gray-300"
+                        >
+                          ?
+                        </button>
+                        <button
+                          onClick={() => setImportOpen((v) => !v)}
+                          className="text-[11px] text-gray-400 transition hover:text-gray-600 dark:hover:text-gray-300"
+                        >
+                          {importOpen ? "收起" : "+ 导入模型"}
+                        </button>
+                      </div>
+                    </div>
+                    {/* 导入说明：bestdori 模型名 / 第三方 model.json 网址两种方式（fixed 居中弹窗，不受下拉 overflow 裁剪） */}
+                    {helpOpen && (
+                      <div className="mx-1.5 mb-1.5 rounded-xl border border-gray-200 bg-gray-50 p-3 text-[11px] leading-relaxed text-gray-500 animate-[kfade_0.2s_ease-out] dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-400">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">
+                            Live2D 模型 = 模型文件 + 贴图
+                          </p>
+                          <button
+                            onClick={() => setHelpOpen(false)}
+                            className="grid h-4 w-4 shrink-0 place-items-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700"
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <div className="mt-2 space-y-1.5">
+                          <p>两种导入方式：</p>
+                          <p>
+                            ① 输入 bestdori 模型名（如{" "}
+                            <code className="rounded bg-white/70 px-1 dark:bg-gray-900/60">
+                              026_casual
+                            </code>
+                            、{" "}
+                            <code className="rounded bg-white/70 px-1 dark:bg-gray-900/60">
+                              001_summer
+                            </code>
+                            ），自动从 bestdori 拉取模型与贴图，无需上传图片；
+                          </p>
+                          <p>
+                            ② 粘贴任意第三方 Cubism2{" "}
+                            <code className="rounded bg-white/70 px-1 dark:bg-gray-900/60">
+                              model.json
+                            </code>{" "}
+                            网址（https://…），自动加载其模型、贴图与动作。
+                          </p>
+                          <p className="border-t border-gray-200 pt-1.5 text-gray-400 dark:border-gray-700 dark:text-gray-500">
+                            感谢开源项目：{" "}
+                            <a
+                              href="https://github.com/guansss/pixi-live2d-display"
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-blue-600 hover:underline dark:text-blue-400"
+                            >
+                              pixi-live2d-display
+                            </a>
+                            （渲染引擎）、{" "}
+                            <a
+                              href="https://www.live2d.com/"
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-blue-600 hover:underline dark:text-blue-400"
+                            >
+                              Live2D Cubism
+                            </a>
+                            、{" "}
+                            <a
+                              href="https://bestdori.com/"
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-blue-600 hover:underline dark:text-blue-400"
+                            >
+                              Bestdori
+                            </a>
+                            （角色模型）、{" "}
+                            <a
+                              href="https://github.com/nanlingyin/SoulLink_Live2D"
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-blue-600 hover:underline dark:text-blue-400"
+                            >
+                              SoulLink_Live2D
+                            </a>
+                            （表情动作参考）。
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    {importOpen && (
+                      <div className="px-1.5 pb-1">
+                        <div className="flex gap-1">
+                          <input
+                            value={importVal}
+                            onChange={(e) => setImportVal(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") doImport();
+                            }}
+                            placeholder="模型名 或 model.json 网址"
+                            className="min-w-0 flex-1 rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] outline-none focus:border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
                           />
-                        </svg>
-                      </button>
-                      {open &&
-                        g.items.map((c) => {
+                          <button
+                            onClick={doImport}
+                            className="shrink-0 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-[11px] text-gray-600 transition hover:border-gray-300 hover:text-gray-900 active:scale-95 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-gray-600 dark:hover:text-gray-100"
+                          >
+                            导入
+                          </button>
+                        </div>
+                        {importErr && (
+                          <p className="mt-1 text-[10px] text-red-400">
+                            {importErr}
+                          </p>
+                        )}
+                        {/* 内嵌第三方模型来源：一键导入示例（演示第三方导入） */}
+                        <button
+                          onClick={() => {
+                            setImportVal(THIRD_PARTY_DEMO_MODEL);
+                            doImport();
+                          }}
+                          className="mt-1.5 flex w-full items-center gap-1.5 rounded-lg border border-dashed border-gray-200 px-2 py-1.5 text-[11px] text-gray-500 transition hover:border-gray-300 hover:bg-gray-50 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700/40"
+                          title="导入第三方开源示例模型（shizuku 白无垢）"
+                        >
+                          <svg
+                            className="h-3.5 w-3.5 shrink-0"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M12 12a4 4 0 100-8 4 4 0 000 8zm0 2c-3.3 0-8 1.7-8 5v2h16v-2c0-3.3-4.7-5-8-5z"
+                            />
+                          </svg>
+                          一键导入第三方示例模型（shizuku 白无垢）
+                        </button>
+                      </div>
+                    )}
+                    {customs.length > 0 && (
+                      <div className="pb-1">
+                        {customs.map((c) => {
                           const active = c.model === core.modelName && !isAuto;
                           return (
-                            <button
+                            <div
                               key={c.model}
-                              onClick={() => pickChar(c.model)}
-                              title={c.model}
                               className={
-                                "flex w-full items-center rounded-lg py-1.5 pl-3 pr-1.5 text-left text-[11px] transition " +
+                                "flex items-center rounded-lg px-1.5 text-[11px] " +
                                 (active
                                   ? "bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-gray-100"
                                   : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700")
                               }
                             >
-                              <span className="truncate">{c.name}</span>
-                            </button>
+                              <button
+                                onClick={() => pickChar(c.model)}
+                                title={c.model}
+                                className="min-w-0 flex-1 truncate py-1.5 text-left"
+                              >
+                                {c.name}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setCustoms(removeCustomModel(c.model));
+                                  if (core.modelName === c.model) {
+                                    loadModel(
+                                      resolveLive2dModel(settings.live2d_model),
+                                    ).catch(() => {});
+                                  }
+                                }}
+                                className="shrink-0 px-1 text-gray-300 transition hover:text-red-400 dark:text-gray-600"
+                                title="删除自定义模型"
+                              >
+                                ×
+                              </button>
+                            </div>
                           );
                         })}
-                    </div>
-                  );
-                })}
-                {/* 自定义模型导入 */}
-                <div className="relative mt-1 border-t border-gray-100 pt-1 dark:border-gray-800">
-                  <div className="flex items-center justify-between px-1.5 py-1">
-                    <p className="text-[10px] font-medium uppercase tracking-wide text-gray-300 dark:text-gray-600">
-                      自定义
-                    </p>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => setHelpOpen((v) => !v)}
-                        title="导入模型说明"
-                        className="grid h-4 w-4 place-items-center rounded-full border border-gray-200 text-[9px] leading-none text-gray-400 transition hover:border-gray-300 hover:text-gray-600 dark:border-gray-700 dark:text-gray-500 dark:hover:text-gray-300"
-                      >
-                        ?
-                      </button>
-                      <button
-                        onClick={() => setImportOpen((v) => !v)}
-                        className="text-[11px] text-gray-400 transition hover:text-gray-600 dark:hover:text-gray-300"
-                      >
-                        {importOpen ? "收起" : "+ 导入模型"}
-                      </button>
-                    </div>
+                      </div>
+                    )}
                   </div>
-                  {/* 导入说明：bestdori 模型名 / 第三方 model.json 网址两种方式（fixed 居中弹窗，不受下拉 overflow 裁剪） */}
-                  {helpOpen && (
-                    <div className="mx-1.5 mb-1.5 rounded-xl border border-gray-200 bg-gray-50 p-3 text-[11px] leading-relaxed text-gray-500 animate-[kfade_0.2s_ease-out] dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-400">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">
-                          Live2D 模型 = 模型文件 + 贴图
-                        </p>
-                        <button
-                          onClick={() => setHelpOpen(false)}
-                          className="grid h-4 w-4 shrink-0 place-items-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700"
-                        >
-                          ×
-                        </button>
-                      </div>
-                      <div className="mt-2 space-y-1.5">
-                        <p>两种导入方式：</p>
-                        <p>
-                          ① 输入 bestdori 模型名（如{" "}
-                          <code className="rounded bg-white/70 px-1 dark:bg-gray-900/60">
-                            026_casual
-                          </code>
-                          、{" "}
-                          <code className="rounded bg-white/70 px-1 dark:bg-gray-900/60">
-                            001_summer
-                          </code>
-                          ），自动从 bestdori 拉取模型与贴图，无需上传图片；
-                        </p>
-                        <p>
-                          ② 粘贴任意第三方 Cubism2{" "}
-                          <code className="rounded bg-white/70 px-1 dark:bg-gray-900/60">
-                            model.json
-                          </code>{" "}
-                          网址（https://…），自动加载其模型、贴图与动作。
-                        </p>
-                        <p className="border-t border-gray-200 pt-1.5 text-gray-400 dark:border-gray-700 dark:text-gray-500">
-                          感谢开源项目：{" "}
-                          <a
-                            href="https://github.com/guansss/pixi-live2d-display"
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-blue-600 hover:underline dark:text-blue-400"
-                          >
-                            pixi-live2d-display
-                          </a>
-                          （渲染引擎）、{" "}
-                          <a
-                            href="https://www.live2d.com/"
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-blue-600 hover:underline dark:text-blue-400"
-                          >
-                            Live2D Cubism
-                          </a>
-                          、{" "}
-                          <a
-                            href="https://bestdori.com/"
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-blue-600 hover:underline dark:text-blue-400"
-                          >
-                            Bestdori
-                          </a>
-                          （角色模型）、{" "}
-                          <a
-                            href="https://github.com/nanlingyin/SoulLink_Live2D"
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-blue-600 hover:underline dark:text-blue-400"
-                          >
-                            SoulLink_Live2D
-                          </a>
-                          （表情动作参考）。
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                  {importOpen && (
-                    <div className="px-1.5 pb-1">
-                      <div className="flex gap-1">
-                        <input
-                          value={importVal}
-                          onChange={(e) => setImportVal(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") doImport();
-                          }}
-                          placeholder="模型名 或 model.json 网址"
-                          className="min-w-0 flex-1 rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] outline-none focus:border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
-                        />
-                        <button
-                          onClick={doImport}
-                          className="shrink-0 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-[11px] text-gray-600 transition hover:border-gray-300 hover:text-gray-900 active:scale-95 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-gray-600 dark:hover:text-gray-100"
-                        >
-                          导入
-                        </button>
-                      </div>
-                      {importErr && (
-                        <p className="mt-1 text-[10px] text-red-400">
-                          {importErr}
-                        </p>
-                      )}
-                      {/* 内嵌第三方模型来源：一键导入示例（演示第三方导入） */}
-                      <button
-                        onClick={() => {
-                          setImportVal(THIRD_PARTY_DEMO_MODEL);
-                          doImport();
-                        }}
-                        className="mt-1.5 flex w-full items-center gap-1.5 rounded-lg border border-dashed border-gray-200 px-2 py-1.5 text-[11px] text-gray-500 transition hover:border-gray-300 hover:bg-gray-50 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700/40"
-                        title="导入第三方开源示例模型（shizuku 白无垢）"
-                      >
-                        <svg
-                          className="h-3.5 w-3.5 shrink-0"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M12 12a4 4 0 100-8 4 4 0 000 8zm0 2c-3.3 0-8 1.7-8 5v2h16v-2c0-3.3-4.7-5-8-5z"
-                          />
-                        </svg>
-                        一键导入第三方示例模型（shizuku 白无垢）
-                      </button>
-                    </div>
-                  )}
-                  {customs.length > 0 && (
-                    <div className="pb-1">
-                      {customs.map((c) => {
-                        const active = c.model === core.modelName && !isAuto;
-                        return (
-                          <div
-                            key={c.model}
-                            className={
-                              "flex items-center rounded-lg px-1.5 text-[11px] " +
-                              (active
-                                ? "bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-gray-100"
-                                : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700")
-                            }
-                          >
-                            <button
-                              onClick={() => pickChar(c.model)}
-                              title={c.model}
-                              className="min-w-0 flex-1 truncate py-1.5 text-left"
-                            >
-                              {c.name}
-                            </button>
-                            <button
-                              onClick={() => {
-                                setCustoms(removeCustomModel(c.model));
-                                if (core.modelName === c.model) {
-                                  loadModel(
-                                    resolveLive2dModel(settings.live2d_model),
-                                  ).catch(() => {});
-                                }
-                              }}
-                              className="shrink-0 px-1 text-gray-300 transition hover:text-red-400 dark:text-gray-600"
-                              title="删除自定义模型"
-                            >
-                              ×
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
                 </div>
-              </div>
-            )}
-            {panelTab === "lore" && (
-              <div className="max-h-56 overflow-y-auto">
-                <LoreDetail />
-              </div>
-            )}
+              )}
+              {panelTab === "lore" && (
+                <div className="max-h-56 overflow-y-auto">
+                  <LoreDetail />
+                </div>
+              )}
             </div>
           )}
           <button

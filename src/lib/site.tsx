@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { settingApi } from "./api";
+import { useLocation } from "react-router-dom";
 import type { SiteSettings } from "./types";
 
 interface SiteContextValue {
@@ -118,10 +119,12 @@ export function SiteProvider({ children }: { children: ReactNode }) {
     refresh();
   }, [refresh]);
 
-  // 同步文档标题
+  // 同步文档标题（AI 对话页/中心由 AIChat 接管 bot 名称/头像，不覆盖）
+  const location = useLocation();
   useEffect(() => {
+    if (location.pathname.startsWith("/ai")) return;
     document.title = settings.title || "Kimo";
-  }, [settings.title]);
+  }, [settings.title, location.pathname]);
 
   const value = useMemo(
     () => ({ settings, loaded, refresh }),
