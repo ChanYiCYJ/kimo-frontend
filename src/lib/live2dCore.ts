@@ -1167,10 +1167,10 @@ export function prepareSpeaking(): void {
   const core = getCoreModel();
   const mouthParams = core ? getMouthParams(core) : [];
   if (!mouthParams.length) return;
-  mouthSmooth = 0.1;
+  mouthSmooth = LIP_SYNC_MIN_OPEN;
   rmsSmooth = 0;
-  // 注册「准备态」lipSync step（analyser=null）：TTS 合成等待期间持续保持微张，
-  // 覆盖 idle/motion 每帧置 0 → 点击朗读后口型稳定微张不闭合（不再是「张一下又闭上」）；
+  // 注册「准备态」lipSync step（analyser=null）：TTS 合成等待期间持续保持最低开口，
+  // 覆盖 idle/motion 每帧置 0 → 点击朗读后口型稳定张嘴不闭合（不再是「张一下又闭上」）；
   // speakAudio/speakAudioBuffer 入口 stopSpeaking 会移除本 step 并接管波形驱动。
   const session = ++speakSession;
   addLipSyncToTicker(
@@ -1211,6 +1211,9 @@ let mouthSeq: MouthKeyFrame[] = [];
 let mouthSeqStart = 0;
 /** 序列所属 AudioContext（查表用） */
 let mouthSeqCtx: AudioContext | null = null;
+/** 朗读中口型「说话态」最低开口：低于此值视觉上像「闭合」（0.1≈几乎闭嘴），
+ *  提到 0.2 让停顿/静音段也保持明显张嘴的说话感，杜绝用户看到的“突然闭合” */
+const LIP_SYNC_MIN_OPEN = 0.2;
 /** 嘴部平滑值（攻击快/释放慢，贴合音节且避免波形抖动造成口型闪烁） */
 let mouthSmooth = 0;
 /** RMS 短期平滑值（减波形瞬时抖动，让口型曲线更连贯自然） */
@@ -1348,13 +1351,13 @@ function buildLipSyncStep(
     }
     const analyser = analyserRef();
     if (!analyser) {
-      // 准备态（音频未就绪/解码中）：持续保持微张，覆盖 idle/motion 每帧置 0
+      // 准备态（音频未就绪/解码中）：持续保持最低开口，覆盖 idle/motion 每帧置 0
       if (mouthParams.length > 0) {
-        mouthSmooth = 0.1;
+        mouthSmooth = LIP_SYNC_MIN_OPEN;
         rmsSmooth = 0;
         for (const p of mouthParams) {
           try {
-            core.setParamFloat(p, 0.1);
+            core.setParamFloat(p, LIP_SYNC_MIN_OPEN);
           } catch {}
         }
       }
@@ -1370,18 +1373,17 @@ function buildLipSyncStep(
       const rms = Math.sqrt(sum / data.length);
       if (!voiceStarted && rms < 0.03) {
         // 开头准备态：音频尚未真正发声（TTS 前导静音/解码缓冲/首帧无声），
-        // 口型稳定保持微张（0.1），避免「预置 → smoothMouth 释放闭拢到 0.06
-        // → 声音来了再张开」的开头口型异常（读第一段开头时嘴先闭上又张开）
-        mouthSmooth = 0.1;
+        // 口型稳定保持最低开口，避免「先闭后张」的开头口型异常
+        mouthSmooth = LIP_SYNC_MIN_OPEN;
         rmsSmooth = 0;
       } else {
         voiceStarted = true;
         // RMS 短期平滑：减波形瞬时抖动（噪声/辅音起音），同时快速跟随（0.65）让开头响应及时
         rmsSmooth += (rms - rmsSmooth) * 0.65;
         mouthSmooth = smoothMouth(mouthSmooth, rmsSmooth);
-        // 朗读中保持「说话态」最低开口：句间/词间停顿、静音段也至少微张（0.1），
-        // 避免口型突然完全闭合（看起来「断了/没加载出来」）；朗读结束才回落 0
-        if (mouthSmooth < 0.1) mouthSmooth = 0.1;
+        // 朗读中保持「说话态」最低开口：句间/词间停顿、静音段也保持明显张嘴（0.2），
+        // 杜绝口型掉到 0.1 的「闭合」观感；朗读结束才回落 0
+        if (mouthSmooth < LIP_SYNC_MIN_OPEN) mouthSmooth = LIP_SYNC_MIN_OPEN;
       }
       for (const p of mouthParams) {
         try {
@@ -1405,7 +1407,7 @@ function buildMouthSequence(audioBuf: AudioBuffer): MouthKeyFrame[] {
   const frameLen = Math.max(1, Math.floor((sr * frameMs) / 1000));
   const seq: MouthKeyFrame[] = [];
   let rmsS = 0;
-  let mouth = 0.1;
+  let mouth = LIP_SYNC_MIN_OPEN;
   let voiceStarted = false;
   for (let off = 0; off < ch.length; off += frameLen) {
     const end = Math.min(ch.length, off + frameLen);
@@ -1417,13 +1419,13 @@ function buildMouthSequence(audioBuf: AudioBuffer): MouthKeyFrame[] {
     const rms = Math.sqrt(sum / (end - off));
     const t = (off / sr) * 1000;
     if (!voiceStarted && rms < 0.03) {
-      mouth = 0.1;
+      mouth = LIP_SYNC_MIN_OPEN;
       rmsS = 0;
     } else {
       voiceStarted = true;
       rmsS += (rms - rmsS) * 0.65;
       mouth = smoothMouth(mouth, rmsS);
-      if (mouth < 0.1) mouth = 0.1; // 朗读中保持说话态最低开口，不闭合
+      if (mouth < LIP_SYNC_MIN_OPEN) mouth = LIP_SYNC_MIN_OPEN; // 保持说话态最低开口，不闭合
     }
     seq.push({ t, v: mouth });
   }
@@ -1446,19 +1448,19 @@ function buildSeqLipSyncStep(
     }
     const ctx = mouthSeqCtx;
     if (!ctx || !mouthSeq.length) {
-      // 无序列（异常兜底）：保持准备态微张
+      // 无序列（异常兜底）：保持最低开口
       if (mouthParams.length > 0) {
-        mouthSmooth = 0.1;
+        mouthSmooth = LIP_SYNC_MIN_OPEN;
         for (const p of mouthParams) {
           try {
-            core.setParamFloat(p, 0.1);
+            core.setParamFloat(p, LIP_SYNC_MIN_OPEN);
           } catch {}
         }
       }
       return;
     }
     const cur = (ctx.currentTime - mouthSeqStart) * 1000;
-    let v = 0.1;
+    let v = LIP_SYNC_MIN_OPEN;
     // 线性查找：取最后一个 ≤cur 的关键帧值（序列按时间有序）
     for (const kf of mouthSeq) {
       if (kf.t <= cur) v = kf.v;
