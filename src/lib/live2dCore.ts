@@ -1408,8 +1408,8 @@ function buildLipSyncStep(
     }
     if (mouthParams.length > 0) {
       const rms = Math.sqrt(sum / data.length);
-      // RMS 短期平滑：减波形瞬时抖动（噪声/辅音起音），同时快速跟随（0.65）让开头响应及时
-      rmsSmooth += (rms - rmsSmooth) * 0.65;
+      // RMS 短期平滑：减波形瞬时抖动，同时快速跟随（0.5 原 0.65）让不同词幅度差异更明显
+      rmsSmooth += (rms - rmsSmooth) * 0.5;
       // hold=LIP_SYNC_MIN_OPEN：说话期间嘴巴最小保持张嘴（不闭合），随声音自然张合；
       // 不设 voiceStarted 等待——朗读一开始口型就是说话态，开头静音/轻声也保持张嘴，不再“闭合”
       mouthSmooth = smoothMouth(mouthSmooth, rmsSmooth, {
@@ -1464,12 +1464,14 @@ function buildMouthSequence(audioBuf: AudioBuffer): MouthKeyFrame[] {
 /**
  * 按时间轴查表驱动口型（播放预生成序列，不再实时计算波形）。
  * 序列在播放前已生成，朗读全程口型连续、无「生成中闭合」。
+ * 用游标递增查表（cur 单调递增，摊销 O(1)），消除逐帧线性查找的卡顿感。
  */
 function buildSeqLipSyncStep(
   isActive: () => boolean,
   core: any,
   mouthParams: string[],
 ): () => void {
+  let cursor = 0;
   return () => {
     if (!isActive()) {
       removeLipSyncFromTicker();
@@ -1489,11 +1491,11 @@ function buildSeqLipSyncStep(
       return;
     }
     const cur = (ctx.currentTime - mouthSeqStart) * 1000;
-    let v = LIP_SYNC_MIN_OPEN;
-    // 线性查找：取最后一个 ≤cur 的关键帧值（序列按时间有序）
-    for (const kf of mouthSeq) {
-      if (kf.t <= cur) v = kf.v;
-      else break;
+    // 游标递增查表：cur 单调递增，从上帧位置继续（摊销 O(1)，消除线性查找的卡顿）
+    let v = cursor > 0 ? mouthSeq[cursor - 1].v : LIP_SYNC_MIN_OPEN;
+    while (cursor < mouthSeq.length && mouthSeq[cursor].t <= cur) {
+      v = mouthSeq[cursor].v;
+      cursor++;
     }
     mouthSmooth = v;
     for (const p of mouthParams) {
@@ -1506,7 +1508,6 @@ function buildSeqLipSyncStep(
   };
 }
 
-/** 口型平滑回落：从当前开口平滑降到 0（约 220ms easeOut），替代“啪”地闭合 */
 /** 口型平滑回落：从当前开口平滑降到 0（约 220ms easeOut），替代“啪”地闭合 */
 function fadeMouthToZero(): void {
   if (mouthFadeId) cancelAnimationFrame(mouthFadeId);
