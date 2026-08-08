@@ -1211,10 +1211,10 @@ let mouthSeq: MouthKeyFrame[] = [];
 let mouthSeqStart = 0;
 /** 序列所属 AudioContext（查表用） */
 let mouthSeqCtx: AudioContext | null = null;
-/** 朗读中口型「说话态」最低开口：低于此值视觉上像「闭合」。
- *  提到 0.3 让朗读（说话）期间嘴巴保持明显张开（音节间也不闭合），
- *  随声音在 0.3~0.9 之间自然张合，避免用户看到的“一张一闭/突然闭合”不自然感 */
-const LIP_SYNC_MIN_OPEN = 0.3;
+/** 朗读中口型「说话态」最低开口：低于此值视觉上像「闭合」（轻声/停顿段会被钳到下限）。
+ *  0.4=40% 开度在模型上明显张嘴：朗读（说话）期间嘴巴全程保持张开，随声音在 0.4~0.9
+ *  自然张合，杜绝轻声段“嘴巴闭合”观感；朗读结束才回落 0 */
+const LIP_SYNC_MIN_OPEN = 0.4;
 /** 嘴部平滑值（攻击快/释放慢，贴合音节且避免波形抖动造成口型闪烁） */
 let mouthSmooth = 0;
 /** RMS 短期平滑值（减波形瞬时抖动，让口型曲线更连贯自然） */
@@ -1343,8 +1343,6 @@ function buildLipSyncStep(
   analyserRef: () => AnalyserNode | null,
 ): () => void {
   const data = new Uint8Array(512);
-  /** 是否已检测到首个声音信号（区分「开头前导静音」与「说话中的停顿」） */
-  let voiceStarted = false;
   return () => {
     if (!isActive()) {
       removeLipSyncFromTicker();
@@ -1372,23 +1370,15 @@ function buildLipSyncStep(
     }
     if (mouthParams.length > 0) {
       const rms = Math.sqrt(sum / data.length);
-      if (!voiceStarted && rms < 0.03) {
-        // 开头准备态：音频尚未真正发声（TTS 前导静音/解码缓冲/首帧无声），
-        // 口型稳定保持最低开口，避免「先闭后张」的开头口型异常
-        mouthSmooth = LIP_SYNC_MIN_OPEN;
-        rmsSmooth = 0;
-      } else {
-        voiceStarted = true;
-        // RMS 短期平滑：减波形瞬时抖动（噪声/辅音起音），同时快速跟随（0.65）让开头响应及时
-        rmsSmooth += (rms - rmsSmooth) * 0.65;
-        // hold=LIP_SYNC_MIN_OPEN：说话期间嘴巴最小保持 0.3 张嘴（不闭合），随声音自然张合
-        mouthSmooth = smoothMouth(mouthSmooth, rmsSmooth, {
-          hold: LIP_SYNC_MIN_OPEN,
-        });
-        // 朗读中保持「说话态」最低开口：句间/词间停顿、静音段也保持明显张嘴（0.3），
-        // 杜绝口型掉到低值的「闭合」观感；朗读结束才回落 0
-        if (mouthSmooth < LIP_SYNC_MIN_OPEN) mouthSmooth = LIP_SYNC_MIN_OPEN;
-      }
+      // RMS 短期平滑：减波形瞬时抖动（噪声/辅音起音），同时快速跟随（0.65）让开头响应及时
+      rmsSmooth += (rms - rmsSmooth) * 0.65;
+      // hold=LIP_SYNC_MIN_OPEN：说话期间嘴巴最小保持张嘴（不闭合），随声音自然张合；
+      // 不设 voiceStarted 等待——朗读一开始口型就是说话态，开头静音/轻声也保持张嘴，不再“闭合”
+      mouthSmooth = smoothMouth(mouthSmooth, rmsSmooth, {
+        hold: LIP_SYNC_MIN_OPEN,
+      });
+      // 朗读中保持「说话态」最低开口：静音/停顿也保持明显张嘴，杜绝「闭合」；朗读结束才回落 0
+      if (mouthSmooth < LIP_SYNC_MIN_OPEN) mouthSmooth = LIP_SYNC_MIN_OPEN;
       for (const p of mouthParams) {
         try {
           core.setParamFloat(p, mouthSmooth);
@@ -1412,7 +1402,6 @@ function buildMouthSequence(audioBuf: AudioBuffer): MouthKeyFrame[] {
   const seq: MouthKeyFrame[] = [];
   let rmsS = 0;
   let mouth = LIP_SYNC_MIN_OPEN;
-  let voiceStarted = false;
   for (let off = 0; off < ch.length; off += frameLen) {
     const end = Math.min(ch.length, off + frameLen);
     let sum = 0;
@@ -1422,16 +1411,11 @@ function buildMouthSequence(audioBuf: AudioBuffer): MouthKeyFrame[] {
     }
     const rms = Math.sqrt(sum / (end - off));
     const t = (off / sr) * 1000;
-    if (!voiceStarted && rms < 0.03) {
-      mouth = LIP_SYNC_MIN_OPEN;
-      rmsS = 0;
-    } else {
-      voiceStarted = true;
-      rmsS += (rms - rmsS) * 0.65;
-      // hold=LIP_SYNC_MIN_OPEN：说话期间嘴巴最小保持 0.3 张嘴（不闭合），随声音自然张合
-      mouth = smoothMouth(mouth, rmsS, { hold: LIP_SYNC_MIN_OPEN });
-      if (mouth < LIP_SYNC_MIN_OPEN) mouth = LIP_SYNC_MIN_OPEN; // 保持说话态最低开口，不闭合
-    }
+    rmsS += (rms - rmsS) * 0.65;
+    // hold=LIP_SYNC_MIN_OPEN：说话期间嘴巴最小保持张嘴（不闭合），随声音自然张合；
+    // 不设 voiceStarted 等待——序列第一帧就是说话态，开头静音/轻声也保持张嘴，不再“闭合”
+    mouth = smoothMouth(mouth, rmsS, { hold: LIP_SYNC_MIN_OPEN });
+    if (mouth < LIP_SYNC_MIN_OPEN) mouth = LIP_SYNC_MIN_OPEN; // 全程保持说话态最低开口，不闭合
     seq.push({ t, v: mouth });
   }
   return seq;
@@ -1680,8 +1664,6 @@ export function speakAudioBuffer(
           // 用预生成序列按时间轴查表驱动口型（替换 decode 前的准备态 step）
           mouthSeq = seq;
           mouthSeqCtx = ctx;
-          const startTime = ctx.currentTime + 0.05;
-          mouthSeqStart = startTime;
           lipSyncHookRef = buildSeqLipSyncStep(
             () => session === speakSession && lipSyncActive,
             core,
@@ -1689,7 +1671,10 @@ export function speakAudioBuffer(
           );
           const start = () => {
             try {
-              src.start(startTime);
+              // 播放真正开始的那一刻才锁定时间轴起点：与声音严格对齐，
+              // 避免 AudioContext resume/缓冲延迟导致开头口型超前/滞后
+              mouthSeqStart = ctx.currentTime;
+              src.start();
             } catch {}
           };
           if (ctx.state === "suspended") {
