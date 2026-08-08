@@ -339,9 +339,9 @@ export function setEmotion(emotion: Emotion): void {
     const t = Math.min(1, (now - start) / duration);
     const k = easeInOutCubic(t);
     for (const [id, to] of targets) {
-      // 朗读（lipSync 驱动）中：嘴部开合由音频波形控制，表情不覆盖
-      // （EMOTION_PRESETS 带 ParamMouthOpenY，会锁嘴几秒导致口型不加载/卡住）
-      if (lipSyncActive && MOUTH_PARAMS.includes(id)) continue;
+      // 朗读（lipSync 驱动）中：所有嘴部参数（开合 + 嘴型）由 lipSync 接管，表情不覆盖——
+      // 否则 happy 的 ParamMouthForm=0.8 微笑嘴型会盖过张嘴（视觉“微笑、嘴巴没张开”）
+      if (lipSyncActive && MOUTH_LIP_PARAMS.includes(id)) continue;
       const fromV = from[id] ?? 0;
       try {
         core.setParamFloat(id, fromV + (to - fromV) * k);
@@ -1131,6 +1131,33 @@ const MOUTH_PARAMS: readonly string[] = [
   "PARAM_MOUTH_OPEN_Y",
 ];
 
+/** 朗读（lipSync）期间表情/动作不应控制的嘴部参数：开合 + 嘴型。
+ *  实测发现邦邦模型还有 PARAM_MOUTH_FORM_01 等嘴型参数会被表情动作锁定（=1），
+ *  即使 PARAM_MOUTH_OPEN_Y 张开，视觉嘴仍呈微笑/特定嘴型“嘴巴没张开”。
+ *  朗读时必须由 lipSync 接管所有嘴部参数（开合由波形驱动、嘴型归零中性）。 */
+const MOUTH_LIP_PARAMS: readonly string[] = [
+  "ParamMouthOpenY",
+  "PARAM_MOUTH_OPEN_Y",
+  "ParamMouthForm",
+  "PARAM_MOUTH_FORM_01",
+  "PARAM_MOUTH_FORM_02",
+  "PARAM_MOUTH_SCALE",
+  "PARAM_MOUTH_FORM",
+  "PARAM_MOUTH_OPEN",
+];
+
+/** 朗读时把所有非开合的嘴部参数（嘴型等）归零（中性），
+ *  让 PARAM_MOUTH_OPEN_Y 的开合真正驱动视觉嘴（不被微笑/嘴型锁定盖过） */
+function resetMouthFormNeutral(core: any): void {
+  for (const p of MOUTH_LIP_PARAMS) {
+    // 开合参数由 lipSync 设波形值，不归零
+    if (p === "ParamMouthOpenY" || p === "PARAM_MOUTH_OPEN_Y") continue;
+    try {
+      if (paramExists(core, p)) core.setParamFloat(p, 0);
+    } catch {}
+  }
+}
+
 /** 返回模型上实际存在的口型参数（至少一个才认为可对口型） */
 function getMouthParams(core: any): string[] {
   const list: string[] = [];
@@ -1384,6 +1411,8 @@ function buildLipSyncStep(
           core.setParamFloat(p, mouthSmooth);
         } catch {}
       }
+      // 朗读时嘴型归零（中性），让张嘴更明显（不被表情微笑嘴型盖过）
+      resetMouthFormNeutral(core);
     }
   };
 }
@@ -1461,6 +1490,8 @@ function buildSeqLipSyncStep(
         core.setParamFloat(p, v);
       } catch {}
     }
+    // 朗读时嘴型归零（中性），让张嘴更明显（不被表情微笑嘴型盖过）
+    resetMouthFormNeutral(core);
   };
 }
 
