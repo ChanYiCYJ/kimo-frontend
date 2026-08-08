@@ -130,7 +130,7 @@ import type { AgentSettingsProps } from "./SettingsTab";
 import { useToast } from "../lib/toast";
 import { Live2DBackground } from "./Live2DBackground";
 import { TypeWriter } from "./Spinner";
-import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+
 
 interface Message {
   role: "user" | "assistant";
@@ -1292,9 +1292,7 @@ export function AIChat({
   const [speakingIdx, setSpeakingIdx] = useState(-1);
   /** 朗读播放 token：新朗读/停止会使 in-flight 异步合成作废（防旧的缓存命中后覆盖新朗读） */
   const ttsPlayRef = useRef(0);
-  // 初始不跟随（false）：虚拟列表加载时停留在顶部，与原有滚动行为一致；
-  // 发送/新建/切换会话/聚焦输入时置 true 恢复跟随，atBottomStateChange 按实际位置校正
-  const [stick, setStick] = useState(false);
+  const [stick, setStick] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
@@ -1739,6 +1737,8 @@ export function AIChat({
       return false;
     }
   });
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const msgListRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   // 卸载/切换会话（AICenter 用 key 重挂载）时中止进行中的流式请求，避免已卸载组件继续 setState（浪费网络/主线程）
   useEffect(() => {
@@ -1758,19 +1758,6 @@ export function AIChat({
   /** 消息引用：供稳定反馈回调按索引读取最新消息（避免闭包捕获过期引用） */
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
-  /** 虚拟列表句柄：流式跟随/定位用（Virtuoso 命令式 API） */
-  const virtuosoRef = useRef<VirtuosoHandle>(null);
-  /** 虚拟列表是否吸附在底部（用户滚离即 false；流式跟随仅在底部时滚动，与原 autoScroll 一致） */
-  const virtuosoAtBottomRef = useRef(false);
-  /** 虚拟列表流式跟随（镜像原 autoScroll）：新消息到达时，仅当用户在底部才滚动跟随 */
-  useEffect(() => {
-    if (!stick || !virtuosoAtBottomRef.current) return;
-    virtuosoRef.current?.scrollToIndex({
-      index: "LAST",
-      align: "end",
-      behavior: "auto",
-    });
-  }, [messages, stick]);
 
 
   /** 工具卡按消息索引预计算（流式中 toolCalls 不变 → 映射引用稳定，配合 MessageItem memo 跳过无关消息重渲染） */
@@ -2164,14 +2151,39 @@ export function AIChat({
       setActiveId(sessions[0].id);
   }, [activeId, sessions]);
 
-  // 手机键盘：聚焦输入框时重新吸附到底部（Virtuoso 通过 followOutput/atBottomStateChange 接管跟随）
+  const isNearBottom = () => {
+    const el = msgListRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+  };
+  // stick 的 ref 副本：让 autoScroll 回调保持稳定（不随 stick 重建），避免 focus effect 反复重绑定
+  const stickRef = useRef(stick);
+  stickRef.current = stick;
+  /** 性能优化：直接对消息容器 scrollTop 赋值（替代 scrollIntoView），避免同步布局/页面级滚动 */
+  const autoScroll = useCallback(() => {
+    if (!stickRef.current) return;
+    const el = msgListRef.current;
+    if (!el) return;
+    if (isNearBottom()) el.scrollTop = el.scrollHeight;
+  }, []);
+  const onScroll = useCallback(() => {
+    if (!isNearBottom()) setStick(false);
+  }, []);
+  useEffect(() => {
+    if (stick) autoScroll();
+  }, [messages, stick, autoScroll]);
+
+  // 手机键盘（依赖数组：autoScroll 稳定后只绑定一次，不再每次渲染重新绑定/解绑）
   useEffect(() => {
     const el = inputRef.current;
     if (!el) return;
-    const onFocus = () => setStick(true);
+    const onFocus = () => {
+      setStick(true);
+      setTimeout(autoScroll, 300);
+    };
     el.addEventListener("focus", onFocus);
     return () => el.removeEventListener("focus", onFocus);
-  }, []);
+  }, [autoScroll]);
 
   useEffect(() => {
     if (cooldown <= 0) {
@@ -3774,17 +3786,20 @@ export function AIChat({
                 ))}
               </div>
             </div>
-            <div className="absolute inset-0 z-10">
-              {messages.length === 0 && (
-                <div className="h-full overflow-y-auto">
-                  <div className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-6 sm:py-6">
-                    {/* 角色设定生成中：加载过程（阻止聊天，输入/发送已禁用） */}
-                    {loreLoading && (
-                      <LoreLoadingCard
-                        modelName={characterNameOf(currentModel || "")}
-                      />
-                    )}
-                    <div className="flex flex-col items-center pt-[12vh] text-center">
+            <div
+              ref={msgListRef}
+              onScroll={onScroll}
+              className="absolute inset-0 z-10 overflow-y-auto"
+            >
+              <div className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-6 sm:py-6">
+                {/* 角色设定生成中：加载过程（阻止聊天，输入/发送已禁用） */}
+                {loreLoading && (
+                  <LoreLoadingCard
+                    modelName={characterNameOf(currentModel || "")}
+                  />
+                )}
+                {messages.length === 0 ? (
+                  <div className="flex flex-col items-center pt-[12vh] text-center">
                     {config.avatar ? (
                       <img
                         src={config.avatar}
@@ -3808,108 +3823,67 @@ export function AIChat({
                         void send(s);
                       }}
                     />
-                    </div>
                   </div>
-                </div>
-              )}
-              {messages.length > 0 && (
-                <Virtuoso
-                  ref={virtuosoRef}
-                  data={messages}
-                  computeItemKey={(i: number) => i}
-                  // 记录是否吸附在底部 + 用户滚离时关闭跟随（与原 onScroll 一致：跟随只在显式操作后开启）
-                  atBottomStateChange={(atBottom: boolean) => {
-                    virtuosoAtBottomRef.current = atBottom;
-                    if (!atBottom) setStick(false);
-                  }}
-                  increaseViewportBy={400}
-                  style={{ width: "100%", height: "100%" }}
-                  components={{
-                    Header: () =>
-                      loreLoading ? (
-                        <div className="mx-auto w-full max-w-3xl px-3 pt-4 sm:px-6 sm:pt-6">
-                          <LoreLoadingCard
-                            modelName={characterNameOf(currentModel || "")}
-                          />
-                        </div>
-                      ) : null,
-                    List: ({ children, ...props }) => (
-                      <div
-                        {...props}
-                        className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-6 sm:py-6"
-                      >
-                        {children}
-                      </div>
-                    ),
-                    Footer: () => (
-                      <>
-                        {dialogResults.length > 0 && (
-                          <div className="mx-auto w-full max-w-3xl px-3 sm:px-6">
-                            <SearchResultsCard results={dialogResults} />
-                          </div>
-                        )}
-                        {loading && (
-                          <div className="mx-auto w-full max-w-3xl px-3 sm:px-6">
-                            <div className="flex gap-3 py-4 sm:py-5">
-                              <span className="mt-0.5 grid h-8 w-8 shrink-0 place-content-center rounded-full bg-gray-200 text-xs font-bold text-gray-500 dark:bg-gray-800">
-                                AI
-                              </span>
-                              <div className="flex items-center gap-1.5 rounded-xl bg-gray-100 px-4 py-3 dark:bg-gray-800">
-                                <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" />
-                                <span
-                                  className="h-2 w-2 animate-bounce rounded-full bg-gray-400"
-                                  style={{ animationDelay: "0.15s" }}
-                                />
-                                <span
-                                  className="h-2 w-2 animate-bounce rounded-full bg-gray-400"
-                                  style={{ animationDelay: "0.3s" }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        {limitReached && !hasCustom && customApiEnabled && (
-                          <div className="mx-auto w-full max-w-3xl px-3 pb-4 sm:px-6 sm:pb-6">
-                            <div className="flex justify-center pt-3">
-                              <button
-                                onClick={() => setApiModalOpen(true)}
-                                className="rounded-full border border-gray-300 bg-white px-4 py-2 text-xs text-gray-600 transition hover:border-gray-500 hover:text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
-                              >
-                                配置自定义 API 消除限制
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    ),
-                  }}
-                  itemContent={(index: number) => {
-                    const m = messages[index];
-                    return (
+                ) : (
+                  <>
+                    {messages.map((m, i) => (
                       <MessageItem
+                        key={i}
                         m={m}
-                        index={index}
+                        index={i}
                         isStreamingMsg={
                           streaming &&
-                          index === messages.length - 1 &&
+                          i === messages.length - 1 &&
                           m.role === "assistant"
                         }
                         avatar={config.avatar}
                         botName={config.botName || "AI"}
                         fontSizeCls={fontSizeCls}
-                        toolCalls={toolCallsByMsg[index] || EMPTY_TOOLCALLS}
+                        toolCalls={toolCallsByMsg[i] || EMPTY_TOOLCALLS}
                         speakingIdx={speakingIdx}
                         ttsOn={ttsOn}
                         onSpeak={playTTS}
                         onOpenAgent={handleOpenAgent}
                         onToolClick={handleToolClick}
-                        feedbackRating={feedbackRatingMap[index] || 0}
+                        feedbackRating={feedbackRatingMap[i] || 0}
                         onFeedback={handleMessageFeedback}
                       />
-                    );
-                  }}
-                />
-              )}
+                    ))}
+                    {dialogResults.length > 0 && (
+                      <SearchResultsCard results={dialogResults} />
+                    )}
+                    {loading && (
+                      <div className="flex gap-3 py-4 sm:py-5">
+                        <span className="mt-0.5 grid h-8 w-8 shrink-0 place-content-center rounded-full bg-gray-200 text-xs font-bold text-gray-500 dark:bg-gray-800">
+                          AI
+                        </span>
+                        <div className="flex items-center gap-1.5 rounded-xl bg-gray-100 px-4 py-3 dark:bg-gray-800">
+                          <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" />
+                          <span
+                            className="h-2 w-2 animate-bounce rounded-full bg-gray-400"
+                            style={{ animationDelay: "0.15s" }}
+                          />
+                          <span
+                            className="h-2 w-2 animate-bounce rounded-full bg-gray-400"
+                            style={{ animationDelay: "0.3s" }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {limitReached && !hasCustom && customApiEnabled && (
+                      <div className="flex justify-center pt-3">
+                        <button
+                          onClick={() => setApiModalOpen(true)}
+                          className="rounded-full border border-gray-300 bg-white px-4 py-2 text-xs text-gray-600 transition hover:border-gray-500 hover:text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                        >
+                          配置自定义 API 消除限制
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+                <div ref={bottomRef} />
+              </div>
             </div>
           </div>
         </>

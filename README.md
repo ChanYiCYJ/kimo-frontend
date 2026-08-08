@@ -65,7 +65,6 @@
 | **路由**          | React Router v7（SPA 客户端路由）                                  |
 | **编辑器**        | Milkdown v7（表格 / 代码高亮 / 图片上传，后台与 Agent 编辑器共用） |
 | **Markdown 渲染** | react-markdown + remark-gfm + rehype-highlight                     |
-| **虚拟列表**      | react-virtuoso（AI 对话长会话消息渲染，DOM 有界）                  |
 | **Live2D**        | pixi.js + pixi-live2d-display（实时渲染）                          |
 | **安全**          | DOMPurify（自定义页面 HTML 消毒）                                  |
 | **测试**          | Vitest（`src/lib/__tests__/` 覆盖 450+ 用例）                      |
@@ -171,7 +170,6 @@
 > 在不改变任何 UI 视觉 / 布局 / 操作习惯的前提下，对 AI 对话渲染链路做的性能优化。
 
 - **流式渲染节流**：SSE token 经 `requestAnimationFrame` + 短窗口合并刷新（低性能设备自动降频），避免每个 chunk 触发整树重渲染；会话持久化 300ms 防抖合并写入
-- **消息列表虚拟化**：长会话（数百条）由 react-virtuoso 按视口渲染，DOM 数量有界，滚动 / 流式自动跟随（顶部加载、发送后跟随、上滚即停）
 - **MessageItem memo 稳定化**：稳定 `onFeedback` 回调（按索引 + 消息引用读取）、反馈评分预计算（`msgHash → rating` 持久缓存，避免渲染期反复 localStorage 读 + 哈希）、稳定空工具卡数组——流式期间历史消息不再逐条重渲染（实测单次流式 MessageItem 渲染 5402 → 228，约 23.7× 下降）
 - **流式纯文本渲染**：流式进行中最后一条消息以纯文本展示（跳过 ReactMarkdown / 语法高亮），完成后一次性切回完整 Markdown
 - **Agent 面板联动**：Agent 面板 memo + 稳定 props（流式期间不随父组件重渲染）、文章 Markdown 抽 memo 组件
