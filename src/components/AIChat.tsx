@@ -2680,6 +2680,20 @@ export function AIChat({
     reply = cleanReply;
     upsertAssistant(reply);
 
+    // 回复完成后立即后台预合成 TTS（fire-and-forget 写缓存）：自动朗读/手动点朗读时
+    // getTtsAudio 命中 in-flight 去重或缓存 → 几乎立即返回，口型从点击那一刻就动
+    if (ttsOn && (ttsSource === "backend" || !!loadTtsAudioUrl())) {
+      const clean = cleanTtsText(reply);
+      if (clean) {
+        getTtsAudio({
+          text: clean,
+          voice: ttsVoice,
+          source: ttsSource,
+          thirdPartyUrl: loadTtsAudioUrl(),
+        }).catch(() => {});
+      }
+    }
+
     // 开启朗读模式（TTS）时：回复完成后自动朗读（像人一样说话）。
     // 复用 playTTS：内部清洗文本、用「原始 reply」触发 Live2D 表演（含 [PARAM:]/[LOOK:] 等指令）、
     // 走 TTS 缓存合成（首次合成并写缓存，二次秒播）并播放驱动口型。
@@ -2899,6 +2913,18 @@ export function AIChat({
             );
             newReply = result.content;
             upsertAssistant(newReply);
+            // 重答完成后预合成 TTS（后台缓存，配合 playTTS 秒播）
+            if (newReply && ttsOn && (ttsSource === "backend" || !!loadTtsAudioUrl())) {
+              const clean2 = cleanTtsText(newReply);
+              if (clean2) {
+                getTtsAudio({
+                  text: clean2,
+                  voice: ttsVoice,
+                  source: ttsSource,
+                  thirdPartyUrl: loadTtsAudioUrl(),
+                }).catch(() => {});
+              }
+            }
             // 搜索重答完成：TTS 开启时自动朗读重答（替换主回复朗读，同一消息位置）
             if (
               newReply &&

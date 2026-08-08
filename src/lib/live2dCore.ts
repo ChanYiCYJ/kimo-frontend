@@ -1370,6 +1370,12 @@ function buildLipSyncStep(
   analyserRef: () => AnalyserNode | null,
 ): () => void {
   const data = new Uint8Array(512);
+  /** 准备态呼吸动画：音频未就绪时做微张微合（0.3↔0.42），模拟"准备说话"，
+   *  避免静止不动像"闭合/没加载"——点击朗读那一刻就开始有口型动作 */
+  let prepPhase = 0;
+  const prepMin = LIP_SYNC_MIN_OPEN;
+  const prepAmp = 0.12;
+  const prepPeriod = 100;
   return () => {
     if (!isActive()) {
       removeLipSyncFromTicker();
@@ -1377,16 +1383,21 @@ function buildLipSyncStep(
     }
     const analyser = analyserRef();
     if (!analyser) {
-      // 准备态（音频未就绪/解码中）：持续保持最低开口，覆盖 idle/motion 每帧置 0
+      // 准备态（音频未就绪/解码中）：呼吸式微张微合（0.3~0.42），
+      // 从点击朗读那一刻就动，不再静止不动像"闭合/没加载"
+      prepPhase = (prepPhase + 1) % prepPeriod;
+      const phase = (prepPhase / prepPeriod) * Math.PI * 2;
+      const v = prepMin + prepAmp * (0.5 + 0.5 * Math.sin(phase));
       if (mouthParams.length > 0) {
-        mouthSmooth = LIP_SYNC_MIN_OPEN;
+        mouthSmooth = v;
         rmsSmooth = 0;
         for (const p of mouthParams) {
           try {
-            core.setParamFloat(p, LIP_SYNC_MIN_OPEN);
+            core.setParamFloat(p, v);
           } catch {}
         }
       }
+      resetMouthFormNeutral(core);
       return;
     }
     analyser.getByteTimeDomainData(data);
