@@ -605,13 +605,43 @@ export function resolveHitRegion(
 }
 
 /**
- * 音频 RMS 音量（0~1）→ 嘴张幅度（ParamMouthOpenY 0~0.6）映射（纯函数，可单测）。
- * 低音量保持微张（0.06）避免"僵住闭嘴"，高音量渐进到最大开合。
+ * 音频 RMS 音量（0~1）→ 嘴张幅度（ParamMouthOpenY 0.06~0.9）映射（纯函数，可单测）。
+ * 低音量保持微张（0.06）避免"僵住闭嘴"；说话时嘴明显张开（增益放大中低音量区间，封顶 0.9 适中）。
  */
 export function rmsToMouth(rms: number): number {
   if (!Number.isFinite(rms) || rms <= 0) return 0.06;
-  const v = Math.min(1, rms * 3.2); // 放大中低音量区间
-  return Math.min(0.6, 0.06 + v * 0.54); // 0.06 ~ 0.6（钳制浮点误差）
+  const v = Math.min(1, rms * 4.5); // 增益放大：中低音量嘴张明显（4.0 偏小、5.0 过大过抖）
+  return Math.min(0.9, 0.06 + v * 0.84); // 0.06 ~ 0.9（封顶适中，避免满张夸张/不自然）
+}
+
+/** 口型平滑参数（attack 快/release 慢，贴合音节且避免波形抖动造成口型闪烁） */
+export interface SmoothMouthOpts {
+  /** 有声时逼近系数（默认 0.6，开口较快、开头响应及时，仍柔和） */
+  attack?: number;
+  /** 无声时逼近系数（默认 0.28，闭口自然连贯） */
+  release?: number;
+  /** 说话期间最小开口（默认 0.16，音节间隙不闭死） */
+  hold?: number;
+  /** 判定「在说话」的目标值阈值（默认 0.1，开头微弱声音也能触发张嘴） */
+  threshold?: number;
+}
+
+/**
+ * 口型平滑单步（纯函数，可单测）：`prev + (target - prev) * k`。
+ * - 开口比闭口快（attack 0.6 vs release 0.28）让开头响应及时、口型过渡柔和连贯；
+ * - 说话期间嘴保持明显张开（≥hold），音节间隙不闭死，口型更易察觉。
+ */
+export function smoothMouth(
+  prev: number,
+  rms: number,
+  opts?: SmoothMouthOpts,
+): number {
+  const target = rmsToMouth(rms);
+  const speaking = target > (opts?.threshold ?? 0.1);
+  const k = speaking ? (opts?.attack ?? 0.6) : (opts?.release ?? 0.28);
+  let v = prev + (target - prev) * k;
+  if (speaking && v < (opts?.hold ?? 0.16)) v = opts?.hold ?? 0.16;
+  return v;
 }
 
 /** 本地规则情感检测（关键词 + 表情符号，按命中数取最高；无命中 → neutral） */

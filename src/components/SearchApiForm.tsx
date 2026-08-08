@@ -151,25 +151,29 @@ export function SearchApiForm({ onSaved }: SearchApiFormProps) {
         />
       )}
 
-      {/* 保存（保存后自动测试连接） */}
-      <button
-        type="button"
-        onClick={saveAndTest}
-        disabled={testState === "loading"}
-        className="w-full rounded-xl border border-gray-900 bg-gray-900 px-3 py-2 text-sm font-medium text-white transition active:scale-[0.98] disabled:opacity-60 dark:border-gray-200 dark:bg-gray-200 dark:text-gray-900"
-      >
-        {testState === "loading" ? "测试中…" : "测试并保存"}
-      </button>
-      {testResult && (
-        <p
-          className={`text-[11px] leading-relaxed ${testResult.ok ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}
-        >
-          {testResult.ok ? "✓ " : "✗ "}
-          {testResult.message}
-          {typeof testResult.latencyMs === "number"
-            ? ` · ${testResult.latencyMs < 1000 ? `${testResult.latencyMs}ms` : `${(testResult.latencyMs / 1000).toFixed(1)}s`}`
-            : ""}
-        </p>
+      {/* 保存（保存后自动测试连接）；自动模式无需配置，不显示 */}
+      {cfg.provider !== "auto" && (
+        <>
+          <button
+            type="button"
+            onClick={saveAndTest}
+            disabled={testState === "loading"}
+            className="w-full rounded-xl border border-gray-900 bg-gray-900 px-3 py-2 text-sm font-medium text-white transition active:scale-[0.98] disabled:opacity-60 dark:border-gray-200 dark:bg-gray-200 dark:text-gray-900"
+          >
+            {testState === "loading" ? "测试中…" : "测试并保存"}
+          </button>
+          {testResult && (
+            <p
+              className={`text-[11px] leading-relaxed ${testResult.ok ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}
+            >
+              {testResult.ok ? "✓ " : "✗ "}
+              {testResult.message}
+              {typeof testResult.latencyMs === "number"
+                ? ` · ${testResult.latencyMs < 1000 ? `${testResult.latencyMs}ms` : `${(testResult.latencyMs / 1000).toFixed(1)}s`}`
+                : ""}
+            </p>
+          )}
+        </>
       )}
       {configured && (
         <p className="text-[11px] text-gray-400">

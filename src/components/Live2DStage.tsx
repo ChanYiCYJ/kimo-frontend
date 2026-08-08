@@ -33,7 +33,9 @@ function LoreDetail() {
   const { settings } = useSite();
   const [core, setCore] = useState<Live2dCoreState>(() => getState());
   useEffect(() => {
-    const unsub = subscribe(() => setCore(getState()));
+    // 用新对象引用触发重渲染：即使 live2dCore state 对象没变（如档案生成完成后的
+    // emitLive2dState 通知），也强制 LoreDetail 重渲染重新读 loadLore 显示新档案
+    const unsub = subscribe(() => setCore({ ...getState() }));
     return unsub;
   }, []);
   const model = core.modelName || resolveLive2dModel(settings.live2d_model);

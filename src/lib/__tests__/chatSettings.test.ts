@@ -27,8 +27,6 @@ import {
   loadTtsAudioUrl,
   saveTtsAudioUrl,
   buildTtsAudioUrl,
-  loadTtsMode,
-  saveTtsMode,
   loadTtsOn,
   saveTtsOn,
   loadTtsVolume,
@@ -38,6 +36,10 @@ import {
   saveTtsVoice,
   applyTtsVoice,
   DEFAULT_TTS_VOICE,
+  loadTtsSource,
+  saveTtsSource,
+  resolveTtsAudioUrl,
+  BACKEND_TTS_TEMPLATE,
 } from "../chatSettings";
 import type { AIChatConfig } from "../types";
 import type { LocalAIConfig } from "../localCfg";
@@ -337,24 +339,53 @@ describe("chatSettings · 音频 TTS 地址（真实音频口型）", () => {
   });
 });
 
-describe("chatSettings · 朗读模式（TtsMode）", () => {
-  it("默认浏览器朗读；无 URL 时 audio 模式回落 browser", () => {
-    expect(loadTtsMode()).toBe("browser");
-    saveTtsMode("audio");
-    // 没配 URL → 仍为 browser
-    expect(loadTtsMode()).toBe("browser");
+describe("chatSettings · TTS 来源（内置后端 / 第三方地址）", () => {
+  it("默认内置后端；读取/保存", () => {
+    expect(loadTtsSource()).toBe("backend");
+    saveTtsSource("thirdparty");
+    expect(loadTtsSource()).toBe("thirdparty");
+    saveTtsSource("backend");
+    expect(loadTtsSource()).toBe("backend");
+    // 非法值回退默认
+    localStorage.setItem("kimo_ai_tts_source", "weird");
+    expect(loadTtsSource()).toBe("backend");
   });
 
-  it("配了 URL + 存 audio 模式 → 生效为 audio", () => {
-    saveTtsAudioUrl("https://x.com/tts?text={text}");
-    saveTtsMode("audio");
-    expect(loadTtsMode()).toBe("audio");
+  it("BACKEND_TTS_TEMPLATE 指向本站后端", () => {
+    expect(BACKEND_TTS_TEMPLATE).toBe("/api/v1/tts?text={text}");
   });
 
-  it("存 browser 模式 → 即使有 URL 也回退 browser", () => {
-    saveTtsAudioUrl("https://x.com/tts?text={text}");
-    saveTtsMode("browser");
-    expect(loadTtsMode()).toBe("browser");
+  it("resolveTtsAudioUrl：内置后端走模板 + 追加音色", () => {
+    const u = resolveTtsAudioUrl(
+      "backend",
+      "https://third-party.example/tts",
+      "zh-CN-XiaoxiaoNeural",
+      "你好，世界",
+    );
+    expect(u).toBe(
+      "/api/v1/tts?text=" +
+        encodeURIComponent("你好，世界") +
+        "&voice=zh-CN-XiaoxiaoNeural",
+    );
+  });
+
+  it("resolveTtsAudioUrl：第三方地址走用户 URL + 追加音色", () => {
+    const u = resolveTtsAudioUrl(
+      "thirdparty",
+      "https://x.com/tts?text={text}",
+      "zh-CN-YunxiNeural",
+      "hi",
+    );
+    expect(u).toBe("https://x.com/tts?text=hi&voice=zh-CN-YunxiNeural");
+  });
+
+  it("resolveTtsAudioUrl：第三方无地址时返回 null", () => {
+    expect(
+      resolveTtsAudioUrl("thirdparty", "", "zh-CN-XiaoxiaoNeural", "hi"),
+    ).toBeNull();
+    expect(
+      resolveTtsAudioUrl("thirdparty", "   ", "zh-CN-XiaoxiaoNeural", ""),
+    ).toBeNull();
   });
 });
 
@@ -394,7 +425,10 @@ describe("chatSettings · TTS 音色（voice 参数）", () => {
   });
 
   it("applyTtsVoice：无 voice 时追加", () => {
-    const u = applyTtsVoice("https://x.com/tts?text=hi", "zh-CN-XiaoxiaoNeural");
+    const u = applyTtsVoice(
+      "https://x.com/tts?text=hi",
+      "zh-CN-XiaoxiaoNeural",
+    );
     expect(u).toBe("https://x.com/tts?text=hi&voice=zh-CN-XiaoxiaoNeural");
   });
 

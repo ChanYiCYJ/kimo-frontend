@@ -61,15 +61,16 @@ import {
   loadPersonaKnowledge,
   savePersonaKnowledge,
   loadTtsAudioUrl,
-  buildTtsAudioUrl,
   loadTtsOn,
   saveTtsOn,
   loadTtsVolume,
-  saveTtsVolume,
   ttsVolumeValue,
   loadTtsVoice,
   saveTtsVoice,
-  applyTtsVoice,
+  loadTtsSource,
+  saveTtsSource,
+  resolveTtsAudioUrl,
+  type TtsSource,
   type TtsVolume,
   type TtsVoice,
   type ChatFontSize,
@@ -100,15 +101,17 @@ import {
 } from "../lib/live2d";
 import {
   applyActionCommands,
+  emitLive2dState,
   getState,
   loadModel,
   setEmotion as applyL2dModelEmotion,
   setLive2dBusy,
   speakAudio,
-  speakText,
+  speakAudioBuffer,
   stopSpeaking,
   subscribe,
 } from "../lib/live2dCore";
+import { cleanTtsText, getTtsAudio } from "../lib/ttsCache";
 import {
   buildLorePrompt,
   loadLore,
@@ -403,7 +406,7 @@ const MessageItem = memo(function MessageItem({
 
         {m.role === "assistant" && (
           <div
-            className={`mt-1 flex items-center gap-1 opacity-0 transition group-hover:opacity-100 ${speakingIdx === index ? "opacity-100" : ""}`}
+            className={`mt-1 flex items-center gap-1 opacity-0 transition group-hover:opacity-100 max-sm:opacity-100 ${speakingIdx === index ? "opacity-100" : ""}`}
           >
             <button
               onClick={() => {
@@ -942,16 +945,6 @@ async function streamChat(
 }
 
 /** TTS 朗读文本 */
-function speak(text: string, volume = 1) {
-  window.speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = "zh-CN";
-  u.rate = 1.1;
-  u.pitch = 1;
-  u.volume = Math.max(0, Math.min(1, volume));
-  window.speechSynthesis.speak(u);
-}
-
 const SESSION_STORAGE = (pageId: number) =>
   STORAGE_PREFIX + "sessions_" + pageId;
 
@@ -1311,6 +1304,8 @@ export function AIChat({
     return 0;
   });
   const [speakingIdx, setSpeakingIdx] = useState(-1);
+  /** 朗读播放 token：新朗读/停止会使 in-flight 异步合成作废（防旧的缓存命中后覆盖新朗读） */
+  const ttsPlayRef = useRef(0);
   const [stick, setStick] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -1579,18 +1574,42 @@ export function AIChat({
       return !v;
     });
   };
-  /** TTS 音量（音频输出控制） */
-  const [ttsVolume, setTtsVolume] = useState<TtsVolume>(() => loadTtsVolume());
-  const setTtsVolumePersist = (v: TtsVolume) => {
-    setTtsVolume(v);
-    saveTtsVolume(v);
-  };
+  /** TTS 音量（音频输出控制，默认中等；设置页已移除音量调节） */
+  const [ttsVolume] = useState<TtsVolume>(() => loadTtsVolume());
   /** TTS 音色（voice 参数，edge-tts 免费中文神经语音） */
   const [ttsVoice, setTtsVoice] = useState<TtsVoice>(() => loadTtsVoice());
   const setTtsVoicePersist = (v: TtsVoice) => {
     setTtsVoice(v);
     saveTtsVoice(v);
   };
+  /** TTS 来源：backend=内置后端 /api/v1/tts；thirdparty=第三方地址 */
+  const [ttsSource, setTtsSource] = useState<TtsSource>(() => loadTtsSource());
+  const setTtsSourcePersist = (v: TtsSource) => {
+    setTtsSource(v);
+    saveTtsSource(v);
+  };
+  /** 设置页「试听」：按当前配置播一段，验证 TTS 调用 + Live2D 口型 */
+  const testTts = useCallback(() => {
+    const text = "你好，我是你的 AI 助手，欢迎使用语音朗读。";
+    const clean = text.replace(/[*_`#~>\[\]\(\)]/g, "");
+    const url = resolveTtsAudioUrl(
+      ttsSource,
+      loadTtsAudioUrl(),
+      ttsVoice,
+      clean,
+    );
+    if (!url) {
+      toast("请先配置音频 TTS 地址", "error");
+      return;
+    }
+    stopSpeaking();
+    if (l2dEnabled) applyL2dModelEmotion("happy");
+    speakAudio(url, {
+      volume: ttsVolumeValue(ttsVolume),
+      onEnd: () => stopSpeaking(),
+    });
+    toast("正在试听…");
+  }, [ttsSource, ttsVoice, ttsVolume, l2dEnabled]);
   /** 网络模式：Auto(智能,默认,先按速度回答，缺准确数据自动升级) / search(联网搜索并自动生成综合文章；原 view 已整合进 search) */
   const [netMode, setNetMode] = useState<ChatNetMode>(() => loadNetMode());
   const browseAgentOn = netMode === "search"; // 仅 Deep 模式（netMode=search）：搜索并生成综合文章，View 页面仅此模式可调用
@@ -2153,13 +2172,15 @@ export function AIChat({
       // TTS 总开关关闭时不朗读（隐藏按钮兜底）
       if (!ttsOn) return;
       if (speakingIdx === idx) {
-        window.speechSynthesis.cancel();
+        ttsPlayRef.current++; // 使 in-flight 合成作废
         stopSpeaking();
         setSpeakingIdx(-1);
         return;
       }
       setSpeakingIdx(idx);
-      const clean = text.replace(/[*_`#~>\[\]\(\)]/g, "").slice(0, 600);
+      // 朗读用「清洗后的对话文字」：去 [表情:]/[工具指令] 标签 + Markdown 符号 + 多余空白
+      // （cleanTtsText 与 TTS 缓存共用同一清洗，保证缓存 key 一致），避免读出“表情冒号 happy”等
+      const clean = cleanTtsText(text);
       // 朗读时也触发 Live2D 表情/动作指令：用「原始文本」（含 [表情:]/[PARAM:]/[LOOK:] 等，
       // 尚未被清洗）让角色在朗读时同步表演——AI 对话里的隐藏指令被 TTS 朗读调用
       if (l2dEnabled) {
@@ -2168,32 +2189,44 @@ export function AIChat({
         applyL2dModelEmotion(te || detectReplyEmotion(text));
       }
       const vol = ttsVolumeValue(ttsVolume);
-      // 音频 TTS（真实波形驱动口型）：配置了音频 TTS 地址才走；否则回退浏览器语音
-      const ttsUrl = loadTtsAudioUrl();
-      const built = buildTtsAudioUrl(ttsUrl, clean);
-      if (built) {
-        speakAudio(applyTtsVoice(built, ttsVoice), {
-          volume: vol,
-          onEnd: () => {
-            stopSpeaking();
-            setSpeakingIdx(-1);
-          },
-        });
+      const thirdPartyUrl = loadTtsAudioUrl();
+      // 音频 TTS（真实波形驱动口型）：按来源解析 URL
+      const url = resolveTtsAudioUrl(ttsSource, thirdPartyUrl, ttsVoice, clean);
+      if (!url) {
+        toast("请先配置音频 TTS 地址", "error");
+        setSpeakingIdx(-1);
         return;
       }
-      // 回退：浏览器 speechSynthesis + 文本时长估算口型
-      if (l2dEnabled) speakText(clean);
-      speak(clean, vol);
-      const check = setInterval(() => {
-        if (!window.speechSynthesis.speaking) {
-          stopSpeaking();
-          setSpeakingIdx(-1);
-          clearInterval(check);
-        }
-      }, 300);
+      const token = ++ttsPlayRef.current;
+      const onEnd = () => {
+        stopSpeaking();
+        setSpeakingIdx(-1);
+      };
+      // 速度优化：命中 TTS 缓存 → decode 后的 AudioBuffer 秒播（0 网络请求 + 口型第一帧即同步）；
+      // 未命中 → 合成后同样走 AudioBuffer（播放起点精确），同时写缓存供下次秒播
+      getTtsAudio({
+        text: clean,
+        voice: ttsVoice,
+        source: ttsSource,
+        thirdPartyUrl,
+      })
+        .then((r) => {
+          if (token !== ttsPlayRef.current) return; // 已被新朗读/停止取代
+          if (r?.arrayBuffer) {
+            speakAudioBuffer(r.arrayBuffer, { volume: vol, onEnd });
+          } else {
+            // 合成失败：回退 <audio> 直连（同 URL，兼容第三方静态音频）
+            speakAudio(url, { volume: vol, onEnd });
+          }
+        })
+        .catch(() => {
+          if (token === ttsPlayRef.current) {
+            speakAudio(url, { volume: vol, onEnd });
+          }
+        });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [speakingIdx, l2dEnabled, ttsOn, ttsVolume, ttsVoice],
+    [speakingIdx, l2dEnabled, ttsOn, ttsVolume, ttsVoice, ttsSource],
   );
 
   // 知识库：根据选择 + 本地笔记组装文本（KbModal 保存后调用 refreshKb 刷新缓存）
@@ -2251,6 +2284,9 @@ export function AIChat({
         }
       } finally {
         setLoreLoading(false);
+        // 通知订阅组件（LoreDetail 角色资料面板）重新读档案：生成完成后自动显示新档案，
+        // 无需用户重开面板（否则一直显示「暂无档案」误以为无法切换角色档案）
+        emitLive2dState();
       }
     },
     [refreshKb, toast],
@@ -2608,7 +2644,7 @@ export function AIChat({
         lorePrompt,
         personaMode === "role",
         l2dEnabled,
-        ttsOn && !!loadTtsAudioUrl(),
+        ttsOn && (ttsSource === "backend" || !!loadTtsAudioUrl()),
       );
       reply = result.content;
     } catch (e: unknown) {
@@ -2637,6 +2673,15 @@ export function AIChat({
     }
     reply = cleanReply;
     upsertAssistant(reply);
+
+    // 开启朗读模式（TTS）时：回复完成后自动朗读（像人一样说话）。
+    // 复用 playTTS：内部清洗文本、用「原始 reply」触发 Live2D 表演（含 [PARAM:]/[LOOK:] 等指令）、
+    // 走 TTS 缓存合成（首次合成并写缓存，二次秒播）并播放驱动口型。
+    if (ttsOn && (ttsSource === "backend" || !!loadTtsAudioUrl())) {
+      // AI 回复在消息列表中的索引（messages 为发送前快照，assistant 回复在末尾 +1）
+      const autoIdx = messages.length + 1;
+      playTTS(reply, autoIdx);
+    }
 
     // AI→Agent 工具调用：解析 [BROWSE:url] / [SEARCH:query] / [EDIT:content] / [VIEW:文章] / [KB:指令]
     const browseCmd = reply.match(/\[BROWSE:\s*(https?:\/\/[^\s\]]+)\s*\]/);
@@ -2844,10 +2889,18 @@ export function AIChat({
               lorePrompt,
               personaMode === "role",
               l2dEnabled,
-              ttsOn && !!loadTtsAudioUrl(),
+              ttsOn && (ttsSource === "backend" || !!loadTtsAudioUrl()),
             );
             newReply = result.content;
             upsertAssistant(newReply);
+            // 搜索重答完成：TTS 开启时自动朗读重答（替换主回复朗读，同一消息位置）
+            if (
+              newReply &&
+              ttsOn &&
+              (ttsSource === "backend" || !!loadTtsAudioUrl())
+            ) {
+              playTTS(newReply, messages.length + 1);
+            }
           } finally {
             endStreaming();
           }
@@ -3155,10 +3208,11 @@ export function AIChat({
       allowCustomApi: customApiEnabled,
       ttsOn,
       onToggleTts: toggleTts,
-      ttsVolume,
-      onSetTtsVolume: setTtsVolumePersist,
       ttsVoice,
       onSetTtsVoice: setTtsVoicePersist,
+      ttsSource,
+      onSetTtsSource: setTtsSourcePersist,
+      onTestTts: testTts,
     }),
     [
       pageId,
@@ -3174,10 +3228,11 @@ export function AIChat({
       customApiEnabled,
       ttsOn,
       toggleTts,
-      ttsVolume,
-      setTtsVolumePersist,
       ttsVoice,
       setTtsVoicePersist,
+      ttsSource,
+      setTtsSourcePersist,
+      testTts,
     ],
   );
 
@@ -3955,52 +4010,83 @@ export function AIChat({
                       />
                     </div>
                   )}
-                  {/* 长回复：展开/收起全文（默认限高，避免遮挡 Live2D 角色） */}
+                  {/* 底部操作组：朗读 + 展开/收起全文（合并一行右对齐，避免两行胶囊突兀） */}
                   {!streaming &&
                     lastAi &&
-                    stripToolCmds(stripEmotionTag(lastAi.content)).length >
-                      80 && (
-                      <div className="mt-2 flex justify-end">
-                        <button
-                          onClick={() => setImmersiveExpand((v) => !v)}
-                          className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white/70 px-3 py-1.5 text-xs font-medium text-gray-500 transition hover:border-gray-300 hover:bg-gray-50 hover:text-gray-700 active:scale-95 dark:border-gray-700 dark:bg-gray-800/70 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
-                        >
-                          {immersiveExpand ? (
-                            <>
-                              收起
-                              <svg
-                                className="h-3.5 w-3.5"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  d="M4.5 15.75l7.5-7.5 7.5 7.5"
-                                />
-                              </svg>
-                            </>
-                          ) : (
-                            <>
-                              展开全文
-                              <svg
-                                className="h-3.5 w-3.5"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  d="M19.5 8.25l-7.5 7.5-7.5-7.5"
-                                />
-                              </svg>
-                            </>
-                          )}
-                        </button>
+                    (ttsOn ||
+                      stripToolCmds(stripEmotionTag(lastAi.content)).length >
+                        80) && (
+                      <div className="mt-2 flex justify-end gap-1.5">
+                        {/* 朗读：读这条 AI 回复的对话文字（清洗掉指令标签），沉浸角色同步口型；朗读中高亮可再点停止 */}
+                        {ttsOn && (
+                          <button
+                            onClick={() => playTTS(lastAi.content, -2)}
+                            className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-medium transition active:scale-95 ${
+                              speakingIdx === -2
+                                ? "border-blue-300 bg-blue-50 text-blue-600 dark:border-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                                : "border-gray-200 bg-white/70 text-gray-500 hover:border-gray-300 hover:bg-gray-50 hover:text-gray-700 dark:border-gray-700 dark:bg-gray-800/70 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+                            }`}
+                          >
+                            <svg
+                              className="h-3.5 w-3.5"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z"
+                              />
+                            </svg>
+                            {speakingIdx === -2 ? "停止朗读" : "朗读"}
+                          </button>
+                        )}
+                        {/* 长回复：展开/收起全文 */}
+                        {stripToolCmds(stripEmotionTag(lastAi.content)).length >
+                          80 && (
+                          <button
+                            onClick={() => setImmersiveExpand((v) => !v)}
+                            className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white/70 px-3 py-1.5 text-xs font-medium text-gray-500 transition hover:border-gray-300 hover:bg-gray-50 hover:text-gray-700 active:scale-95 dark:border-gray-700 dark:bg-gray-800/70 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+                          >
+                            {immersiveExpand ? (
+                              <>
+                                收起
+                                <svg
+                                  className="h-3.5 w-3.5"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M4.5 15.75l7.5-7.5 7.5 7.5"
+                                  />
+                                </svg>
+                              </>
+                            ) : (
+                              <>
+                                展开全文
+                                <svg
+                                  className="h-3.5 w-3.5"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M19.5 8.25l-7.5 7.5-7.5-7.5"
+                                  />
+                                </svg>
+                              </>
+                            )}
+                          </button>
+                        )}
                       </div>
                     )}
                 </div>
@@ -4080,7 +4166,8 @@ export function AIChat({
                   {searchPlan && "正在搜索…"}
                 </span>
               )}
-              {!live2dImmersive && searching && (
+              {/* searching 通用卡：已有 searchPlan 分段进度卡时不再重复渲染（避免两个"正在搜索…"） */}
+              {!live2dImmersive && searching && !searchPlan && (
                 <span
                   className={
                     "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs " +

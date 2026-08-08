@@ -5,12 +5,9 @@ import {
   saveCustomModelOn,
   loadTtsAudioUrl,
   saveTtsAudioUrl,
-  loadTtsMode,
-  saveTtsMode,
   TTS_VOICES,
   type ChatFontSize,
-  type TtsMode,
-  type TtsVolume,
+  type TtsSource,
   type TtsVoice,
 } from "../lib/chatSettings";
 import { LocalApiForm } from "./LocalApiForm";
@@ -39,12 +36,14 @@ export interface AgentSettingsProps {
   /** TTS 总开关（默认关闭；关闭时隐藏消息「朗读」按钮） */
   ttsOn?: boolean;
   onToggleTts?: () => void;
-  /** TTS 音量（音频输出控制） */
-  ttsVolume?: TtsVolume;
-  onSetTtsVolume?: (v: TtsVolume) => void;
   /** TTS 音色（voice 参数） */
   ttsVoice?: TtsVoice;
   onSetTtsVoice?: (v: TtsVoice) => void;
+  /** TTS 来源（内置后端 / 第三方地址） */
+  ttsSource?: TtsSource;
+  onSetTtsSource?: (v: TtsSource) => void;
+  /** 试听当前 TTS 配置（验证调用 + Live2D 口型） */
+  onTestTts?: () => void;
 }
 
 /** 设置卡片：细边框 + 无阴影（对齐 Live2D 面板质感），左侧灰色条作为区块标识 */
@@ -118,10 +117,11 @@ export function SettingsTab({
   allowCustomApi = true,
   ttsOn = false,
   onToggleTts,
-  ttsVolume = "medium",
-  onSetTtsVolume,
   ttsVoice = "zh-CN-XiaoxiaoNeural",
   onSetTtsVoice,
+  ttsSource = "backend",
+  onSetTtsSource,
+  onTestTts,
 }: AgentSettingsProps) {
   // 自定义模型开关：由 AIChat 统一管理（props 驱动，关闭后不再识别为自定义）；
   // 未传 props 时回退本地逻辑（兼容旧用法）
@@ -136,23 +136,8 @@ export function SettingsTab({
   const [dataOpen, setDataOpen] = useState(false);
   // 高级设置：模型API配置默认收起，仅高级用户手动展开
   const [modelApiOpen, setModelApiOpen] = useState(false);
-  // 音频 TTS（独立卡片，默认收起表单）：browser=浏览器朗读 / audio=真实音频波形口型
-  const [ttsMode, setTtsMode] = useState<TtsMode>(() => loadTtsMode());
+  // 音频 TTS（独立卡片，默认收起表单）：内置后端 / 第三方地址 / 音色 / 试听 / 音量
   const [ttsAudioUrl, setTtsAudioUrl] = useState(() => loadTtsAudioUrl());
-  const switchTtsMode = (m: TtsMode) => {
-    setTtsMode(m);
-    saveTtsMode(m);
-  };
-  const saveTtsUrl = () => {
-    saveTtsAudioUrl(ttsAudioUrl);
-    if (ttsAudioUrl.trim()) {
-      setTtsMode("audio");
-      saveTtsMode("audio");
-    } else {
-      setTtsMode("browser");
-      saveTtsMode("browser");
-    }
-  };
   /** 搜索模式说明文案 */
   const searchModeDesc =
     searchMode === "fast"
@@ -221,126 +206,103 @@ export function SettingsTab({
       <Section title="搜索 API">
         <div className="space-y-2 pt-1">
           <SearchApiForm />
-          <p className="text-[11px] leading-relaxed text-gray-400">
-            配置后优先走所选平台，实时获取当天信息；未配置或被拦自动降级。
-          </p>
         </div>
       </Section>
 
-      {/* 音频 TTS：同搜索 API 卡片样式；默认关闭（总开关默认关），开启后才展示模式/音量/表单 */}
+      {/* 音频 TTS：朗读开关与来源 tab 合并；开启后展示音色/试听 */}
       <Section title="音频 TTS">
         <div className="space-y-2">
-          {/* TTS 总开关（默认关闭） */}
-          <Toggle
-            on={ttsOn}
-            onClick={onToggleTts ?? (() => {})}
-            label="朗读"
-            sub={
-              ttsOn
-                ? "已开启：消息上显示「朗读」按钮，可朗读 AI 回复"
-                : "已关闭：默认不朗读，消息上的「朗读」按钮隐藏"
-            }
-          />
-          {!ttsOn ? (
-            <p className="text-[11px] leading-relaxed text-gray-400">
-              在设置中开启朗读后，可配置朗读方式与音量，AI 回复时角色表情动作随朗读触发。
-            </p>
-          ) : (
-            <div className="space-y-2 pt-0.5">
-              {/* 朗读模式分段单选（同搜索模式卡片样式） */}
-              <div className="flex gap-0.5 rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800">
-                {(
-                  [
-                    { v: "browser", l: "浏览器朗读" },
-                    { v: "audio", l: "音频 TTS" },
-                  ] as { v: TtsMode; l: string }[]
-                ).map((m) => (
-                  <button
-                    key={m.v}
-                    onClick={() => switchTtsMode(m.v)}
-                    className={`flex-1 px-2.5 py-1.5 text-xs font-medium rounded-md transition ${
-                      ttsMode === m.v
-                        ? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100"
-                        : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-                    }`}
-                  >
-                    {m.l}
-                  </button>
-                ))}
-              </div>
-              <p className="text-[11px] leading-relaxed text-gray-400">
-                {ttsMode === "audio"
-                  ? "音频 TTS 模式：AI 回复更简短口语化，朗读用真实音频波形驱动口型。"
-                  : "浏览器自带语音朗读；如需真实音频波形口型，切换到「音频 TTS」配置地址。"}
-              </p>
-              {/* 音频 TTS 表单（仅音频模式展示） */}
-              {ttsMode === "audio" && (
-                <div className="space-y-2 pt-0.5">
-                  <input
-                    value={ttsAudioUrl}
-                    onChange={(e) => setTtsAudioUrl(e.target.value)}
-                    placeholder="https://…/tts?text={text}"
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800"
-                  />
-                  <button
-                    onClick={saveTtsUrl}
-                    className="w-full rounded-xl border border-gray-200 bg-white py-2 text-sm text-gray-600 transition hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-gray-600"
-                  >
-                    保存
-                  </button>
-                  <p className="text-[11px] leading-relaxed text-gray-400">
-                    支持{" "}
-                    <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">
-                      {"{text}"}
-                    </code>{" "}
-                    占位符（URL 编码后替换）；留空并保存则回退浏览器朗读。
-                  </p>
-                  {/* 音色（voice 参数，edge-tts 免费中文神经语音） */}
-                  <div className="flex items-center justify-between pt-0.5">
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      音色
-                    </span>
-                    <select
-                      value={ttsVoice}
-                      onChange={(e) => onSetTtsVoice?.(e.target.value)}
-                      className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-700 outline-none transition focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                    >
-                      {TTS_VOICES.map((v) => (
-                        <option key={v.id} value={v.id}>
-                          {v.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
+          {/* 朗读开关 + 来源分段（内置后端 / 第三方地址）合并为同一行控件 */}
+          <div className="flex items-center gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1 transition dark:border-gray-700 dark:bg-gray-800">
+            <button
+              type="button"
+              onClick={onToggleTts ?? (() => {})}
+              role="switch"
+              aria-checked={ttsOn}
+              className="flex shrink-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              <span>朗读</span>
+              <span
+                className={`relative h-4 w-7 shrink-0 rounded-full transition ${
+                  ttsOn
+                    ? "bg-gray-900 dark:bg-gray-200"
+                    : "bg-gray-300 dark:bg-gray-700"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all duration-200 ${
+                    ttsOn ? "left-[14px]" : "left-0.5"
+                  }`}
+                />
+              </span>
+            </button>
+            <span className="h-4 w-px shrink-0 bg-gray-200 dark:bg-gray-700" />
+            {/* 来源分段：内置后端 / 第三方地址（选来源时自动开启朗读） */}
+            <div className="flex min-w-0 flex-1 gap-0.5">
+              {(
+                [
+                  { v: "backend", l: "内置后端" },
+                  { v: "thirdparty", l: "第三方地址" },
+                ] as { v: TtsSource; l: string }[]
+              ).map((s) => (
+                <button
+                  key={s.v}
+                  type="button"
+                  onClick={() => {
+                    onSetTtsSource?.(s.v);
+                    if (!ttsOn) onToggleTts?.();
+                  }}
+                  className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition ${
+                    ttsOn && ttsSource === s.v
+                      ? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100"
+                      : "text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                  }`}
+                >
+                  {s.l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 开启后：配置项（淡入上滑） */}
+          {ttsOn && (
+            <div className="space-y-2 pt-0.5 animate-[kfade_0.2s_ease-out]">
+              {/* 第三方地址输入（仅第三方来源，输入即保存） */}
+              {ttsSource === "thirdparty" && (
+                <input
+                  value={ttsAudioUrl}
+                  onChange={(e) => {
+                    setTtsAudioUrl(e.target.value);
+                    saveTtsAudioUrl(e.target.value);
+                  }}
+                  placeholder="TTS 地址模板：https://…/tts?text={text}"
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none transition focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 animate-[kfade_0.2s_ease-out]"
+                />
               )}
-              {/* 音量（音频输出控制） */}
-              <div className="flex items-center justify-between pt-1">
+              {/* 音色 */}
+              <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  朗读音量
+                  音色
                 </span>
-                <div className="flex gap-0.5 rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800">
-                  {(
-                    [
-                      { v: "low", l: "低" },
-                      { v: "medium", l: "中" },
-                      { v: "high", l: "高" },
-                    ] as { v: TtsVolume; l: string }[]
-                  ).map((vl) => (
-                    <button
-                      key={vl.v}
-                      onClick={() => onSetTtsVolume?.(vl.v)}
-                      className={`px-2.5 py-1 text-xs font-medium rounded-md transition ${
-                        ttsVolume === vl.v
-                          ? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100"
-                          : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-                      }`}
-                    >
-                      {vl.l}
-                    </button>
+                <select
+                  value={ttsVoice}
+                  onChange={(e) => onSetTtsVoice?.(e.target.value)}
+                  className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-700 outline-none transition focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                >
+                  {TTS_VOICES.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.label}
+                    </option>
                   ))}
-                </div>
+                </select>
               </div>
+              {/* 试听 */}
+              <button
+                onClick={onTestTts}
+                className="w-full rounded-xl border border-gray-200 bg-white py-2 text-sm text-gray-600 transition hover:border-gray-300 hover:bg-gray-50 active:scale-[0.99] dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-gray-600"
+              >
+                试听
+              </button>
             </div>
           )}
         </div>

@@ -1,17 +1,73 @@
-# Kimo React 前端
+<div align="center">
 
-基于 [kimo-fastapi](https://github.com/ChanYiCYJ/kimo-fastapi) 后端 API 重构的 **React 前端**，模仿并优化了原 [Kimo](https://github.com/ChanYiCYJ/Kimo)（Flask + Jinja）的博客风格。
+# ✨ Kimo AI · React 前端
 
-## ✨ 技术栈
+**基于 [kimo-fastapi](https://github.com/ChanYiCYJ/kimo-fastapi) 后端 API 重构的 React 前端**，在还原 [Kimo](https://github.com/ChanYiCYJ/Kimo)（Flask + Jinja）博客风格的基础上，深度融合 **AI 对话中心 + Live2D 虚拟形象 + 多模式联网搜索**，开箱即用、一键部署。
 
-- **React 19** + **TypeScript** + **Vite 8**
-- **Tailwind CSS v4**（`@tailwindcss/vite`）
-- **React Router v7**（SPA 客户端路由）
-- **Milkdown v7**（Markdown 编辑器，支持表格 / 代码高亮 / 图片上传，后台写作与 Agent 编辑器共用）
-- **react-markdown + remark-gfm + rehype-highlight**（客户端 Markdown 渲染与代码高亮）
-- **pixi.js + pixi-live2d-display**（Live2D 看板娘实时渲染）
-- **DOMPurify**（自定义页面 HTML 消毒）
-- **Vitest**（单元测试，`src/lib/__tests__/` 覆盖 300+ 用例）
+[![React 19](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=white)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Vite 8](https://img.shields.io/badge/Vite-8-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vitejs.dev)
+[![Tailwind v4](https://img.shields.io/badge/Tailwind_CSS-v4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
+[![React Router v7](https://img.shields.io/badge/React_Router-v7-CA4245?style=flat-square&logo=react-router&logoColor=white)](https://reactrouter.com)
+[![Milkdown v7](https://img.shields.io/badge/Milkdown-v7-4285F4?style=flat-square&logo=markdown&logoColor=white)](https://milkdown.dev)
+[![Vitest](https://img.shields.io/badge/Vitest-400%2B%20%E7%94%A8%E4%BE%8B-6E9F18?style=flat-square&logo=vitest&logoColor=white)](https://vitest.dev)
+[![Cloudflare](https://img.shields.io/badge/Cloudflare-Workers-F38020?style=flat-square&logo=cloudflare&logoColor=white)](https://workers.cloudflare.com)
+[![Vercel](https://img.shields.io/badge/Vercel-Ready-000000?style=flat-square&logo=vercel&logoColor=white)](https://vercel.com)
+
+**🚀 [快速开始](#-快速开始) · ☁️ [一键部署](#-一键部署) · 🤖 [AI 对话中心](#-ai-对话中心ai) · 🎭 [Live2D](#-live2d-虚拟形象) · 🙏 [开源致谢](#-开源致谢)**
+
+</div>
+
+---
+
+<details>
+<summary><b>📑 目录导航</b>（点击展开 / 收起）</summary>
+
+- [✨ 项目特色](#-项目特色)
+- [🧱 技术栈](#-技术栈)
+- [🎨 设计亮点](#-设计亮点)
+- [🗄 管理后台](#-管理后台)
+- [🤖 AI 对话中心（/ai）](#-ai-对话中心ai)
+- [🚀 快速开始](#-快速开始)
+- [🔌 后端对接](#-后端对接)
+- [☁️ 一键部署](#-一键部署)
+- [🌍 域名与合规](#-域名与合规国内外分站)
+- [⚡ 前后端同步热更新](#-前后端同步热更新)
+- [📁 目录结构](#-目录结构)
+- [🗺 路由一览](#-路由一览)
+- [🧪 测试](#-测试)
+- [🛠 常用命令](#-常用命令)
+- [🙏 开源致谢](#-开源致谢)
+
+</details>
+
+---
+
+## ✨ 项目特色
+
+> 在**纯前端**的基础上，内置一整套 ChatGPT 风格的 AI 对话应用、Live2D 虚拟形象与多引擎联网搜索 —— **部署即用，无需额外框架**。
+
+- 🎭 **AI 即角色**：AI 模型本身就是 Live2D 角色，回复情绪实时驱动表情与动作
+- 🔍 **三种搜索模式**：Fast（纯本地）/ Auto（先答后搜，智能升级）/ Deep（联网搜索 + 生成综合文章）
+- 🧠 **多引擎搜索**：Bing / DuckDuckGo / Brave / Google News / 百度 / Bilibili / 维基百科 … 按意图自动选引擎
+- 🧰 **Agent 工具箱**：知识库 / View 综合文章 / Live2D 舞台 / 设置，一站式管理
+- ⚙️ **自定义模型 API**：访客可填自己的接口 / Key / 模型，自动解除次数与冷却限制
+- 🎙 **音频 TTS 朗读**：内置 edge-tts 免费微软神经语音（5 种中文音色 + 音量 + 试听），朗读时 Live2D 以真实波形口型同步
+- 🛠 **完整管理后台**：文章 / 页面 / AI / 分类 / 用户 + **媒体库 / 操作日志 / 评论管理 / 站点备份 / 数据统计** 五大模块
+- ☁️ **多端一键部署**：Vercel、Cloudflare Workers、宝塔 Nginx 三平台开箱即用
+
+## 🧱 技术栈
+
+| 类别              | 选型                                                               |
+| ----------------- | ------------------------------------------------------------------ |
+| **框架**          | React 19 · TypeScript · Vite 8                                     |
+| **样式**          | Tailwind CSS v4（`@tailwindcss/vite`）                             |
+| **路由**          | React Router v7（SPA 客户端路由）                                  |
+| **编辑器**        | Milkdown v7（表格 / 代码高亮 / 图片上传，后台与 Agent 编辑器共用） |
+| **Markdown 渲染** | react-markdown + remark-gfm + rehype-highlight                     |
+| **Live2D**        | pixi.js + pixi-live2d-display（实时渲染）                          |
+| **安全**          | DOMPurify（自定义页面 HTML 消毒）                                  |
+| **测试**          | Vitest（`src/lib/__tests__/` 覆盖 400+ 用例）                      |
 
 ## 🎨 设计亮点（对比原 Kimo 的优化）
 
@@ -25,13 +81,33 @@
 | 图片上传      | -                | 编辑器内上传 + 封面/头像上传                   |
 | 代码体积      | -                | 后台页面按需加载（Route-level code splitting） |
 
+## 🗄 管理后台
+
+在还原 Kimo 后台风格（黑主按钮 + 蓝链接 + 灰白卡片）的基础上，完整覆盖站点运营所需模块，全部按需加载（Route-level code splitting）：
+
+| 模块         | 路由                    | 说明                                                                  |
+| ------------ | ----------------------- | --------------------------------------------------------------------- |
+| **仪表盘**   | `/dashboard`            | 统计概览 + 快捷入口 + **数据统计**（近 14 天发文趋势 / 分类分布）     |
+| **文章管理** | `/dashboard/articles`   | 列表搜索 / 分类筛选 / 分页，Milkdown 写作编辑器（AI 改写 / 指令生成） |
+| **页面管理** | `/dashboard/pages`      | 自定义页面（markdown / list / link / ai-chat，AI 助手内联编辑）       |
+| **AI 管理**  | `/dashboard/ai`         | 创建 / 编辑 / 删除 AI 助手（提示词预设 + .md 导入）                   |
+| **分类标签** | `/dashboard/categories` | 分类与标签 CRUD                                                       |
+| **用户管理** | `/dashboard/users`      | 角色调整（管理员 / 普通）、删除（防改 / 防删自己）                    |
+| **媒体库**   | `/dashboard/media`      | 图片上传 / 复制链接 / 删除（按 mime 类型筛选 + 分页）                 |
+| **操作日志** | `/dashboard/logs`       | 写操作审计（POST / PUT / DELETE，后台异步写库不阻塞响应）             |
+| **评论管理** | `/dashboard/comments`   | 前台评论审核（通过 / 拒绝 / 删除 + 状态筛选）                         |
+| **站点备份** | `/dashboard/backups`    | 一键创建数据库备份（mysqldump / SQLite 复制）+ 下载 / 删除            |
+| **站点设置** | `/dashboard/settings`   | AI 改写、功能开关、域名落地页映射（实时 JSON 校验）                   |
+
+> 新增模块均有对应后端 CRUD 支撑（kimo-fastapi），媒体 / 日志 / 评论 / 备份数据落库于后端数据库。
+
 ## 🤖 AI 对话中心（/ai）
 
-内置一套完整的 **ChatGPT 风格 AI 对话应用**，管理员可在后台「AI 管理」创建/编辑多个 AI 助手，访客可随时切换，并可与 **Live2D 虚拟形象** 实时互动：
+内置一套完整的 **ChatGPT 风格 AI 对话应用**：管理员可在后台「AI 管理」创建 / 编辑多个 AI 助手，访客可随时切换，并可与 **Live2D 虚拟形象** 实时互动。
 
 ### 💬 会话管理
 
-- 多会话、自动标题、手动重命名、删除、导出/导入全部（JSON）
+- 多会话、自动标题、手动重命名、删除、导出 / 导入全部（JSON）
 - 对话记忆（本机问答对）+ 自动压缩（防 token 滥用）+ **auto-knowledge 人格学习**（对话后自动提炼偏好，越聊越贴合人设）
 
 ### 🔍 三种搜索模式（Fast / Auto / Deep）
@@ -53,28 +129,36 @@
 - **多语言关键词**：中 / 英 / 日 / 韩 自动识别并增强（动漫查询自动附日文关键词）
 - **意图识别**：天气（Open-Meteo 实时预报）、新番动画（Bangumi）、Bilibili、新闻、通用等自动选引擎
 - **多引擎并行**：Worker `/api/search` 并行抓取 Bing / DuckDuckGo / Brave / Google News / Mojeek / Qwant / Wikipedia / 百度 / Bilibili，按域名多样化去重
-- **搜索规划器**：查询分段（多子查询并发）+ 无结果自动纠错 + 结果合并/去重/相关性过滤 + 搜索定式缓存（学习最优引擎组合）
+- **搜索规划器**：查询分段（多子查询并发）+ 无结果自动纠错 + 结果合并 / 去重 / 相关性过滤 + 搜索定式缓存（学习最优引擎组合）
 - **结果缓存**：localStorage 6h TTL、增量写缓存，刷新不重复搜索，历史命中显示绿点
 
 ### 🎭 Live2D 虚拟形象
 
-- **AI 即角色**：AI 模型本身就是 Live2D 角色，回复情绪实时驱动表情/动作（自动情绪识别 + `[表情:xxx]` 标签 + `[PARAM:]/[MOTION:]/[EXPRESSION:]` 动作指令协议）
-- **25 个 BanG Dream 角色**（5 乐队分组）：自动随机选角、**AI 按记忆/知识库智能选角**、bestdori 模型名 / 第三方 Cubism2 `model.json` 网址一键导入
+- **AI 即角色**：AI 模型本身就是 Live2D 角色，回复情绪实时驱动表情 / 动作（自动情绪识别 + `[表情:xxx]` 标签 + `[PARAM:]/[MOTION:]/[EXPRESSION:]` 动作指令协议）
+- **25 个 BanG Dream 角色**（5 乐队分组）：自动随机选角、**AI 按记忆 / 知识库智能选角**、bestdori 模型名 / 第三方 Cubism2 `model.json` 网址一键导入
 - **角色设定**：首次自动联网深度整理角色世界观 / 性格 / 语气 / 背景 / 喜好 / 关系 / 资料要点，存为本机角色档案，可在「切换角色 → 角色资料」查看
 - **手机沉浸模式**：全屏 Live2D 背景 + AI 一句话 + 输入栏，边聊天边看角色
-- 口型同步（朗读时张嘴）、鼠标凝视、眨眼/随机小动作环境动画、低端设备自动降级
+- 口型同步（音频 TTS 朗读时以真实波形驱动张嘴）、鼠标凝视、点击 / 拖拽互动（点击触发情绪动作、拖动转动视角）、眨眼 / 随机小动作环境动画、低端设备自动降级
+
+### 🎙 音频 TTS 朗读
+
+- **内置免费音源**：默认使用后端 `/api/v1/tts`（edge-tts 免费微软神经语音、免 Key），也可切换为第三方 TTS 地址模板（支持 `{text}` 占位符）
+- **音色 / 音量**：5 种中文神经音色（晓晓 · 女声 / 云希 · 男声 / 晓伊 · 女声 / 云健 · 男声 / 云扬 · 新闻）+ 低 / 中 / 高三档音量，均可试听
+- **朗读入口**：每条 AI 回复的「朗读」按钮（再点可停止）；设置页「音频 TTS」卡片集中管理开关 / 来源 / 音色 / 音量
+- **缓存加速**：同一文本重复朗读命中本地缓存（IndexedDB + 内存 LRU，djb2 去重），秒播不重复合成
+- **口型同步**：朗读时以真实音频波形（RMS）驱动 Live2D 嘴部参数，张嘴节奏与语音一致
 
 ### 🧰 Agent 工具箱
 
-- **知识库**：AI 可直接创建/编辑条目（`[KB-SAVE:]` / `[KB-EDIT:]` 协议），内置 Milkdown 编辑器（自动保存 / 草稿 / 多选删除 / 导入导出），站点内容 + 本机笔记双数据源
+- **知识库**：AI 可直接创建 / 编辑条目（`[KB-SAVE:]` / `[KB-EDIT:]` 协议），内置 Milkdown 编辑器（自动保存 / 草稿 / 多选删除 / 导入导出），站点内容 + 本机笔记双数据源
 - **View**：联网搜索 + AI 综合文章生成（含配图），可一键保存到知识库
 - **Live2D**：角色舞台 + 切换角色 / 角色资料面板
 - **设置**：对话字体、搜索模式、搜索 API、模型 API 配置、数据管理
 
 ### ⚙️ 其他
 
-- **自定义模型 API**：访客可填自己的接口/Key/模型（存本机，不传服务器），自动解除次数/冷却限制，内置 DeepSeek / Kimi / OpenAI 快捷预设 + 一键测试连接
-- **多模型路由**：注册多个模型时，搜索/关键词等快任务自动路由到便宜快速模型（fast），主对话用主模型（primary）
+- **自定义模型 API**：访客可填自己的接口 / Key / 模型（存本机，不传服务器），自动解除次数 / 冷却限制，内置 DeepSeek / Kimi / OpenAI 快捷预设 + 一键测试连接
+- **多模型路由**：注册多个模型时，搜索 / 关键词等快任务自动路由到便宜快速模型（fast），主对话用主模型（primary）
 - **推理模型适配**：DeepSeek reasoner / Kimi thinking 等推理模型自适应 `max_tokens`，兼容 `reasoning_content` / `<|thinking|>` 流式
 - **数据管理**：知识库 / 对话历史 / 网页缓存 / 自定义 AI / Live2D 五类本机数据可勾选导出 / 导入
 - **水印**：AI 生成内容带多重水印（含模型名 + API 状态），防止被冒用
@@ -93,6 +177,8 @@ npm run dev
 
 访问 http://localhost:5173
 
+> 💡 后端未启动时，前端会自动回退到**演示数据**（`src/lib/mock.ts`），便于本地预览 UI。
+
 ## 🔌 后端对接
 
 前端通过 Vite 代理将 `/api` 与 `/static` 转发到 FastAPI 后端：
@@ -109,21 +195,25 @@ server: {
 
 可用的环境变量（`.env`）：
 
-| 变量              | 说明                                | 默认      |
-| ----------------- | ----------------------------------- | --------- |
-| `VITE_API_BASE`   | API 基础路径                        | `/api/v1` |
-| `VITE_USE_MOCK`   | 强制使用演示数据（`1`）             | 关闭      |
-| `VITE_MEDIA_BASE` | 静态资源/图片源（跨源部署时拼前缀） | 关闭      |
+| 变量              | 说明                                  | 默认      |
+| ----------------- | ------------------------------------- | --------- |
+| `VITE_API_BASE`   | API 基础路径                          | `/api/v1` |
+| `VITE_USE_MOCK`   | 强制使用演示数据（`1`）               | 关闭      |
+| `VITE_MEDIA_BASE` | 静态资源 / 图片源（跨源部署时拼前缀） | 关闭      |
 
-## ☁️ 一键部署到 Vercel
+## ☁️ 一键部署
 
-本项目**不内置任何后端地址**，通过 `vercel.ts` 在构建时读取 `API_BACKEND` 环境变量，动态生成 `/api` 与 `/static` 的反代规则（服务端转发，后端无需开启 CORS），其余路由回退到 `index.html`（SPA 客户端路由）。
+本项目**不内置任何后端地址**，通过构建期环境变量 `API_BACKEND` 动态生成反代规则（服务端转发，后端无需开启 CORS），可一键部署到 **Vercel** 或 **Cloudflare Workers**，也可用**宝塔面板（Nginx）**自托管。
+
+### Vercel
+
+通过 `vercel.ts` 在构建时读取 `API_BACKEND` 环境变量，动态生成 `/api` 与 `/static` 的反代规则，其余路由回退到 `index.html`（SPA 客户端路由）。
 
 > 点击下方按钮即可把本仓库 **克隆到你的账号** 并引导填写 `API_BACKEND`：
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FChanYiCYJ%2Fkimo-frontend&env=API_BACKEND&envDescription=%E5%90%8E%E7%AB%AF%E5%9C%B0%E5%9D%80%EF%BC%88%E4%B8%8D%E5%90%AB%E5%B0%BE%E9%83%A8%E6%96%9C%E6%9D%A0%EF%BC%8C%E5%A6%82%20https%3A%2F%2Fapi.example.com%EF%BC%89&project-name=kimo-frontend&repository-name=kimo-frontend)
 
-### 环境变量
+**环境变量：**
 
 | 变量            | 必填 | 说明                                                              | 示例                      |
 | --------------- | ---- | ----------------------------------------------------------------- | ------------------------- |
@@ -132,13 +222,13 @@ server: {
 
 > 未设置 `API_BACKEND` 也能构建成功，但站点无法联网（仅渲染静态页面），构建日志会给出提醒。
 
-### 方式一：Deploy 按钮 / GitHub 集成
+**方式一：Deploy 按钮 / GitHub 集成**
 
 1. 点击上面的 **Deploy with Vercel** 按钮（或到 Vercel **Add New → Project** 导入本仓库）
 2. 在配置向导中填写 `API_BACKEND`（指向你自己的后端）
 3. 点击 **Deploy**，完成后即可访问 `https://<project>.vercel.app`
 
-### 方式二：Vercel CLI
+**方式二：Vercel CLI**
 
 ```bash
 npm i -g vercel
@@ -150,7 +240,7 @@ vercel --prod
 
 > 💡 前端请求仍走相对路径 `/api/v1`（`VITE_API_BASE` 保持默认），由 Vercel 反代到 `API_BACKEND`，因此同源、无跨域问题。
 
-## ⚡ 一键部署到 Cloudflare Workers
+### Cloudflare Workers
 
 同样**不内置后端地址**，用 `worker.js` 在 Worker 边缘把 `/api`、`/static` 反代到真实后端（服务端转发，无 CORS 问题），静态资源由 Cloudflare **Assets** 托管，前端路由刷新回退到 `index.html`（`wrangler.jsonc` 中 `not_found_handling = "single-page-application"`）。
 
@@ -158,14 +248,14 @@ vercel --prod
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/ChanYiCYJ/kimo-frontend)
 
-> 一键部署完成后，还需在控制台做两步：
+> ⚠️ 一键部署完成后，还需在控制台做两步：
 >
 > 1. Worker「设置 → 变量和 Secret」添加 `API_BACKEND`（后端地址，**不带尾部斜杠**，如 `https://api.example.com`）
 > 2. Worker「设置 → 域」绑定自定义域名（如 `v2.yogofor.top`），即可访问
 >
 > 若按钮未能自动构建（`dist` 不在仓库中），请使用下方 CLI 方式。
 
-### 方式一：CLI 部署
+**方式一：CLI 部署**
 
 ```bash
 # 1. 安装依赖（已含 wrangler）
@@ -179,14 +269,14 @@ npx wrangler secret put API_BACKEND
 npm run deploy:cf        # 等价于 npm run build && wrangler deploy
 ```
 
-### 方式二：Cloudflare Dashboard
+**方式二：Cloudflare Dashboard**
 
 1. 构建：`npm run build`（产出 `dist/`）
 2. 在 Cloudflare 控制台创建 **Workers**，把 `dist` 作为 **Assets** 上传，`worker.js` 作为 Worker 脚本
 3. 在 Worker「设置 → 变量和 Secret」添加 `API_BACKEND`
 4. 在「设置 → 域」绑定自定义域名（如 `v2.yogofor.top`）
 
-### 本地预览（Cloudflare）
+**本地预览（Cloudflare）：**
 
 ```bash
 cp .dev.vars.example .dev.vars   # 填入 API_BACKEND
@@ -200,6 +290,8 @@ npx wrangler dev                 # 或 npm run dev:cf
 | `.dev.vars.example` | 本地 `wrangler dev` 环境变量示例                                    |
 
 > 💡 部署到任意平台（Vercel / Cloudflare / 宝塔 Nginx）的**落地页跳转逻辑一致**：`route_map` 精确匹配优先。若某个精确域名被父域后缀匹配抢先导致不跳转（如 `v2.yogofor.top` 被 `yogofor.top` 抢成 `/`），请确保使用最新代码（该 bug 已修复）。
+
+### 宝塔面板（Nginx）
 
 > 📦 使用**宝塔面板（Nginx）**部署？请参考 [`deploy/README.md`](deploy/README.md) 与 `deploy/` 下的脚本（Nginx SPA 回退 + `/api`、`/static` 反代，前后端版本一致部署工作流）。
 
@@ -215,11 +307,11 @@ npx wrangler dev                 # 或 npm run dev:cf
   }
   ```
 - **默认落地页**：`default_route`（兜底，对所有未列出的域名生效）
-- 匹配规则：**精确域名优先**，再子域名后缀匹配——例如 `v2.yogofor.top` 精确命中 `v2.yogofor.top` 落 `/ai`，而 `www.yogofor.top` 无精确项时回退匹配父域 `yogofor.top` 落 `/`；访问 `127.0.0.1` 需单独写 `"127.0.0.1"` 键。
-- 后台设置里 `route_map` 带**实时 JSON 校验**（非法红字 / 合法绿字），非法内容会阻止保存。
+- 匹配规则：**精确域名优先**，再子域名后缀匹配——例如 `v2.yogofor.top` 精确命中 `v2.yogofor.top` 落 `/ai`，而 `www.yogofor.top` 无精确项时回退匹配父域 `yogofor.top` 落 `/`；访问 `127.0.0.1` 需单独写 `"127.0.0.1"` 键
+- 后台设置里 `route_map` 带**实时 JSON 校验**（非法红字 / 合法绿字），非法内容会阻止保存
 - 访客打开首页时会按域名自动重定向到对应页面，便于分站差异化与合规
 
-> 合规提示：AI 生成内容带水印，请勿冒充人工原创用于需要真实性的场合；请遵守部署所在地法律与所用模型服务条款。
+> ⚠️ 合规提示：AI 生成内容带水印，请勿冒充人工原创用于需要真实性的场合；请遵守部署所在地法律与所用模型服务条款。
 
 ## ⚠️ 搜索模式说明
 
@@ -272,8 +364,8 @@ npm run dev
 ### ⚠️ 注意事项
 
 - 后端需要 `.env`（数据库连接等），首次启动按 `kimo-fastapi/.env.example` 配置好 MySQL
-- 仅改业务代码（路由/service/CRUD）时 `--reload` 足够；**改 Tortoise 模型**后需执行 `aerich migrate && aerich upgrade` 才会生效（热重载不会自动建表）
-- 若前后端不在同一机器/域名（不使用 Vite 代理），则需在后端开启 CORS 并设置 `VITE_API_BASE` 为完整地址
+- 仅改业务代码（路由 / service / CRUD）时 `--reload` 足够；**改 Tortoise 模型**后需执行 `aerich migrate && aerich upgrade` 才会生效（热重载不会自动建表）
+- 若前后端不在同一机器 / 域名（不使用 Vite 代理），则需在后端开启 CORS 并设置 `VITE_API_BASE` 为完整地址
 
 ## 📁 目录结构
 
@@ -303,6 +395,7 @@ src/
 │   ├── perf.ts                 # 性能工具（低端设备检测 / 流式节流）
 │   ├── live2d.ts / live2dCore.ts / live2dLore.ts  # Live2D 模型 / 渲染 / 角色设定
 │   ├── feedback.ts             # 反馈收集
+│   ├── ttsCache.ts             # TTS 音频缓存（djb2 去重 + IndexedDB/内存 LRU + 预合成）
 │   └── skills/                 # AI 提示词模块化（知识/人格/记忆/搜索/知识库/View/Live2D）
 ├── components/
 │   ├── Layout.tsx              # 前台布局（域名重定向 / AI 沉浸式分支）
@@ -318,18 +411,20 @@ src/
 └── pages/
     ├── Home.tsx / Article.tsx / PageView.tsx / AICenter.tsx / Login.tsx / NotFound.tsx
     └── admin/
-        ├── DashboardHome.tsx   # 统计概览 + 快捷入口
+        ├── DashboardHome.tsx   # 统计概览 + 数据统计（发文趋势 / 分类分布）+ 快捷入口
         ├── ManageArticles.tsx / ArticleEditor.tsx   # 文章管理 / 写作
         ├── ManagePages.tsx / PageEditor.tsx         # 页面管理 / 编辑
         ├── AIManage.tsx        # AI 助手统一管理
         ├── CategoriesTags.tsx  # 分类标签
         ├── UserManagement.tsx  # 用户管理
+        ├── MediaLibrary.tsx    # 媒体库（图片上传 / 复制链接 / 类型筛选）
+        ├── SystemLogs.tsx      # 操作日志（写操作审计 + 类型筛选）
+        ├── CommentManage.tsx   # 评论管理（通过 / 拒绝 / 删除）
+        ├── BackupManage.tsx    # 站点备份（创建 / 下载 / 删除）
         └── Settings.tsx        # 站点设置（AI 改写 / 功能开关 / 落地页）
 ```
 
-> 💡 后端未启动时，前端会自动回退到**演示数据**（`src/lib/mock.ts`），便于本地预览 UI。
-
-## 🗺 路由
+## 🗺 路由一览
 
 | 路径                           | 说明                                    |
 | ------------------------------ | --------------------------------------- |
@@ -349,30 +444,34 @@ src/
 | `/dashboard/categories`        | 分类标签                                |
 | `/dashboard/settings`          | 站点设置（AI 改写 / 功能开关 / 落地页） |
 | `/dashboard/users`             | 用户管理                                |
+| `/dashboard/media`             | 媒体库（图片上传 / 复制链接 / 删除）    |
+| `/dashboard/logs`              | 操作日志（写操作审计）                  |
+| `/dashboard/comments`          | 评论管理（通过 / 拒绝 / 删除）          |
+| `/dashboard/backups`           | 站点备份（创建 / 下载 / 删除）          |
 
 ## 🧪 测试
 
 ```bash
-npm test          # 运行全部单元测试（Vitest）
+npm test           # 运行全部单元测试（Vitest）
 npm run test:watch # 监听模式
 ```
 
-测试覆盖 `src/lib/__tests__/`：搜索（多引擎/缓存/多语言/纠错）、搜索 API、知识库、Live2D（情绪/动作/角色/角色设定）、模型路由、服务商预设、连接测试、人设 / 人格、提示词预设、数据管理、性能工具、AI Chat hooks 等 **300+ 用例**。
+测试覆盖 `src/lib/__tests__/`：搜索（多引擎 / 缓存 / 多语言 / 纠错）、搜索 API、知识库、Live2D（情绪 / 动作 / 角色 / 角色设定 / 口型）、模型路由、服务商预设、连接测试、人设 / 人格、提示词预设、数据管理、性能工具、TTS 缓存、AI Chat hooks 等 **400+ 用例**。
 
 ## 🛠 常用命令
 
-```bash
-npm run dev       # 开发服务器
-npm run dev:all   # 同时启动前后端（见上）
-npm run build     # 类型检查 + 生产构建
-npm run lint      # oxlint 代码检查
-npm run preview   # 预览生产构建
-npm run deploy:cf # 构建 + 部署到 Cloudflare Workers
-```
+| 命令                | 说明                               |
+| ------------------- | ---------------------------------- |
+| `npm run dev`       | 开发服务器（HMR）                  |
+| `npm run dev:all`   | 同时启动前后端（见「同步热更新」） |
+| `npm run build`     | 类型检查 + 生产构建                |
+| `npm run lint`      | oxlint 代码检查                    |
+| `npm run preview`   | 预览生产构建                       |
+| `npm run deploy:cf` | 构建 + 部署到 Cloudflare Workers   |
 
 ## 🙏 开源致谢
 
-本项目从零走到今天，**离不开以下开源项目与免费在线服务的支持**，在此致以诚挚的感谢：
+本项目从零走到今天，**离不开以下开源项目与免费在线服务的支持**，在此致以诚挚的感谢 💙
 
 ### 📦 前端框架与工具链
 
@@ -394,14 +493,14 @@ npm run deploy:cf # 构建 + 部署到 Cloudflare Workers
 
 ### 🎭 Live2D 与模型资源
 
-| 项目                                                                                                                                                                                                                                                                            | 用途                                                                       |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| [Live2D Cubism](https://www.live2d.com)                                                                                                                                                                                                                                         | Live2D 运行时与 Cubism Core（`live2d.min.js` / `live2dcubismcore.min.js`） |
-| [pixi-live2d-display](https://github.com/guansss/pixi-live2d-display)（guansss）                                                                                                                                                                                                | Live2D 渲染引擎（Cubism 2 加载器）                                         |
-| [PixiJS](https://pixijs.com)                                                                                                                                                                                                                                                    | WebGL 渲染底层                                                             |
-| [Bestdori](https://bestdori.com)                                                                                                                                                                                                                                                | BanG Dream 角色模型 / 动作 / 表情资源（经同源反代加载）                    |
-| [SoulLink_Live2D](https://github.com/nanlingyin/SoulLink_Live2D)                                                                                                                                                                                                                | 表情 / 动作预设参考                                                        |
-| 第三方开源模型：[shizuku](https://github.com/guansss/pixi-live2d-display)（测试模型）、[Eikanya/Live2d-model](https://github.com/Eikanya/Live2d-model)、[fghrsh/live2d_api](https://github.com/fghrsh/live2d_api)、[oh-my-live2d](https://github.com/oh-my-live2d/oh-my-live2d) | 用户可直接导入的 Cubism2 开源模型                                          |
+| 项目                                                                                                                                                                                                              | 用途                                                                       |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| [Live2D Cubism](https://www.live2d.com)                                                                                                                                                                           | Live2D 运行时与 Cubism Core（`live2d.min.js` / `live2dcubismcore.min.js`） |
+| [pixi-live2d-display](https://github.com/guansss/pixi-live2d-display)（guansss）                                                                                                                                  | Live2D 渲染引擎（Cubism 2 加载器）                                         |
+| [PixiJS](https://pixijs.com)                                                                                                                                                                                      | WebGL 渲染底层                                                             |
+| [Bestdori](https://bestdori.com)                                                                                                                                                                                  | BanG Dream 角色模型 / 动作 / 表情资源（经同源反代加载）                    |
+| [SoulLink_Live2D](https://github.com/nanlingyin/SoulLink_Live2D)                                                                                                                                                  | 表情 / 动作预设参考                                                        |
+| 第三方开源模型：shizuku、[Eikanya/Live2d-model](https://github.com/Eikanya/Live2d-model)、[fghrsh/live2d_api](https://github.com/fghrsh/live2d_api)、[oh-my-live2d](https://github.com/oh-my-live2d/oh-my-live2d) | 用户可直接导入的 Cubism2 开源模型                                          |
 
 ### 🌐 在线搜索 / 数据 / 图片服务
 
@@ -431,4 +530,10 @@ npm run deploy:cf # 构建 + 部署到 Cloudflare Workers
 
 ---
 
-Made with ❤️ · 前端重构自 [Kimo](https://github.com/ChanYiCYJ/Kimo)，对接 [Kimo API](https://github.com/ChanYiCYJ/kimo-fastapi)
+<div align="center">
+
+**Made with ❤️ · 前端重构自 [Kimo](https://github.com/ChanYiCYJ/Kimo)，对接 [Kimo API](https://github.com/ChanYiCYJ/kimo-fastapi)**
+
+⭐ 如果这个项目对你有帮助，欢迎 Star 支持！
+
+</div>

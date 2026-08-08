@@ -45,8 +45,8 @@ export const SEARCH_API_PROVIDERS: {
 }[] = [
   {
     value: "auto",
-    label: "自动（默认免费）",
-    desc: "默认免费引擎，被拦自动降级",
+    label: "自动",
+    desc: "默认免费引擎",
     needKey: false,
     needInstance: false,
   },

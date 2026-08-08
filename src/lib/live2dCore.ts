@@ -16,7 +16,7 @@ import {
   parseActionCommands,
   pickTapReaction,
   resolveHitRegion,
-  rmsToMouth,
+  smoothMouth,
   LOOK_TARGETS,
   type Emotion,
   type LookDirection,
@@ -107,6 +107,14 @@ function setState(patch: Partial<Live2dCoreState>): void {
 
 export function getState(): Live2dCoreState {
   return state;
+}
+
+/**
+ * 触发订阅者通知（不改 state）：供「角色档案生成完成」等外部事件强制刷新订阅组件
+ * （如 LoreDetail 需要重新读 loadLore 显示新档案）。
+ */
+export function emitLive2dState(): void {
+  listeners.forEach((fn) => fn());
 }
 export function subscribe(fn: () => void): () => void {
   listeners.add(fn);
@@ -1096,97 +1104,204 @@ function applyLook(dir: LookDirection): void {
   lookAnimId = requestAnimationFrame(step);
 }
 
-// ---- 口型同步（文本/时长驱动 ParamMouthOpenY，TTS 播放时嘴部跟着动）----
-// 浏览器内置 speechSynthesis 无音频流可分析，故用「时长估算 + 随机音节节奏」驱动：
-//   每 ~180ms 切换一个嘴张目标（0~0.55 随机），平滑逼近 → 有自然说话感。
-// 未来接入真实 TTS URL 音频时，可在 speakAudio(url) 里用 Web Audio API 的 RMS 驱动。
+// ---- 口型同步（真实音频波形驱动 ParamMouthOpenY）----
+// 仅音频 TTS 模式（speakAudio 用 Web Audio AnalyserNode 的 RMS 波形驱动）；浏览器语音已移除。
 
 let lipSyncId = 0;
-let lipSyncUntil = 0;
-const MOUTH_PARAM = "ParamMouthOpenY";
+/**
+ * 口型驱动参数候选：不同模型命名不同——
+ *  标准 Cubism2 示例：ParamMouthOpenY；邦邦/商业模型：PARAM_MOUTH_OPEN_Y（大写命名才是实际驱动嘴的）。
+ * 驱动时对「模型存在」的候选参数都设值，兼容各模型命名。
+ */
+const MOUTH_PARAMS: readonly string[] = [
+  "ParamMouthOpenY",
+  "PARAM_MOUTH_OPEN_Y",
+];
 
-/** 估算中文文本说话时长（ms）：每字 ~220ms + 基础 600ms，上限 30s */
-export function estimateSpeakDuration(text: string): number {
-  const len = (text || "").length;
-  if (len <= 0) return 1200;
-  return Math.max(1200, Math.min(30000, len * 220 + 600));
-}
-
-/** 开始口型同步（TTS/朗读开始时调用）；durationMs 缺省按文本估算 */
-export function speakText(text: string, durationMs?: number): void {
-  stopSpeaking();
-  const core = getCoreModel();
-  if (!core || !paramExists(core, MOUTH_PARAM)) return;
-  const dur =
-    durationMs && durationMs > 0
-      ? durationMs
-      : estimateSpeakDuration(text || "");
-  lipSyncUntil = performance.now() + dur;
-  let cur = 0;
-  let target = 0;
-  let lastPick = performance.now();
-  const step = (now: number) => {
-    if (now >= lipSyncUntil) {
-      lipSyncId = 0;
-      try {
-        core.setParamFloat(MOUTH_PARAM, 0);
-      } catch {}
-      return;
-    }
-    // 每 ~180ms 换一个新嘴张目标（模拟音节节奏），平滑逼近 → 自然说话感
-    if (now - lastPick > 180) {
-      lastPick = now;
-      target = Math.random() * 0.55;
-    }
-    cur += (target - cur) * 0.35;
-    try {
-      core.setParamFloat(MOUTH_PARAM, cur);
-    } catch {}
-    lipSyncId = requestAnimationFrame(step);
-  };
-  lipSyncId = requestAnimationFrame(step);
+/** 返回模型上实际存在的口型参数（至少一个才认为可对口型） */
+function getMouthParams(core: any): string[] {
+  const list: string[] = [];
+  for (const p of MOUTH_PARAMS) {
+    if (paramExists(core, p)) list.push(p);
+  }
+  return list;
 }
 
 /** 停止口型同步并复位嘴部 */
 export function stopSpeaking(): void {
   if (lipSyncId) cancelAnimationFrame(lipSyncId);
   lipSyncId = 0;
-  lipSyncUntil = 0;
   stopAudioLipSync();
-  const core = getCoreModel();
-  if (core) {
-    try {
-      core.setParamFloat(MOUTH_PARAM, 0);
-    } catch {}
+  // 口型平滑回落（而非“啪”地归零），读完/停止更自然
+  fadeMouthToZero();
+  // 说话结束：恢复环境动作（眨眼/小动作），角色恢复“活”态
+  if (lipSyncPausedAmbient) {
+    lipSyncPausedAmbient = false;
+    startAmbient();
   }
 }
 
 // ---- 真实音频口型同步（Web Audio AnalyserNode 波形 RMS 驱动，参考官方 MotionSync 思路 + l2d 的 RMS 方案）----
-// 与 speakText（文本时长估算）不同：这里拿「可播放的音频 URL」用波形实时驱动 ParamMouthOpenY，
-// 嘴部随真实声音节奏开合，比固定节奏更自然。无音频源时 AIChat 仍走 speechSynthesis + speakText 回退。
+// 拿「可播放的音频 URL」用波形实时驱动 ParamMouthOpenY，嘴部随真实声音节奏开合。
+// 移动端注意：AudioContext 可能处于 suspended（自动播放限制），MediaElementSource 会把音频
+// 路由到 Web Audio 图 → 上下文挂起 = 静音且无波形，故统一在用户手势时 resume。
 
 let audioCtx: AudioContext | null = null;
 let audioEl: HTMLAudioElement | null = null;
+let audioBufferSrc: AudioBufferSourceNode | null = null;
 let audioAnalyser: AnalyserNode | null = null;
 let lipSyncAudioId = 0;
 let audioEndedCb: (() => void) | null = null;
+/** 嘴部平滑值（攻击快/释放慢，贴合音节且避免波形抖动造成口型闪烁） */
+let mouthSmooth = 0;
+/** RMS 短期平滑值（减波形瞬时抖动，让口型曲线更连贯自然） */
+let rmsSmooth = 0;
+/** 口型结束平滑回落动画 id（读完后自然闭嘴） */
+let mouthFadeId = 0;
+/** 口型驱动回调（注册在 PIXI.Ticker.shared 上，便于移除） */
+let lipSyncStepRef: (() => void) | null = null;
+/** 说话期间是否已暂停环境动作（结束后恢复） */
+let lipSyncPausedAmbient = false;
+
+/** 在 PIXI 共享 ticker 上注册口型回调（模型更新也在此 ticker，但模型先注册→先执行；
+ *  我在其后设置口型 → 不被 motion/expression 每帧覆盖，渲染才能看到嘴张） */
+function addLipSyncToTicker(fn: () => void): void {
+  lipSyncStepRef = fn;
+  try {
+    const T = (window as any).PIXI?.Ticker?.shared;
+    if (T && typeof T.add === "function") {
+      T.add(fn);
+      lipSyncAudioId = 1; // 标记运行中（ticker 模式）
+      return;
+    }
+  } catch {}
+  // 回退：无 PIXI ticker（如测试环境）用 rAF
+  lipSyncAudioId = requestAnimationFrame(fn);
+}
+
+function removeLipSyncFromTicker(): void {
+  if (lipSyncStepRef) {
+    try {
+      const T = (window as any).PIXI?.Ticker?.shared;
+      if (T && typeof T.remove === "function") T.remove(lipSyncStepRef);
+    } catch {}
+    lipSyncStepRef = null;
+  }
+  if (lipSyncAudioId && !lipSyncStepRef) cancelAnimationFrame(lipSyncAudioId);
+  lipSyncAudioId = 0;
+}
+
+/** 确保 AudioContext 处于 running（移动端自动播放限制：手势后 resume，后续自动朗读才能出声） */
+function ensureAudioCtxRunning(): void {
+  if (audioCtx && audioCtx.state === "suspended") {
+    audioCtx.resume().catch(() => {});
+  }
+}
+
+// 全局手势 hook：首次/每次交互都尝试 resume（无 AudioContext 时为 no-op，开销极小）
+if (typeof window !== "undefined") {
+  const hook = () => ensureAudioCtxRunning();
+  window.addEventListener("pointerdown", hook);
+  window.addEventListener("touchstart", hook);
+  window.addEventListener("keydown", hook);
+}
 
 function stopAudioLipSync(): void {
-  if (lipSyncAudioId) cancelAnimationFrame(lipSyncAudioId);
-  lipSyncAudioId = 0;
+  removeLipSyncFromTicker();
   if (audioEl) {
     try {
       audioEl.onended = null;
       audioEl.pause();
     } catch {}
   }
+  if (audioBufferSrc) {
+    try {
+      audioBufferSrc.onended = null;
+      audioBufferSrc.stop();
+    } catch {}
+    audioBufferSrc = null;
+  }
   // 保留 audioCtx 供下次复用；仅断开分析器引用
   audioAnalyser = null;
   audioEndedCb = null;
+  mouthSmooth = 0;
 }
 
 /**
- * 播放音频并用真实波形驱动口型（Web Audio AnalyserNode RMS → ParamMouthOpenY）。
+ * 构建「RMS 波形 → ParamMouthOpenY」的共享口型驱动 step（注册到 PIXI ticker）。
+ * isActive 返回播放源是否仍在发声（结束/暂停时自动摘除 ticker，避免空转）。
+ * 平滑用 smoothMouth（attack 快/release 缓/说话保持 ≥0.16），对模型存在的口型参数都设值。
+ */
+function buildLipSyncStep(
+  isActive: () => boolean,
+  core: any,
+  mouthParams: string[],
+  analyser: AnalyserNode | null,
+): () => void {
+  const data = new Uint8Array(analyser?.fftSize || 512);
+  return () => {
+    if (!isActive() || !analyser) {
+      removeLipSyncFromTicker();
+      return;
+    }
+    analyser.getByteTimeDomainData(data);
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) {
+      const v = (data[i] - 128) / 128;
+      sum += v * v;
+    }
+    if (mouthParams.length > 0) {
+      const rms = Math.sqrt(sum / data.length);
+      // RMS 短期平滑：减波形瞬时抖动（噪声/辅音起音），同时快速跟随（0.65）让开头响应及时
+      rmsSmooth += (rms - rmsSmooth) * 0.65;
+      mouthSmooth = smoothMouth(mouthSmooth, rmsSmooth);
+      for (const p of mouthParams) {
+        try {
+          core.setParamFloat(p, mouthSmooth);
+        } catch {}
+      }
+    }
+  };
+}
+
+/** 口型平滑回落：从当前开口平滑降到 0（约 220ms easeOut），替代“啪”地闭合 */
+function fadeMouthToZero(): void {
+  if (mouthFadeId) cancelAnimationFrame(mouthFadeId);
+  const core = getCoreModel();
+  if (!core) return;
+  const mouthParams = getMouthParams(core);
+  if (!mouthParams.length) return;
+  let from = 0;
+  try {
+    from = core.getParamFloat ? core.getParamFloat(mouthParams[0]) : 0;
+  } catch {}
+  if (!Number.isFinite(from) || from <= 0.02) {
+    for (const p of mouthParams) {
+      try {
+        core.setParamFloat(p, 0);
+      } catch {}
+    }
+    return;
+  }
+  const start = performance.now();
+  const DUR = 220;
+  const step = (now: number) => {
+    const t = Math.min(1, (now - start) / DUR);
+    const eased = 1 - (1 - t) * (1 - t); // easeOut
+    const v = from * (1 - eased);
+    for (const p of mouthParams) {
+      try {
+        core.setParamFloat(p, v);
+      } catch {}
+    }
+    if (t < 1) mouthFadeId = requestAnimationFrame(step);
+    else mouthFadeId = 0;
+  };
+  mouthFadeId = requestAnimationFrame(step);
+}
+
+/**
+ * 播放音频并用真实波形驱动口型（Web Audio AnalyserNode RMS → ParamMouthOpenY，带平滑）。
  * @param url 音频 URL（同源 / 经 worker 代理均可）
  * @param opts.volume 音量 0~1（默认 1）
  * @param opts.onEnd 播放结束回调（AIChat 用来收尾/清状态）
@@ -1207,6 +1322,12 @@ export function speakAudio(
       if (!AC) return false;
       audioCtx = new AC();
     }
+    // 移动端/自动播放：确保上下文 running，否则 MediaElementSource 路由到挂起上下文会静音
+    ensureAudioCtxRunning();
+    // 说话期间暂停环境动作（眨眼/小动作）：它们的 motion 每帧会覆盖 ParamMouthOpenY，
+    // 导致口型被压回 0——这是“嘴不动”的根因
+    stopAmbient();
+    lipSyncPausedAmbient = true;
     audioEl = new Audio();
     audioEl.src = url;
     audioEl.volume = Math.max(0, Math.min(1, opts?.volume ?? 1));
@@ -1226,30 +1347,141 @@ export function speakAudio(
     };
     // 口型参数存在才跑波形循环；不存在则纯播放声音
     const core = getCoreModel();
-    const hasMouth = !!core && paramExists(core, MOUTH_PARAM);
-    const data = new Uint8Array(audioAnalyser?.fftSize || 512);
-    const step = () => {
-      if (!audioEl || audioEl.paused || audioEl.ended || !audioAnalyser) {
-        lipSyncAudioId = 0;
-        return;
-      }
-      audioAnalyser.getByteTimeDomainData(data);
-      let sum = 0;
-      for (let i = 0; i < data.length; i++) {
-        const v = (data[i] - 128) / 128;
-        sum += v * v;
-      }
-      if (hasMouth) {
-        const rms = Math.sqrt(sum / data.length);
-        try {
-          core.setParamFloat(MOUTH_PARAM, rmsToMouth(rms));
-        } catch {}
-      }
-      lipSyncAudioId = requestAnimationFrame(step);
+    const mouthParams = core ? getMouthParams(core) : [];
+    // 开头预置微张嘴（0.12）：避免「刚开始说话嘴不动」（从 0 爬升 + 前导静音段响应慢）；
+    // 声音一来 RMS 快速爬升（0.65），口型立即张大
+    mouthSmooth = 0.12;
+    rmsSmooth = 0;
+    // 注册到共享 ticker：模型 update（含 motion 覆盖）先跑，随后本步设置口型 → 渲染能看见
+    addLipSyncToTicker(
+      buildLipSyncStep(
+        () => !!audioEl && !audioEl.paused && !audioEl.ended && !!audioAnalyser,
+        core,
+        mouthParams,
+        audioAnalyser,
+      ),
+    );
+    const el = audioEl; // 本函数新建的 Audio，非空；供播放用
+    // 先等 AudioContext resume 完成再 play：移动端手势内 resume 是异步的，
+    // 不等就 play 可能被自动播放策略拦（静音/无声）→ 波形拿不到 → 口型不动。
+    const play = () => {
+      const p = el.play();
+      if (p && p.catch) p.catch(() => {});
     };
-    lipSyncAudioId = requestAnimationFrame(step);
-    audioEl.play().catch(() => {});
-    return hasMouth;
+    if (audioCtx.state === "suspended") {
+      audioCtx.resume().then(play).catch(play);
+    } else {
+      play();
+    }
+    return mouthParams.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 用已解码的音频播放并驱动口型（AudioBufferSourceNode 路径，速度优化）。
+ * 对齐开源 @liyao1520/live2d-motionSync 的 `play(AudioBuffer)` 思路：
+ * 先 decodeAudioData 为 AudioBuffer 再播放 → 播放起点精确、口型第一帧即可同步。
+ * 命中 TTS 缓存时优先走此路径（见 ttsCache.ts）；`speakAudio(url)` 保留给第三方/未缓存 URL。
+ * @param buffer 音频 ArrayBuffer（mp3/wav 等任意可解码格式）
+ * @param opts.volume 音量 0~1（默认 1）
+ * @param opts.onEnd 播放结束回调
+ * @returns 是否进入播放流程（decode 是异步的，失败会静默收尾并触发 onEnd 兜底）
+ */
+export function speakAudioBuffer(
+  buffer: ArrayBuffer,
+  opts?: { volume?: number; onEnd?: () => void },
+): boolean {
+  stopSpeaking();
+  if (!buffer || buffer.byteLength === 0) return false;
+  const onEndCb = opts?.onEnd;
+  const volume = Math.max(0, Math.min(1, opts?.volume ?? 1));
+  const finish = () => {
+    stopSpeaking();
+    if (onEndCb) onEndCb();
+  };
+  try {
+    if (!audioCtx) {
+      const AC: typeof AudioContext =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext })
+          .webkitAudioContext;
+      if (!AC) return false;
+      audioCtx = new AC();
+    }
+    // 移动端/自动播放：确保上下文 running，否则 AudioBufferSource 挂起上下文会静音
+    ensureAudioCtxRunning();
+    // 说话期间暂停环境动作（眨眼/小动作）：它们的 motion 每帧会覆盖 ParamMouthOpenY
+    stopAmbient();
+    lipSyncPausedAmbient = true;
+    const ctx = audioCtx;
+    // 关键：decodeAudioData 会 detach（transfer）传入的 ArrayBuffer。
+    // 缓存（ttsCache）复用的是同一份 buffer，必须拷贝再解码，否则解码一次后
+    // 原 buffer 变空 → 后续缓存朗读幅度异常/无声。
+    let srcBuf = buffer;
+    try {
+      srcBuf = buffer.slice(0);
+    } catch {
+      srcBuf = buffer;
+    }
+    ctx.decodeAudioData(
+      srcBuf,
+      (audioBuf) => {
+        try {
+          const src = ctx.createBufferSource();
+          src.buffer = audioBuf;
+          audioBufferSrc = src;
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 512;
+          // AudioBufferSourceNode 无 volume 属性，用 GainNode（分析器→增益→输出，
+          // 音量会影响 RMS 与最终输出一致：低音量嘴张自然偏小）
+          const gain = ctx.createGain();
+          gain.gain.value = volume;
+          src.connect(analyser);
+          analyser.connect(gain);
+          gain.connect(ctx.destination);
+          audioAnalyser = analyser;
+          src.onended = finish;
+          const core = getCoreModel();
+          const mouthParams = core ? getMouthParams(core) : [];
+          // 开头预置微张嘴（0.12）：避免「刚开始说话嘴不动」；声音一来快速张大
+          mouthSmooth = 0.12;
+          rmsSmooth = 0;
+          // 注册到共享 ticker：模型 update（含 motion 覆盖）先跑，随后设置口型 → 渲染能看见
+          addLipSyncToTicker(
+            buildLipSyncStep(
+              () => audioBufferSrc === src && !!audioAnalyser,
+              core,
+              mouthParams,
+              analyser,
+            ),
+          );
+          // 移动端：先等 AudioContext resume 完成再 start（自动播放策略，不等会静音）
+          const start = () => {
+            try {
+              src.start();
+            } catch {}
+          };
+          if (ctx.state === "suspended") {
+            ctx.resume().then(start).catch(start);
+          } else {
+            start();
+          }
+        } catch {
+          finish();
+        }
+      },
+      () => {
+        // decode 失败：恢复环境动作并收尾（不播放）
+        if (lipSyncPausedAmbient) {
+          lipSyncPausedAmbient = false;
+          startAmbient();
+        }
+        finish();
+      },
+    );
+    return true;
   } catch {
     return false;
   }

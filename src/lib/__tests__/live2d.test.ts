@@ -39,6 +39,7 @@ import {
   resolveHitRegion,
   TAP_REACTIONS,
   rmsToMouth,
+  smoothMouth,
   isModel3Url,
   buildLive2dSettingsFromModel3,
   fetchThirdPartyModelSafe,
@@ -569,22 +570,82 @@ describe("live2d · rmsToMouth（真实音频口型映射）", () => {
     expect(rmsToMouth(Infinity)).toBeCloseTo(0.06, 5);
   });
 
-  it("音量越大嘴张越大，且封顶 0.6", () => {
+  it("音量越大嘴张越大，且封顶适中 0.9", () => {
     const low = rmsToMouth(0.1);
     const mid = rmsToMouth(0.3);
     const high = rmsToMouth(1.0);
     expect(low).toBeGreaterThan(0.06);
     expect(mid).toBeGreaterThan(low);
-    expect(high).toBeCloseTo(0.6, 5);
-    expect(rmsToMouth(5)).toBeCloseTo(0.6, 5); // 超量封顶
+    expect(high).toBeCloseTo(0.9, 5);
+    expect(rmsToMouth(5)).toBeCloseTo(0.9, 5); // 超量封顶
   });
 
-  it("范围始终在 [0.06, 0.6] 内", () => {
+  it("范围始终在 [0.06, 0.9] 内", () => {
     for (const r of [0.01, 0.05, 0.2, 0.5, 0.8, 2]) {
       const v = rmsToMouth(r);
       expect(v).toBeGreaterThanOrEqual(0.06);
-      expect(v).toBeLessThanOrEqual(0.6);
+      expect(v).toBeLessThanOrEqual(0.9);
     }
+  });
+
+  it("中等音量幅度明显但不夸张（增益放大适中）", () => {
+    // RMS 0.2 → 嘴张明显（~0.82）但不封顶满张（不夸张、更自然）
+    const v = rmsToMouth(0.2);
+    expect(v).toBeGreaterThan(0.75);
+    expect(v).toBeLessThanOrEqual(0.9);
+  });
+});
+
+describe("live2d · smoothMouth（口型平滑，attack 快/release 慢/说话保持）", () => {
+  it("有声（RMS 大）→ 快速逼近目标（attack 0.6）", () => {
+    // rms=0.5 → target≈0.9；从 0.06 起步，开口较快、开头响应及时
+    const v = smoothMouth(0.06, 0.5);
+    expect(v).toBeGreaterThan(0.5);
+    // 与 release 相比明显更快
+    const silentStep = smoothMouth(0.6, 0);
+    expect(v - 0.06).toBeGreaterThan(0.6 - silentStep);
+  });
+
+  it("无声（RMS=0）→ 缓闭合（release 0.28）", () => {
+    const v = smoothMouth(0.6, 0);
+    expect(v).toBeLessThan(0.6);
+    expect(v).toBeGreaterThan(0.06); // 未一步闭合，平滑回落
+  });
+
+  it("说话期间嘴保持 ≥0.16（音节间隙不闭死）", () => {
+    // 微弱有声：rms=0.03 → target≈0.149 > 阈值 0.12 → speaking=true
+    const v = smoothMouth(0, 0.03);
+    expect(v).toBeGreaterThanOrEqual(0.16);
+  });
+
+  it("多次迭代收敛到目标值", () => {
+    let v = 0.06;
+    for (let i = 0; i < 100; i++) v = smoothMouth(v, 0.5); // target≈0.8
+    expect(v).toBeCloseTo(rmsToMouth(0.5), 1);
+  });
+
+  it("静音最终收敛到微张 0.06，且不越界", () => {
+    let v = 0.7;
+    for (let i = 0; i < 100; i++) v = smoothMouth(v, 0);
+    expect(v).toBeCloseTo(0.06, 1);
+  });
+
+  it("自定义参数生效（attack/release/hold/threshold）", () => {
+    // 更慢的 attack → 单步上升更小
+    const slow = smoothMouth(0.06, 0.5, { attack: 0.2 });
+    const fast = smoothMouth(0.06, 0.5, { attack: 0.9 });
+    expect(slow).toBeLessThan(fast);
+    // 更高的 hold → 说话保持更明显
+    const held = smoothMouth(0, 0.03, { hold: 0.3 });
+    expect(held).toBeGreaterThanOrEqual(0.3);
+    // 更小的阈值 → 更易判定为说话
+    const th = smoothMouth(0, 0.01, { threshold: 0.05 });
+    expect(th).toBeGreaterThanOrEqual(0.16);
+  });
+
+  it("无效 RMS → 按静音处理（收敛向 0.06）", () => {
+    expect(smoothMouth(0.5, NaN)).toBeLessThan(0.5);
+    expect(smoothMouth(0.5, -1)).toBeLessThan(0.5);
   });
 });
 

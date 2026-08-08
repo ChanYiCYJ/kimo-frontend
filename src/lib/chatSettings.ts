@@ -141,9 +141,8 @@ export function saveTtsPref(on: boolean): void {
   lsSet(KEY_TTS, on ? "1" : "0");
 }
 
-// ---- 音频 TTS（可选）：朗读时若配置了「可返回音频的 TTS 地址」，则用真实音频波形驱动口型（speakAudio），
-//      否则回退浏览器 speechSynthesis + 文本时长估算（speakText）。
-//      地址模板支持 {text} 占位符（会被 URL 编码后的文本替换）；无占位符则文本拼在 ?text= 后。----
+// ---- 音频 TTS：朗读时用「可返回音频的 TTS 地址」真实音频波形驱动口型（speakAudio）。
+//      内置后端（/api/v1/tts，edge-tts 免费）无需填地址；第三方地址模板支持 {text} 占位符。----
 const KEY_TTS_AUDIO_URL = "kimo_ai_tts_audio_url";
 export function loadTtsAudioUrl(): string {
   return (lsGet(KEY_TTS_AUDIO_URL) || "").trim();
@@ -166,19 +165,6 @@ export function buildTtsAudioUrl(
   return t + sep + "text=" + encoded;
 }
 
-/** 朗读模式：browser=浏览器语音（speechSynthesis+文本估算口型）；audio=音频 TTS（真实波形驱动口型，AI 回复更简短口语化） */
-export type TtsMode = "browser" | "audio";
-const KEY_TTS_MODE = "kimo_ai_tts_mode";
-/** 读取朗读模式：音频模式仅在「保存了音频 TTS 地址」时生效，否则回退浏览器朗读 */
-export function loadTtsMode(): TtsMode {
-  return lsGet(KEY_TTS_MODE) === "audio" && loadTtsAudioUrl()
-    ? "audio"
-    : "browser";
-}
-export function saveTtsMode(mode: TtsMode): void {
-  lsSet(KEY_TTS_MODE, mode);
-}
-
 // ---- TTS 总开关（默认关闭：关闭后隐藏消息「朗读」按钮，不朗读）----
 const KEY_TTS_ON = "kimo_ai_tts_on";
 export function loadTtsOn(): boolean {
@@ -199,7 +185,7 @@ export function loadTtsVolume(): TtsVolume {
 export function saveTtsVolume(v: TtsVolume): void {
   lsSet(KEY_TTS_VOLUME, v);
 }
-/** 音量档位 → 0~1 数值（speakAudio/speechSynthesis 用） */
+/** 音量档位 → 0~1 数值（speakAudio 用） */
 export function ttsVolumeValue(v: TtsVolume): number {
   return v === "low" ? 0.5 : v === "high" ? 1 : 0.8;
 }
@@ -247,6 +233,37 @@ export function applyTtsVoice(url: string, voice: string): string {
   }
   if (!found) out.push("voice=" + encodeURIComponent(voice));
   return base + out.join("&");
+}
+
+// ---- TTS 来源（音频 TTS 模式的音频来源）----
+export type TtsSource = "backend" | "thirdparty";
+const KEY_TTS_SOURCE = "kimo_ai_tts_source";
+/** 内置后端 TTS 模板（走 Cloudflare Worker /api 同源反代 → FastAPI /api/v1/tts，edge-tts 免费） */
+export const BACKEND_TTS_TEMPLATE = "/api/v1/tts?text={text}";
+export function loadTtsSource(): TtsSource {
+  return lsGet(KEY_TTS_SOURCE) === "thirdparty" ? "thirdparty" : "backend";
+}
+export function saveTtsSource(source: TtsSource): void {
+  lsSet(KEY_TTS_SOURCE, source);
+}
+
+/**
+ * 根据来源解析最终 TTS 音频 URL（纯函数，可单测）：
+ * - backend：内置后端 /api/v1/tts?text={text}（无需用户填地址）
+ * - thirdparty：用户填的第三方地址模板
+ * 两者都追加所选音色 voice；文本为空或模板缺失返回 null。
+ */
+export function resolveTtsAudioUrl(
+  source: TtsSource,
+  thirdPartyUrl: string,
+  voice: string,
+  text: string,
+): string | null {
+  const template =
+    source === "backend" ? BACKEND_TTS_TEMPLATE : thirdPartyUrl || "";
+  const built = buildTtsAudioUrl(template, text);
+  if (!built) return null;
+  return applyTtsVoice(built, voice);
 }
 
 // ---- auto-knowledge（默认开启）：对话后自动学习人格笔记，越聊越贴合人设 ----

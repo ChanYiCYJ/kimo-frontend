@@ -23,6 +23,14 @@ describe("skills · assembleSystem 段注入", () => {
     expect(s).not.toContain("【联网搜索模式】");
   });
 
+  it("开启朗读（ttsMode）：注入朗读模式段，明确禁止动作描写/旁白", () => {
+    const s = sys({ ttsMode: true });
+    expect(s).toContain("【语音朗读模式】");
+    expect(s).toContain("像真人一样说话");
+    expect(s).toContain("禁止任何括号动作描写");
+    expect(s).toContain("[表情:开心]"); // Live2D 指令照常可附
+  });
+
   it("人格：lorePrompt 优先于 systemPrompt，且无多余分隔符开头", () => {
     const s = sys({
       lorePrompt: "你是「户山 香澄」。",
