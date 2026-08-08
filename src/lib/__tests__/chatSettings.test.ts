@@ -34,6 +34,10 @@ import {
   loadTtsVolume,
   saveTtsVolume,
   ttsVolumeValue,
+  loadTtsVoice,
+  saveTtsVoice,
+  applyTtsVoice,
+  DEFAULT_TTS_VOICE,
 } from "../chatSettings";
 import type { AIChatConfig } from "../types";
 import type { LocalAIConfig } from "../localCfg";
@@ -375,5 +379,35 @@ describe("chatSettings · TTS 总开关 + 音量", () => {
     expect(ttsVolumeValue("low")).toBe(0.5);
     expect(ttsVolumeValue("medium")).toBe(0.8);
     expect(ttsVolumeValue("high")).toBe(1);
+  });
+});
+
+describe("chatSettings · TTS 音色（voice 参数）", () => {
+  it("音色默认晓晓；读取/保存", () => {
+    expect(loadTtsVoice()).toBe(DEFAULT_TTS_VOICE);
+    expect(DEFAULT_TTS_VOICE).toBe("zh-CN-XiaoxiaoNeural");
+    saveTtsVoice("zh-CN-YunxiNeural");
+    expect(loadTtsVoice()).toBe("zh-CN-YunxiNeural");
+    // 非法值回退默认
+    localStorage.setItem("kimo_ai_tts_voice", "invalid-voice");
+    expect(loadTtsVoice()).toBe(DEFAULT_TTS_VOICE);
+  });
+
+  it("applyTtsVoice：无 voice 时追加", () => {
+    const u = applyTtsVoice("https://x.com/tts?text=hi", "zh-CN-XiaoxiaoNeural");
+    expect(u).toBe("https://x.com/tts?text=hi&voice=zh-CN-XiaoxiaoNeural");
+  });
+
+  it("applyTtsVoice：已有 voice 时替换（选择器为权威）", () => {
+    const u = applyTtsVoice(
+      "https://x.com/tts?text=hi&voice=zh-CN-YunxiNeural",
+      "zh-CN-XiaoyiNeural",
+    );
+    expect(u).toBe("https://x.com/tts?text=hi&voice=zh-CN-XiaoyiNeural");
+  });
+
+  it("applyTtsVoice：无 query 时用 ?voice=", () => {
+    const u = applyTtsVoice("https://x.com/tts", "zh-CN-YunxiNeural");
+    expect(u).toBe("https://x.com/tts?voice=zh-CN-YunxiNeural");
   });
 });

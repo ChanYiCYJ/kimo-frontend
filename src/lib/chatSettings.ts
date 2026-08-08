@@ -204,6 +204,51 @@ export function ttsVolumeValue(v: TtsVolume): number {
   return v === "low" ? 0.5 : v === "high" ? 1 : 0.8;
 }
 
+// ---- TTS 音色（voice 参数，对应 edge-tts 免费中文神经语音；也兼容其他支持 voice 的 TTS）----
+export const TTS_VOICES: ReadonlyArray<{ id: string; label: string }> = [
+  { id: "zh-CN-XiaoxiaoNeural", label: "晓晓 · 女声（温柔）" },
+  { id: "zh-CN-YunxiNeural", label: "云希 · 男声" },
+  { id: "zh-CN-XiaoyiNeural", label: "晓伊 · 女声（活泼）" },
+  { id: "zh-CN-YunjianNeural", label: "云健 · 男声（浑厚）" },
+  { id: "zh-CN-YunyangNeural", label: "云扬 · 男声（新闻）" },
+];
+export type TtsVoice = string;
+const KEY_TTS_VOICE = "kimo_ai_tts_voice";
+/** 默认音色：晓晓（最常用中文女声） */
+export const DEFAULT_TTS_VOICE = "zh-CN-XiaoxiaoNeural";
+export function loadTtsVoice(): TtsVoice {
+  const v = lsGet(KEY_TTS_VOICE);
+  return v && TTS_VOICES.some((x) => x.id === v) ? v : DEFAULT_TTS_VOICE;
+}
+export function saveTtsVoice(v: TtsVoice): void {
+  lsSet(KEY_TTS_VOICE, v);
+}
+
+/**
+ * 给 TTS URL 设置/替换 voice 参数（纯函数，可单测）。
+ * 已有 voice= 则替换（选择器为权威），否则追加 ?voice= / &voice=。
+ */
+export function applyTtsVoice(url: string, voice: string): string {
+  if (!url || !voice) return url;
+  const qi = url.indexOf("?");
+  const hasQuery = qi >= 0;
+  const base = hasQuery ? url.slice(0, qi + 1) : url + "?";
+  const query = hasQuery ? url.slice(qi + 1) : "";
+  const params = query.split("&").filter(Boolean);
+  const out: string[] = [];
+  let found = false;
+  for (const p of params) {
+    if (/^voice=/.test(p)) {
+      out.push("voice=" + encodeURIComponent(voice));
+      found = true;
+    } else {
+      out.push(p);
+    }
+  }
+  if (!found) out.push("voice=" + encodeURIComponent(voice));
+  return base + out.join("&");
+}
+
 // ---- auto-knowledge（默认开启）：对话后自动学习人格笔记，越聊越贴合人设 ----
 export function loadAutoKnowledge(): boolean {
   return lsGet(KEY_AUTO_KNOWLEDGE) !== "0";

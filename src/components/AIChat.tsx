@@ -67,7 +67,11 @@ import {
   loadTtsVolume,
   saveTtsVolume,
   ttsVolumeValue,
+  loadTtsVoice,
+  saveTtsVoice,
+  applyTtsVoice,
   type TtsVolume,
+  type TtsVoice,
   type ChatFontSize,
   type ChatNetMode,
   type ChatSearchSpeed,
@@ -1581,6 +1585,12 @@ export function AIChat({
     setTtsVolume(v);
     saveTtsVolume(v);
   };
+  /** TTS 音色（voice 参数，edge-tts 免费中文神经语音） */
+  const [ttsVoice, setTtsVoice] = useState<TtsVoice>(() => loadTtsVoice());
+  const setTtsVoicePersist = (v: TtsVoice) => {
+    setTtsVoice(v);
+    saveTtsVoice(v);
+  };
   /** 网络模式：Auto(智能,默认,先按速度回答，缺准确数据自动升级) / search(联网搜索并自动生成综合文章；原 view 已整合进 search) */
   const [netMode, setNetMode] = useState<ChatNetMode>(() => loadNetMode());
   const browseAgentOn = netMode === "search"; // 仅 Deep 模式（netMode=search）：搜索并生成综合文章，View 页面仅此模式可调用
@@ -2160,8 +2170,9 @@ export function AIChat({
       const vol = ttsVolumeValue(ttsVolume);
       // 音频 TTS（真实波形驱动口型）：配置了音频 TTS 地址才走；否则回退浏览器语音
       const ttsUrl = loadTtsAudioUrl();
-      if (buildTtsAudioUrl(ttsUrl, clean)) {
-        speakAudio(buildTtsAudioUrl(ttsUrl, clean)!, {
+      const built = buildTtsAudioUrl(ttsUrl, clean);
+      if (built) {
+        speakAudio(applyTtsVoice(built, ttsVoice), {
           volume: vol,
           onEnd: () => {
             stopSpeaking();
@@ -2182,7 +2193,7 @@ export function AIChat({
       }, 300);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [speakingIdx, l2dEnabled, ttsOn, ttsVolume],
+    [speakingIdx, l2dEnabled, ttsOn, ttsVolume, ttsVoice],
   );
 
   // 知识库：根据选择 + 本地笔记组装文本（KbModal 保存后调用 refreshKb 刷新缓存）
@@ -3146,6 +3157,8 @@ export function AIChat({
       onToggleTts: toggleTts,
       ttsVolume,
       onSetTtsVolume: setTtsVolumePersist,
+      ttsVoice,
+      onSetTtsVoice: setTtsVoicePersist,
     }),
     [
       pageId,
@@ -3163,6 +3176,8 @@ export function AIChat({
       toggleTts,
       ttsVolume,
       setTtsVolumePersist,
+      ttsVoice,
+      setTtsVoicePersist,
     ],
   );
 

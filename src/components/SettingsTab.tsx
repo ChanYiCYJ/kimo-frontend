@@ -7,9 +7,11 @@ import {
   saveTtsAudioUrl,
   loadTtsMode,
   saveTtsMode,
+  TTS_VOICES,
   type ChatFontSize,
   type TtsMode,
   type TtsVolume,
+  type TtsVoice,
 } from "../lib/chatSettings";
 import { LocalApiForm } from "./LocalApiForm";
 import { SearchApiForm } from "./SearchApiForm";
@@ -40,6 +42,9 @@ export interface AgentSettingsProps {
   /** TTS 音量（音频输出控制） */
   ttsVolume?: TtsVolume;
   onSetTtsVolume?: (v: TtsVolume) => void;
+  /** TTS 音色（voice 参数） */
+  ttsVoice?: TtsVoice;
+  onSetTtsVoice?: (v: TtsVoice) => void;
 }
 
 /** 设置卡片：细边框 + 无阴影（对齐 Live2D 面板质感），左侧灰色条作为区块标识 */
@@ -115,6 +120,8 @@ export function SettingsTab({
   onToggleTts,
   ttsVolume = "medium",
   onSetTtsVolume,
+  ttsVoice = "zh-CN-XiaoxiaoNeural",
+  onSetTtsVoice,
 }: AgentSettingsProps) {
   // 自定义模型开关：由 AIChat 统一管理（props 驱动，关闭后不再识别为自定义）；
   // 未传 props 时回退本地逻辑（兼容旧用法）
@@ -288,6 +295,23 @@ export function SettingsTab({
                     </code>{" "}
                     占位符（URL 编码后替换）；留空并保存则回退浏览器朗读。
                   </p>
+                  {/* 音色（voice 参数，edge-tts 免费中文神经语音） */}
+                  <div className="flex items-center justify-between pt-0.5">
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      音色
+                    </span>
+                    <select
+                      value={ttsVoice}
+                      onChange={(e) => onSetTtsVoice?.(e.target.value)}
+                      className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-700 outline-none transition focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                    >
+                      {TTS_VOICES.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               )}
               {/* 音量（音频输出控制） */}
